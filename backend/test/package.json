@@ -1,0 +1,33 @@
+{
+  "name": "backend-api-tests",
+  "version": "1.0.0",
+  "description": "Test suite for backend API tin nhắn",
+  "scripts": {
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "test:tinnhan": "jest test/tinnhan.test.js",
+    "test:socket": "jest test/socket.test.js",
+    "test:all": "jest test/"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "supertest": "^6.3.3",
+    "socket.io-client": "^4.7.4",
+    "socket.io": "^4.7.4"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "collectCoverageFrom": [
+      "controllers/**/*.js",
+      "models/**/*.js",
+      "socket/**/*.js",
+      "routes/**/*.js",
+      "!**/node_modules/**"
+    ],
+    "coverageDirectory": "coverage",
+    "coverageReporters": ["text", "lcov", "html"],
+    "testTimeout": 10000,
+    "setupFilesAfterEnv": ["<rootDir>/test/setup.js"]
+  }
+}

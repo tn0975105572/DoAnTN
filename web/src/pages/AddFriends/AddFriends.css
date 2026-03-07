@@ -1,0 +1,625 @@
+/* ═══════════════════════════════════════════
+   OLODO Web — Thêm Bạn Bè (Add Friends)
+   Premium Redesign — Facebook-inspired
+   ═══════════════════════════════════════════ */
+
+/* ── Page Layout ── */
+.addfriends-page {
+    min-height: 100vh;
+    background: linear-gradient(180deg, #fff5f7 0%, #fffcef 40%, #f8f6f0 100%);
+    padding-bottom: 80px;
+}
+
+.addfriends-inner {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 0 20px;
+}
+
+/* ── Hero Header ── */
+.af-hero {
+    position: relative;
+    background: linear-gradient(135deg, #7f001f 0%, #9a0002 45%, #c0003a 100%);
+    border-radius: 0 0 28px 28px;
+    padding: 36px 32px 28px;
+    margin-bottom: 24px;
+    overflow: hidden;
+    box-shadow: 0 8px 32px rgba(127, 0, 31, 0.25);
+}
+
+.af-hero::before {
+    content: '';
+    position: absolute;
+    top: -40px;
+    right: -40px;
+    width: 200px;
+    height: 200px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 50%;
+    animation: heroPulse 5s ease-in-out infinite;
+}
+
+.af-hero::after {
+    content: '';
+    position: absolute;
+    bottom: -30px;
+    left: 10%;
+    width: 150px;
+    height: 150px;
+    background: rgba(255, 215, 0, 0.08);
+    border-radius: 50%;
+    animation: heroPulse 6s ease-in-out infinite 1.5s;
+}
+
+@keyframes heroPulse {
+
+    0%,
+    100% {
+        opacity: 0.06;
+        transform: scale(1);
+    }
+
+    50% {
+        opacity: 0.12;
+        transform: scale(1.08);
+    }
+}
+
+.af-hero-top {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 14px;
+    position: relative;
+    z-index: 2;
+}
+
+.af-back-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border: none;
+    background: rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(8px);
+    border-radius: 12px;
+    cursor: pointer;
+    color: #fff;
+    transition: background 0.2s, transform 0.15s;
+}
+
+.af-back-btn:hover {
+    background: rgba(255, 255, 255, 0.25);
+    transform: scale(1.06);
+}
+
+.af-hero-title {
+    font-size: 26px;
+    font-weight: 800;
+    color: #fff;
+    letter-spacing: -0.02em;
+    text-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+}
+
+.af-hero-subtitle {
+    font-size: 14px;
+    color: rgba(255, 252, 239, 0.75);
+    margin-left: 54px;
+    position: relative;
+    z-index: 2;
+}
+
+/* ── Search Bar ── */
+.af-search-wrap {
+    position: relative;
+    z-index: 2;
+    margin-top: 18px;
+}
+
+.af-search-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: #fff;
+    border-radius: 16px;
+    padding: 0 20px;
+    height: 52px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12), 0 0 0 3px rgba(255, 252, 239, 0.12);
+    transition: box-shadow 0.3s;
+}
+
+.af-search-bar:focus-within {
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15), 0 0 0 3px rgba(255, 215, 0, 0.25);
+}
+
+.af-search-bar svg {
+    color: #aaa;
+    flex-shrink: 0;
+}
+
+.af-search-input {
+    border: none;
+    outline: none;
+    background: none;
+    font-size: 15px;
+    color: #222;
+    flex: 1;
+    height: 100%;
+    font-family: inherit;
+    font-weight: 500;
+}
+
+.af-search-input::placeholder {
+    color: #bbb;
+    font-weight: 400;
+}
+
+/* ── Tab Bar ── */
+.af-tabs {
+    display: flex;
+    gap: 8px;
+    background: #fff;
+    border-radius: 16px;
+    padding: 6px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.05);
+    border: 1px solid #f0ede6;
+}
+
+.af-tab {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px 16px;
+    border: none;
+    background: none;
+    cursor: pointer;
+    position: relative;
+    border-radius: 12px;
+    font-family: inherit;
+    transition: all 0.25s;
+}
+
+.af-tab:hover:not(.active) {
+    background: #fff5f5;
+}
+
+.af-tab.active {
+    background: linear-gradient(135deg, #7f001f 0%, #9a0002 100%);
+    box-shadow: 0 4px 16px rgba(127, 0, 31, 0.3);
+}
+
+.af-tab-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+}
+
+.af-tab:not(.active) .af-tab-icon svg {
+    color: #777;
+}
+
+.af-tab.active .af-tab-icon svg {
+    color: #fff;
+}
+
+.af-tab-text {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: #666;
+    transition: color 0.2s;
+}
+
+.af-tab.active .af-tab-text {
+    color: #fff;
+    font-weight: 700;
+}
+
+.af-tab-badge {
+    position: absolute;
+    top: -8px;
+    right: -14px;
+    background: #FF6B6B;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    min-width: 18px;
+    height: 18px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 5px;
+    line-height: 1;
+    border: 2px solid #fff;
+    box-shadow: 0 2px 6px rgba(255, 107, 107, 0.4);
+}
+
+.af-tab.active .af-tab-badge {
+    border-color: #7f001f;
+}
+
+/* ── Section Title ── */
+.af-section-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #999;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 14px;
+}
+
+/* ── Suggestion Grid (Card layout) ── */
+.af-suggestions-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 16px;
+}
+
+.af-suggestion-card {
+    background: #fff;
+    border-radius: 18px;
+    overflow: hidden;
+    border: 1px solid #f0ede6;
+    transition: transform 0.22s, box-shadow 0.22s;
+    cursor: pointer;
+    animation: cardPop 0.35s ease-out;
+}
+
+.af-suggestion-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.10);
+}
+
+@keyframes cardPop {
+    from {
+        opacity: 0;
+        transform: translateY(16px) scale(0.97);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.af-card-cover {
+    position: relative;
+    height: 90px;
+    background: linear-gradient(135deg, #7f001f33 0%, #9a000222 100%);
+    overflow: hidden;
+}
+
+.af-card-cover img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    filter: brightness(0.85);
+}
+
+.af-card-avatar-wrap {
+    position: absolute;
+    bottom: -28px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 3;
+}
+
+.af-card-avatar {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 3px solid #fff;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+    background: #f5f5f5;
+}
+
+.af-card-body {
+    padding: 34px 14px 16px;
+    text-align: center;
+}
+
+.af-card-name {
+    font-size: 14.5px;
+    font-weight: 700;
+    color: #222;
+    margin-bottom: 3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.af-card-mutual {
+    font-size: 12px;
+    color: #888;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+}
+
+.af-card-mutual svg {
+    color: #7f001f;
+}
+
+.af-card-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+/* ── Buttons ── */
+.af-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 9px 18px;
+    border: none;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.22s;
+    white-space: nowrap;
+    width: 100%;
+}
+
+.af-btn-primary {
+    background: linear-gradient(135deg, #7f001f 0%, #9a0002 100%);
+    color: #fff;
+    box-shadow: 0 3px 10px rgba(127, 0, 31, 0.25);
+}
+
+.af-btn-primary:hover {
+    box-shadow: 0 6px 20px rgba(127, 0, 31, 0.35);
+    transform: translateY(-1px);
+}
+
+.af-btn-secondary {
+    background: #f5f5f5;
+    color: #555;
+}
+
+.af-btn-secondary:hover {
+    background: #eee;
+}
+
+.af-btn-sent {
+    background: #f0ede6;
+    color: #888;
+    cursor: default;
+    box-shadow: none;
+}
+
+.af-btn-friend {
+    background: #e8f5e9;
+    color: #2e7d32;
+    cursor: default;
+    box-shadow: none;
+}
+
+.af-btn-danger {
+    background: linear-gradient(135deg, #FF6B6B 0%, #e85555 100%);
+    color: #fff;
+    box-shadow: 0 3px 10px rgba(255, 107, 107, 0.3);
+}
+
+.af-btn-danger:hover {
+    box-shadow: 0 6px 20px rgba(255, 107, 107, 0.4);
+    transform: translateY(-1px);
+}
+
+/* Remove card button full width for list items */
+.af-list-btn {
+    width: auto;
+    padding: 9px 20px;
+    border-radius: 20px;
+}
+
+/* ── List View (Requests / Sent) ── */
+.af-card-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.af-user-card {
+    display: flex;
+    align-items: center;
+    padding: 16px 18px;
+    background: #fff;
+    border-radius: 16px;
+    border: 1px solid #f0ede6;
+    transition: transform 0.2s, box-shadow 0.2s;
+    animation: cardSlide 0.3s ease-out;
+    cursor: pointer;
+}
+
+.af-user-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.07);
+}
+
+@keyframes cardSlide {
+    from {
+        opacity: 0;
+        transform: translateX(-12px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+.af-list-avatar {
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    object-fit: cover;
+    margin-right: 14px;
+    flex-shrink: 0;
+    background: #f5f5f5;
+    border: 2px solid #f0ede6;
+}
+
+.af-user-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.af-user-name {
+    font-size: 15px;
+    font-weight: 700;
+    color: #222;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.af-user-subtitle {
+    font-size: 12.5px;
+    color: #7f001f;
+    font-weight: 600;
+    margin-top: 2px;
+}
+
+.af-user-detail {
+    font-size: 12px;
+    color: #999;
+    margin-top: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.af-list-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: 14px;
+    flex-shrink: 0;
+}
+
+/* ── Empty State ── */
+.af-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 70px 30px;
+    text-align: center;
+}
+
+.af-empty-icon-wrap {
+    width: 100px;
+    height: 100px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #7f001f10 0%, #9a000218 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 20px;
+}
+
+.af-empty-icon-wrap svg {
+    color: #7f001f;
+    opacity: 0.5;
+}
+
+.af-empty-title {
+    font-size: 19px;
+    font-weight: 700;
+    color: #222;
+    margin-bottom: 8px;
+}
+
+.af-empty-subtitle {
+    font-size: 14px;
+    color: #888;
+    line-height: 1.5;
+    max-width: 280px;
+}
+
+/* ══════════════════════════
+   RESPONSIVE
+══════════════════════════ */
+@media (max-width: 768px) {
+    .addfriends-inner {
+        padding: 0 12px;
+    }
+
+    .af-hero {
+        padding: 28px 20px 22px;
+        border-radius: 0 0 20px 20px;
+    }
+
+    .af-hero-title {
+        font-size: 20px;
+    }
+
+    .af-suggestions-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+    }
+
+    .af-tabs {
+        padding: 4px;
+        gap: 4px;
+    }
+
+    .af-tab {
+        padding: 10px 8px;
+    }
+
+    .af-tab-text {
+        font-size: 12px;
+    }
+
+    .af-user-card {
+        padding: 12px 14px;
+    }
+
+    .af-list-avatar {
+        width: 44px;
+        height: 44px;
+    }
+
+    .af-list-actions {
+        flex-direction: column;
+        gap: 5px;
+    }
+
+    .af-list-btn {
+        padding: 7px 14px;
+        font-size: 12px;
+    }
+}
+
+@media (max-width: 480px) {
+    .af-suggestions-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+    }
+
+    .af-card-cover {
+        height: 70px;
+    }
+
+    .af-card-avatar {
+        width: 50px;
+        height: 50px;
+    }
+
+    .af-card-body {
+        padding: 28px 10px 12px;
+    }
+}

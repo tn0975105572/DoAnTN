@@ -1,0 +1,423 @@
+/* ═══════════════════════════════════════════
+   OLODO Web — Settings Page
+   Matches mobile caidat.tsx design
+   ═══════════════════════════════════════════ */
+
+/* ── Page Container ── */
+.settings-page {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 32px 20px 64px;
+    min-height: calc(100vh - 72px);
+    background: #fffcef;
+}
+
+/* ── Header ── */
+.settings-header {
+    margin-bottom: 20px;
+}
+
+.settings-header h1 {
+    font-size: 28px;
+    font-weight: 800;
+    color: #333;
+    margin: 0;
+}
+
+/* ══════════════════════════
+   PROFILE CARD
+══════════════════════════ */
+.settings-profile-card {
+    display: flex;
+    align-items: center;
+    background: #fff;
+    border: 1px solid #eee;
+    border-radius: 16px;
+    padding: 18px 20px;
+    margin-bottom: 24px;
+    gap: 16px;
+    transition: box-shadow 0.2s;
+}
+
+.settings-profile-card:hover {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+}
+
+/* Avatar */
+.settings-avatar-wrap {
+    position: relative;
+    flex-shrink: 0;
+}
+
+.settings-avatar {
+    width: 70px;
+    height: 70px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 3px solid #ddd;
+    transition: border-color 0.2s;
+}
+
+.settings-avatar.verified {
+    border-color: #4CAF50;
+}
+
+.settings-avatar.unverified {
+    border-color: #FF9800;
+}
+
+.settings-avatar-edit {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: #7f001f;
+    color: #fff;
+    border: 2px solid #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.15s;
+}
+
+.settings-avatar-edit:hover {
+    background: #9a0002;
+    transform: scale(1.1);
+}
+
+/* Profile Info */
+.settings-profile-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.settings-profile-name {
+    font-size: 20px;
+    font-weight: 700;
+    color: #333;
+    margin-bottom: 3px;
+}
+
+.settings-profile-email {
+    font-size: 14px;
+    color: #888;
+    margin-bottom: 6px;
+}
+
+.settings-profile-points {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #FFD700;
+}
+
+/* Profile Actions (right side) */
+.settings-profile-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+/* Verification Badge */
+.settings-verification {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border-radius: 20px;
+    border: 1px solid;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s;
+    background: none;
+    font-family: inherit;
+}
+
+.settings-verification:hover {
+    opacity: 0.85;
+}
+
+.settings-verification.verified {
+    background: #E8F5E8;
+    border-color: #4CAF50;
+    color: #4CAF50;
+}
+
+.settings-verification.unverified {
+    background: #FFF3E0;
+    border-color: #FF9800;
+    color: #FF9800;
+}
+
+.settings-edit-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: #f0f0f0;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #7f001f;
+    transition: background 0.2s;
+}
+
+.settings-edit-btn:hover {
+    background: #ffe8ec;
+}
+
+/* ══════════════════════════
+   LOGIN PROMPT (not logged in)
+══════════════════════════ */
+.settings-login-prompt {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background: #fff;
+    border: 1px solid #eee;
+    border-radius: 16px;
+    padding: 32px 24px;
+    margin-bottom: 24px;
+    text-align: center;
+}
+
+.settings-login-prompt-icon {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #7f001f10, #7f001f20);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #7f001f;
+    margin-bottom: 14px;
+}
+
+.settings-login-prompt h3 {
+    font-size: 18px;
+    font-weight: 700;
+    color: #333;
+    margin: 0 0 6px;
+}
+
+.settings-login-prompt p {
+    font-size: 14px;
+    color: #666;
+    margin: 0 0 20px;
+    max-width: 300px;
+    line-height: 1.5;
+}
+
+.settings-login-buttons {
+    display: flex;
+    gap: 10px;
+    width: 100%;
+    max-width: 320px;
+}
+
+.settings-btn-login {
+    flex: 1;
+    padding: 12px;
+    border-radius: 10px;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.2s;
+    border: none;
+    background: #7f001f;
+    color: #fff;
+}
+
+.settings-btn-login:hover {
+    background: #9a0002;
+    transform: translateY(-1px);
+}
+
+.settings-btn-register {
+    flex: 1;
+    padding: 12px;
+    border-radius: 10px;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.2s;
+    border: 1px solid #7f001f;
+    background: transparent;
+    color: #7f001f;
+}
+
+.settings-btn-register:hover {
+    background: #fff5f5;
+    transform: translateY(-1px);
+}
+
+/* ══════════════════════════
+   SETTINGS SECTIONS
+══════════════════════════ */
+.settings-section {
+    margin-bottom: 24px;
+}
+
+.settings-section-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 10px;
+    padding-left: 5px;
+}
+
+.settings-section-body {
+    background: #fff;
+    border-radius: 16px;
+    border: 1px solid #eee;
+    overflow: hidden;
+}
+
+/* ── Setting Item ── */
+.settings-item {
+    display: flex;
+    align-items: center;
+    padding: 15px 16px;
+    border: none;
+    background: none;
+    width: 100%;
+    text-align: left;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.15s;
+    border-bottom: 1px solid #f5f5f5;
+    gap: 14px;
+}
+
+.settings-item:last-child {
+    border-bottom: none;
+}
+
+.settings-item:hover {
+    background: #fafaf7;
+}
+
+.settings-item-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    background: #f5f5f5;
+    color: #555;
+    transition: background 0.2s, color 0.2s;
+}
+
+.settings-item:hover .settings-item-icon {
+    background: #ffe8ec;
+    color: #7f001f;
+}
+
+.settings-item-label {
+    flex: 1;
+    font-size: 15px;
+    color: #333;
+    font-weight: 500;
+}
+
+.settings-item-chevron {
+    color: #ccc;
+    flex-shrink: 0;
+}
+
+/* Switch Toggle */
+.settings-switch {
+    position: relative;
+    width: 44px;
+    height: 24px;
+    border-radius: 12px;
+    background: #ccc;
+    border: none;
+    cursor: pointer;
+    transition: background 0.25s;
+    flex-shrink: 0;
+    padding: 0;
+}
+
+.settings-switch.on {
+    background: #7f001f;
+}
+
+.settings-switch-knob {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+    transition: transform 0.25s;
+}
+
+.settings-switch.on .settings-switch-knob {
+    transform: translateX(20px);
+}
+
+/* ══════════════════════════
+   LOGOUT BUTTON
+══════════════════════════ */
+.settings-logout-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    padding: 15px;
+    background: #fff;
+    border: 1px solid #e74c3c;
+    border-radius: 16px;
+    color: #e74c3c;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.2s;
+    margin-top: 8px;
+}
+
+.settings-logout-btn:hover {
+    background: #fef2f2;
+    box-shadow: 0 4px 12px rgba(231, 76, 60, 0.12);
+    transform: translateY(-1px);
+}
+
+/* ══════════════════════════
+   RESPONSIVE
+══════════════════════════ */
+@media (max-width: 768px) {
+    .settings-page {
+        padding: 20px 16px 48px;
+    }
+
+    .settings-profile-card {
+        flex-wrap: wrap;
+    }
+
+    .settings-profile-actions {
+        flex-direction: row;
+        width: 100%;
+        justify-content: flex-end;
+        margin-top: 4px;
+    }
+}
