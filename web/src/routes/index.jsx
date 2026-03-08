@@ -10,6 +10,8 @@ import AddFriends from '../pages/AddFriends/AddFriends';
 import Messages from '../pages/Messages/Messages';
 import Notifications from '../pages/Notifications/Notifications';
 import Settings from '../pages/Settings/Settings';
+import PostComments from '../pages/PostComments/PostComments';
+import Profile from '../pages/Profile/Profile';
 
 const router = createBrowserRouter([
     {
@@ -55,6 +57,14 @@ const router = createBrowserRouter([
             {
                 path: 'settings',
                 element: <Settings />,
+            },
+            {
+                path: 'profile',
+                element: <Profile />,
+            },
+            {
+                path: 'post/:postId/comments',
+                element: <PostComments />,
             },
         ],
     },

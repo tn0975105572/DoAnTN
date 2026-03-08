@@ -6,6 +6,7 @@ import {
     Image, Tag, Smile, Video, Plus, Bookmark, TrendingUp, Star,
     ShoppingBag, Zap, Shield, MapPin, Clock, ChevronRight, ChevronDown,
     Tv, Shirt, Car, Sofa, Smartphone, Camera, BookOpen, Headphones, Wrench, Gift,
+    X, Copy, Check
 } from 'lucide-react';
 import './Home.css';
 
@@ -214,9 +215,234 @@ const TRENDING = [
 
 const FILTERS = ['Tất cả', 'Điện tử', 'Thời trang', 'Xe cộ', 'Nội thất', 'Bất động sản'];
 
+/* ════════ SHARE MODAL COMPONENT ════════ */
+function ShareModal({ post, onClose }) {
+    const [copied, setCopied] = useState(false);
+    const shareUrl = `${window.location.origin}/post/${post.id}`;
+
+    const handleCopy = async () => {
+        try {
+            await navigator.clipboard.writeText(shareUrl);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        } catch (err) {
+            console.error('Failed to copy: ', err);
+        }
+    };
+
+    const shareOptions = [
+        {
+            label: 'Facebook',
+            icon: (
+                <svg viewBox="0 0 24 24" width="32" height="32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M24 12.07C24 5.41 18.63 0 12 0S0 5.41 0 12.07C0 18.1 4.43 23.09 10.12 24v-8.44H7.08v-3.49h3.04V9.41c0-3 1.78-4.66 4.52-4.66 1.31 0 2.68.23 2.68.23v2.95h-1.51c-1.49 0-1.95.92-1.95 1.87v2.24h3.32l-.53 3.49h-2.79V24C19.57 23.09 24 18.1 24 12.07z" fill="#1877F2" />
+                    <path d="M16.47 15.56l.53-3.49h-3.32V9.83c0-.95.46-1.87 1.95-1.87h1.51V5.01s-1.37-.23-2.68-.23c-2.74 0-4.52 1.66-4.52 4.66v2.66H7.08v3.49h3.04V24c.6.09 1.21.14 1.83.14.63 0 1.24-.05 1.84-.14v-8.44h2.79z" fill="#fff" />
+                </svg>
+            ),
+            onClick: () => window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`, '_blank')
+        },
+        {
+            label: 'Zalo',
+            icon: (
+                <svg viewBox="0 0 40 40" width="32" height="32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect width="40" height="40" rx="10" fill="#0068FF" />
+                    <path d="M26.2 27.5H13.8C11.7 27.5 10 25.8 10 23.7V11.3C10 9.2 11.7 7.5 13.8 7.5H26.2C28.3 7.5 30 9.2 30 11.3V23.7C30 25.8 28.3 27.5 26.2 27.5Z" fill="white" />
+                    <path d="M14.5 12.5H23.5V14.5H16.5L23.5 21.5V23.5H14.5V21.5H21.5L14.5 14.5V12.5Z" fill="#0068FF" />
+                </svg>
+            ),
+            onClick: () => window.open(`https://zalo.me/share?url=${encodeURIComponent(shareUrl)}`, '_blank')
+        },
+        {
+            label: 'Twitter / X',
+            icon: (
+                <svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                </svg>
+            ),
+            onClick: () => window.open(`https://twitter.com/intent/tweet?url=${encodeURIComponent(shareUrl)}`, '_blank')
+        }
+    ];
+
+    return (
+        <div className="modal-overlay" onClick={onClose}>
+            <div className="share-modal" onClick={e => e.stopPropagation()}>
+                <div className="modal-handle" />
+                <div className="modal-header">
+                    <h3 className="modal-title">Chia sẻ bài viết</h3>
+                    <button className="modal-close-btn" onClick={onClose}>
+                        <X size={20} />
+                    </button>
+                </div>
+
+                <div className="share-link-section">
+                    <div className="share-link-box">
+                        <span className="share-link-text">{shareUrl}</span>
+                        <button className={`copy-link-btn ${copied ? 'copied' : ''}`} onClick={handleCopy}>
+                            {copied ? <Check size={16} /> : <Copy size={16} />}
+                            <span>{copied ? 'Đã chép' : 'Sao chép'}</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div className="share-options">
+                    {shareOptions.map(opt => (
+                        <button key={opt.label} className="share-option-btn" onClick={opt.onClick}>
+                            <div className="share-option-icon">{opt.icon}</div>
+                            <span className="share-option-label">{opt.label}</span>
+                        </button>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+/* ════════ MESSAGE MODAL COMPONENT ════════ */
+const MOCK_FRIENDS = [
+    { id: 1, name: 'Nguyễn Văn A', avatar: 'https://i.pravatar.cc/100?img=1' },
+    { id: 2, name: 'Trần Thị B', avatar: 'https://i.pravatar.cc/100?img=2' },
+    { id: 3, name: 'Lê Văn C', avatar: 'https://i.pravatar.cc/100?img=3' },
+    { id: 4, name: 'Phạm Thị D', avatar: 'https://i.pravatar.cc/100?img=4' },
+    { id: 5, name: 'Hoàng Văn E', avatar: 'https://i.pravatar.cc/100?img=5' },
+];
+
+function MessageModal({ post, onClose }) {
+    const [view, setView] = useState('selection'); // 'selection', 'direct', 'friends'
+    const [searchQuery, setSearchQuery] = useState('');
+    const [selectedFriends, setSelectedFriends] = useState([]);
+    const [message, setMessage] = useState('');
+    const [isSending, setIsSending] = useState(false);
+
+    const filteredFriends = MOCK_FRIENDS.filter(f =>
+        f.name.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
+    const toggleFriend = (id) => {
+        setSelectedFriends(prev =>
+            prev.includes(id) ? prev.filter(fid => fid !== id) : [...prev, id]
+        );
+    };
+
+    const handleSend = () => {
+        if (view === 'friends' && selectedFriends.length === 0) return;
+        setIsSending(true);
+        // Simulate sending
+        setTimeout(() => {
+            setIsSending(false);
+            onClose();
+        }, 1500);
+    };
+
+    const renderContent = () => {
+        if (view === 'selection') {
+            return (
+                <div className="message-selection-view">
+                    <p className="selection-subtitle">Chọn phương thức liên hệ</p>
+                    <button className="selection-btn" onClick={() => setView('direct')}>
+                        <div className="selection-icon-wrap owner">
+                            <Send size={20} />
+                        </div>
+                        <div className="selection-info">
+                            <span className="selection-label">Nhắn tin với chủ sở hữu</span>
+                            <span className="selection-desc">Liên hệ trực tiếp với người đăng bài</span>
+                        </div>
+                        <ChevronRight size={18} color="#aaa" />
+                    </button>
+                    <button className="selection-btn" onClick={() => setView('friends')}>
+                        <div className="selection-icon-wrap friends">
+                            <Check size={20} />
+                        </div>
+                        <div className="selection-info">
+                            <span className="selection-label">Gửi cho bạn bè</span>
+                            <span className="selection-desc">Chia sẻ bài viết này với bạn bè của bạn</span>
+                        </div>
+                        <ChevronRight size={18} color="#aaa" />
+                    </button>
+                </div>
+            );
+        }
+
+        return (
+            <>
+                <div className="message-post-preview">
+                    <img src={post.img} alt={post.title} className="msg-preview-img" />
+                    <div className="msg-preview-info">
+                        <span className="msg-preview-title">{post.title}</span>
+                        <span className="msg-preview-price">{post.price} ₫</span>
+                    </div>
+                </div>
+
+                <div className="message-input-section">
+                    <textarea
+                        className="message-textarea"
+                        placeholder={view === 'direct' ? "Nhập tin nhắn cho người bán..." : "Thêm tin nhắn..."}
+                        value={message}
+                        onChange={e => setMessage(e.target.value)}
+                    />
+                </div>
+
+                {view === 'friends' && (
+                    <>
+                        <div className="friends-search">
+                            <Search size={16} color="#aaa" />
+                            <input
+                                type="text"
+                                placeholder="Tìm kiếm bạn bè..."
+                                value={searchQuery}
+                                onChange={e => setSearchQuery(e.target.value)}
+                            />
+                        </div>
+
+                        <div className="friends-list">
+                            {filteredFriends.map(friend => (
+                                <div
+                                    key={friend.id}
+                                    className={`friend-item ${selectedFriends.includes(friend.id) ? 'selected' : ''}`}
+                                    onClick={() => toggleFriend(friend.id)}
+                                >
+                                    <img src={friend.avatar} alt={friend.name} className="friend-avatar" />
+                                    <span className="friend-name">{friend.name}</span>
+                                    <div className="friend-checkbox">
+                                        {selectedFriends.includes(friend.id) && <Check size={12} strokeWidth={3} />}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </>
+                )}
+
+                <div className="message-footer">
+                    <button
+                        className="send-message-btn"
+                        disabled={(view === 'friends' && selectedFriends.length === 0) || isSending}
+                        onClick={handleSend}
+                    >
+                        {isSending ? 'Đang gửi...' : view === 'direct' ? 'Gửi cho chủ bài đăng' : `Gửi cho ${selectedFriends.length} bạn bè`}
+                    </button>
+                    <button className="back-btn" onClick={() => setView('selection')}>Quay lại</button>
+                </div>
+            </>
+        );
+    };
+
+    return (
+        <div className="modal-overlay" onClick={onClose}>
+            <div className="message-modal" onClick={e => e.stopPropagation()}>
+                <div className="modal-header">
+                    <h3 className="modal-title">{view === 'selection' ? 'Nhắn tin' : view === 'direct' ? 'Liên hệ chủ bài' : 'Gửi cho bạn bè'}</h3>
+                    <button className="modal-close-btn" onClick={onClose}>
+                        <X size={20} />
+                    </button>
+                </div>
+                {renderContent()}
+            </div>
+        </div>
+    );
+}
+
 /* ════════ SUB-COMPONENTS ════════ */
 
-function PostCard({ post }) {
+function PostCard({ post, onCommentClick, onShareClick, onMessageClick }) {
     const [liked, setLiked] = useState(false);
     const [likeCount, setLikeCount] = useState(post.likes);
     const [saved, setSaved] = useState(false);
@@ -310,15 +536,15 @@ function PostCard({ post }) {
                     <Heart size={17} fill={liked ? '#7f001f' : 'none'} strokeWidth={2} />
                     <span>{liked ? 'Đã thích' : 'Thích'}</span>
                 </button>
-                <button className="action-btn">
+                <button type="button" className="action-btn" onClick={() => onCommentClick?.(post)}>
                     <MessageSquare size={17} strokeWidth={2} />
                     <span>Bình luận</span>
                 </button>
-                <button className="action-btn">
+                <button type="button" className="action-btn" onClick={() => onShareClick?.(post)}>
                     <Share2 size={17} strokeWidth={2} />
                     <span>Chia sẻ</span>
                 </button>
-                <button className="action-btn action-primary">
+                <button type="button" className="action-btn action-primary" onClick={() => onMessageClick?.(post)}>
                     <Send size={17} strokeWidth={2} />
                     <span>Nhắn tin</span>
                 </button>
@@ -333,6 +559,8 @@ export default function Home() {
     const [activeTab, setActiveTab] = useState('news');
     const [activeFilter, setActiveFilter] = useState('Tất cả');
     const [searchFocused, setSearchFocused] = useState(false);
+    const [sharePost, setSharePost] = useState(null);
+    const [messagePost, setMessagePost] = useState(null);
 
     return (
         <div className="home-page">
@@ -480,7 +708,29 @@ export default function Home() {
                 </div>
 
                 {/* Posts */}
-                {MOCK_POSTS.map(p => <PostCard key={p.id} post={p} />)}
+                {MOCK_POSTS.map(p => (
+                    <PostCard
+                        key={p.id}
+                        post={p}
+                        onCommentClick={(postData) => navigate(`/post/${postData.id}/comments`, { state: { post: postData } })}
+                        onShareClick={(postData) => setSharePost(postData)}
+                        onMessageClick={(postData) => setMessagePost(postData)}
+                    />
+                ))}
+
+                {/* Modals */}
+                {sharePost && (
+                    <ShareModal
+                        post={sharePost}
+                        onClose={() => setSharePost(null)}
+                    />
+                )}
+                {messagePost && (
+                    <MessageModal
+                        post={messagePost}
+                        onClose={() => setMessagePost(null)}
+                    />
+                )}
 
                 <div className="feed-end">
                     <div className="feed-end-icon">🎉</div>
@@ -542,13 +792,16 @@ export default function Home() {
                         <span>4.9 (12K reviews)</span>
                     </div>
                     <div className="banner-btns">
-                        <button className="btn-download">
-                            <svg viewBox="0 0 24 24" width="16" height="16" fill="white"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z" /></svg>
-                            App Store
+                        <button className="btn-download" type="button" aria-label="Tải trên App Store">
+                            {/* Logo Apple (App Store) chính thức */}
+                            <svg className="btn-download-icon" viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden>
+                                <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z" />
+                            </svg>
+                            <span>App Store</span>
                         </button>
-                        <button className="btn-download">
-                            <svg viewBox="0 0 24 24" width="16" height="16" fill="white"><path d="M3.18 23.76c.34.19.72.24 1.1.14l12.8-7.4-2.88-2.88-11.02 10.14zm15.8-10.26L16.6 12l2.38-1.5 3.36 1.94c.96.55.96 1.45 0 2L19.7 16l-2.38-1.5.75-.75-2.83-2.83-.75.75L12 12l-2.76-1.73L6.36 12.9 3.18.24C2.84.05 2.46 0 2.08.1L14.76 12.9l-2.88 2.88 12.8 7.4c.38.1.76.05 1.1-.14-.96.55-.96-1.45 0-2l-3.36-1.94-.62-.1z" /></svg>
-                            Google Play
+                        <button className="btn-download" type="button" aria-label="Tải trên Google Play">
+                            <img src="/google-play-logo.png" alt="" width="20" height="20" />
+                            <span>Google Play</span>
                         </button>
                     </div>
                 </div>

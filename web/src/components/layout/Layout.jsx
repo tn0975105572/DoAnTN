@@ -70,6 +70,18 @@ const Layout = () => {
 
             {currentUser ? (
               <>
+                <button
+                  type="button"
+                  className="btn-profile"
+                  onClick={() => {
+                    navigate('/profile');
+                    setMenuOpen(false);
+                  }}
+                  aria-label="Trang cá nhân"
+                >
+                  <User size={16} />
+                  <span>Trang cá nhân</span>
+                </button>
                 <button className="header-icon-btn" aria-label="Yêu thích">
                   <Heart size={20} />
                 </button>
