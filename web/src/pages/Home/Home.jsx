@@ -145,12 +145,12 @@ const STORIES = [
 ];
 
 const NAV_ITEMS = [
-    { icon: HomeIcon, label: 'Trang chủ', active: true, path: '/' },
-    { icon: Map, label: 'Bản đồ' },
-    { icon: UserPlus, label: 'Thêm bạn', path: '/add-friends' },
-    { icon: MessageCircle, label: 'Tin nhắn', badge: 3, path: '/messages' },
-    { icon: Bell, label: 'Thông báo', badge: 12, path: '/notifications' },
-    { icon: Settings, label: 'Cài đặt', path: '/settings' },
+    { icon: HomeIcon, label: 'Trang chủ', key: 'home', path: '/' },
+    { icon: Map, label: 'Bản đồ', key: 'map', path: '/map' },
+    { icon: UserPlus, label: 'Thêm bạn', key: 'add-friends', path: '/add-friends' },
+    { icon: MessageCircle, label: 'Tin nhắn', key: 'messages', badge: 3, path: '/messages' },
+    { icon: Bell, label: 'Thông báo', key: 'notifications', badge: 12, path: '/notifications' },
+    { icon: Settings, label: 'Cài đặt', key: 'settings', path: '/settings' },
 ];
 
 const CATEGORIES = [
@@ -582,18 +582,25 @@ export default function Home() {
                 </div>
 
                 {/* Nav */}
-                <nav className="sidebar-nav">
-                    {NAV_ITEMS.map(({ icon: Icon, label, active, badge, path }) => (
-                        <button key={label} className={`nav-item ${active ? 'nav-active' : ''}`} onClick={() => path && navigate(path)}>
-                            <span className="nav-icon-wrap">
-                                <Icon size={19} strokeWidth={2} />
-                                {badge && <span className="nav-badge">{badge}</span>}
-                            </span>
-                            <span className="nav-label">{label}</span>
-                            {active && <span className="nav-active-bar" />}
-                        </button>
-                    ))}
-                </nav>
+                    <nav className="sidebar-nav">
+                        {NAV_ITEMS.map(({ icon: Icon, label, key, badge, path }) => {
+                            const isActive = key === 'home';
+                            return (
+                                <button
+                                    key={label}
+                                    className={`nav-item ${isActive ? 'nav-active' : ''}`}
+                                    onClick={() => path && navigate(path)}
+                                >
+                                    <span className="nav-icon-wrap">
+                                        <Icon size={19} strokeWidth={2} />
+                                        {badge && <span className="nav-badge">{badge}</span>}
+                                    </span>
+                                    <span className="nav-label">{label}</span>
+                                    {isActive && <span className="nav-active-bar" />}
+                                </button>
+                            );
+                        })}
+                    </nav>
 
                 {/* Categories */}
                 <div className="sidebar-block">
