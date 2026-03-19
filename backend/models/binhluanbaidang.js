@@ -33,6 +33,14 @@ binhluanbaidang.getCommentTreeByPostId = async (postId) => {
     return rows;
 };
 
+binhluanbaidang.getCommentCountByPostId = async (postId) => {
+    const [rows] = await pool.query(
+        "SELECT COUNT(*) AS total FROM binhluanbaidang WHERE ID_BaiDang = ?",
+        [postId]
+    );
+    return rows[0].total;
+};
+
 binhluanbaidang.insert = async (data) => {
     const [result] = await pool.query("INSERT INTO binhluanbaidang SET ?", [data]);
     return result;

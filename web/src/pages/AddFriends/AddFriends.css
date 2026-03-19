@@ -65,6 +65,17 @@
     }
 }
 
+/* shared spinner */
+.spin {
+    animation: afSpin 0.85s linear infinite;
+}
+
+@keyframes afSpin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
 .af-hero-top {
     display: flex;
     align-items: center;
@@ -256,8 +267,75 @@
 /* ── Suggestion Grid (Card layout) ── */
 .af-suggestions-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 16px;
+}
+
+.af-more-wrap {
+    display: flex;
+    justify-content: center;
+    margin-top: 14px;
+}
+
+.af-more-btn {
+    width: auto;
+    padding: 10px 22px;
+    border-radius: 999px;
+}
+
+/* Paper-plane flight animation */
+.af-flight {
+    position: fixed;
+    left: 0;
+    top: 0;
+    width: 0;
+    height: 0;
+    z-index: 9999;
+    pointer-events: none;
+}
+
+.af-flight-plane {
+    width: 34px;
+    height: 34px;
+    transform: translate(var(--sx), var(--sy));
+    animation: afFlightMove 1.55s cubic-bezier(0.18, 0.92, 0.2, 1) forwards;
+    filter: drop-shadow(0 10px 14px rgba(0,0,0,0.18));
+    position: relative;
+    will-change: transform, opacity;
+    background-image: url('/123.png');
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+}
+
+.af-flight-plane::before {
+    content: none;
+}
+
+.af-flight-plane::after {
+    content: '';
+    position: absolute;
+    left: -16px;
+    top: 16px;
+    width: 26px;
+    height: 3px;
+    background: rgba(127, 0, 31, 0.18);
+    border-radius: 999px;
+    transform: rotate(-8deg);
+}
+
+@keyframes afFlightMove {
+    0% {
+        transform: translate(var(--sx), var(--sy)) scale(1) rotate(-12deg);
+        opacity: 0.95;
+    }
+    70% {
+        opacity: 1;
+    }
+    100% {
+        transform: translate(var(--ex), var(--ey)) scale(0.8) rotate(14deg);
+        opacity: 0;
+    }
 }
 
 .af-suggestion-card {

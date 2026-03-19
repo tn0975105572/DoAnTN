@@ -1,7 +1,9 @@
-import { useState, useRef } from 'react';
+// eslint-disable-next-line react-compiler/react-compiler
+'use no memo';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-    Home as HomeIcon, Map, UserPlus, MessageCircle, Bell, Settings,
+    Home as HomeIcon, Map as MapIcon, UserPlus, MessageCircle, Bell, Settings,
     Search, Heart, MessageSquare, Share2, Send, MoreHorizontal,
     Image, Tag, Smile, Video, Plus, Bookmark, TrendingUp, Star,
     ShoppingBag, Zap, Shield, MapPin, Clock, ChevronRight, ChevronDown,
@@ -9,6 +11,32 @@ import {
     X, Copy, Check
 } from 'lucide-react';
 import './Home.css';
+
+/* ════════ API CONFIG ════════ */
+const API_BASE = 'http://localhost:3000';
+const API_URLS = {
+    RECOMMENDATIONS: `${API_BASE}/api/recommendations/`,
+    GET_POST_BY_ID: `${API_BASE}/api/baidang/getById/`,
+    GET_POST_IMAGE: `${API_BASE}/api/baidang_anh/getById/`,
+    GET_USER_INFO: `${API_BASE}/api/nguoidung/get/`,
+    LIKE_BY_POST: `${API_BASE}/api/likebaidang/getLikesByPostId/`,
+    COMMENT_COUNT_BY_POST: `${API_BASE}/api/binhluanbaidang/getCommentCountByPost/`,
+    LIKE_CREATE: `${API_BASE}/api/likebaidang/create`,
+    LIKE_DELETE: `${API_BASE}/api/likebaidang/delete/`,
+    GET_ALL_WITH_DETAILS: `${API_BASE}/api/baidang/getAllWithDetails`,
+};
+const POSTS_PER_CHUNK = 5;
+const INITIAL_LOAD_COUNT = 8;
+const userInfoCache = new Map();
+const postDetailCache = new Map();
+
+// Chuyển bất kỳ URL có IP thành localhost (giữ port & path)
+function normalizeUrl(url) {
+    if (!url) return url;
+    // Khớp http://192.168.x.x:PORT hoặc http://10.x.x.x:PORT, ...
+    return url.replace(/^http:\/\/(?!localhost)[\d.]+:(\d+)/, 'http://localhost:$1');
+}
+
 
 /* ════════ HERO BANNER COMPONENT ════════ */
 const HERO_CATEGORIES = [
@@ -146,7 +174,7 @@ const STORIES = [
 
 const NAV_ITEMS = [
     { icon: HomeIcon, label: 'Trang chủ', key: 'home', path: '/' },
-    { icon: Map, label: 'Bản đồ', key: 'map', path: '/map' },
+    { icon: MapIcon, label: 'Bản đồ', key: 'map', path: '/map' },
     { icon: UserPlus, label: 'Thêm bạn', key: 'add-friends', path: '/add-friends' },
     { icon: MessageCircle, label: 'Tin nhắn', key: 'messages', badge: 3, path: '/messages' },
     { icon: Bell, label: 'Thông báo', key: 'notifications', badge: 12, path: '/notifications' },
@@ -442,16 +470,25 @@ function MessageModal({ post, onClose }) {
 
 /* ════════ SUB-COMPONENTS ════════ */
 
-function PostCard({ post, onCommentClick, onShareClick, onMessageClick }) {
-    const [liked, setLiked] = useState(false);
-    const [likeCount, setLikeCount] = useState(post.likes);
+function PostCard({ post, onCommentClick, onShareClick, onMessageClick, onLike }) {
+    // Khi có onLike (API mode) → dùng giá trị từ props trực tiếp
+    // Khi không có onLike (mock mode) → dùng local state
+    const [localLiked, setLocalLiked] = useState(false);
+    const [localLikeCount, setLocalLikeCount] = useState(post.likes ?? 0);
     const [saved, setSaved] = useState(false);
     const [expanded, setExpanded] = useState(false);
-    const isLong = post.desc.length > 130;
+    const isLong = (post.desc || '').length > 130;
+
+    const liked = onLike ? (post.liked ?? false) : localLiked;
+    const likeCount = onLike ? (post.likes ?? 0) : localLikeCount;
 
     const handleLike = () => {
-        setLiked(!liked);
-        setLikeCount(liked ? likeCount - 1 : likeCount + 1);
+        if (onLike) {
+            onLike(post.id); // Parent xử lý API + state
+        } else {
+            setLocalLiked(!localLiked);
+            setLocalLikeCount(localLiked ? localLikeCount - 1 : localLikeCount + 1);
+        }
     };
 
     return (
@@ -466,6 +503,9 @@ function PostCard({ post, onCommentClick, onShareClick, onMessageClick }) {
                     <div className="post-meta">
                         <div className="post-author-row">
                             <span className="post-author">{post.author}</span>
+                            {post.isFriendPost && (
+                                <span className="friend-badge-web">Bạn bè</span>
+                            )}
                             <span
                                 className="post-category-tag"
                                 style={{ background: post.categoryColor + '18', color: post.categoryColor, borderColor: post.categoryColor + '40' }}
@@ -500,7 +540,7 @@ function PostCard({ post, onCommentClick, onShareClick, onMessageClick }) {
 
             {/* Description */}
             <p className={`post-desc ${expanded ? 'expanded' : ''}`}>
-                {expanded || !isLong ? post.desc : post.desc.slice(0, 130) + '...'}
+                {expanded || !isLong ? (post.desc || '') : (post.desc || '').slice(0, 130) + '...'}
             </p>
             {isLong && (
                 <button className="btn-expand" onClick={() => setExpanded(!expanded)}>
@@ -556,11 +596,330 @@ function PostCard({ post, onCommentClick, onShareClick, onMessageClick }) {
 /* ════════ MAIN PAGE ════════ */
 export default function Home() {
     const navigate = useNavigate();
-    const [activeTab, setActiveTab] = useState('news');
+    const [activeTab, setActiveTab] = useState('recommend');
     const [activeFilter, setActiveFilter] = useState('Tất cả');
     const [searchFocused, setSearchFocused] = useState(false);
     const [sharePost, setSharePost] = useState(null);
     const [messagePost, setMessagePost] = useState(null);
+
+    // ── Auth từ localStorage ──
+    const [token, setToken] = useState('');
+    const [userId, setUserId] = useState('');
+
+    // ── Feed state ──
+    const [allRecommendations, setAllRecommendations] = useState([]);
+    const [feedPosts, setFeedPosts] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [isLoadingMore, setIsLoadingMore] = useState(false);
+    const [processedIndex, setProcessedIndex] = useState(0);
+    const [fallbackPage, setFallbackPage] = useState(1);
+    const [totalFallbackItems, setTotalFallbackItems] = useState(0);
+    const [isRecommendationsExhausted, setIsRecommendationsExhausted] = useState(false);
+    const [seenPostIds, setSeenPostIds] = useState(new Set());
+    const lastLoadTimeRef = useRef(0);
+
+    // ── Load token & userId ──
+    useEffect(() => {
+        setToken(localStorage.getItem('token') || '');
+        setUserId(localStorage.getItem('userId') || '');
+    }, []);
+
+    // ── Hydrate: gọi 4 API song song cho mỗi bài ──
+    const hydratePostChunk = useCallback(async (chunk) => {
+        if (!token) return [];
+        const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+
+        const results = await Promise.allSettled(chunk.map(async (reco) => {
+            try {
+                const cacheKey = `post_${reco.ID_BaiDang}`;
+                if (postDetailCache.has(cacheKey)) return postDetailCache.get(cacheKey);
+
+                const [postDetailRes, postImageRes, likeRes, commentRes] = await Promise.allSettled([
+                    fetch(`${API_URLS.GET_POST_BY_ID}${reco.ID_BaiDang}`, { headers }),
+                    fetch(`${API_URLS.GET_POST_IMAGE}${reco.ID_BaiDang}`, { headers }),
+                    fetch(`${API_URLS.LIKE_BY_POST}${reco.ID_BaiDang}`, { headers }),
+                    fetch(`${API_URLS.COMMENT_COUNT_BY_POST}${reco.ID_BaiDang}`, { headers }),
+                ]);
+
+                const postDetail = postDetailRes.status === 'fulfilled' && postDetailRes.value.ok
+                    ? await postDetailRes.value.json() : {};
+                if (!postDetail.ID_BaiDang) return null;
+
+                const postImages = postImageRes.status === 'fulfilled' && postImageRes.value.ok
+                    ? await postImageRes.value.json() : [];
+                if (postImages.length === 0) return null;
+
+                const likesRaw = likeRes.status === 'fulfilled' && likeRes.value.ok
+                    ? await likeRes.value.json() : [];
+                // Response từ getLikesByPostId trả về { success, data, total } — lấy .data
+                const likes = Array.isArray(likesRaw) ? likesRaw : (likesRaw?.data ?? []);
+                const commentCountRes = commentRes.status === 'fulfilled' && commentRes.value.ok
+                    ? await commentRes.value.json() : { count: 0 };
+                const commentCount = commentCountRes?.count ?? 0;
+
+                // Thông tin tác giả (có cache)
+                let authorName = 'Người dùng OLODO';
+                let authorAvatar = `https://i.pravatar.cc/50?u=${postDetail.ID_NguoiDung}`;
+                if (!userInfoCache.has(postDetail.ID_NguoiDung)) {
+                    try {
+                        const uRes = await fetch(`${API_URLS.GET_USER_INFO}${postDetail.ID_NguoiDung}`, { headers });
+                        if (uRes.ok) {
+                            const uData = await uRes.json();
+                            const u = uData.user || {};
+                            userInfoCache.set(postDetail.ID_NguoiDung, {
+                                name: u.ho_ten || authorName,
+                                avatar: normalizeUrl(
+                                    u.anh_dai_dien
+                                        ? (u.anh_dai_dien.startsWith('http') ? u.anh_dai_dien : `${API_BASE}/uploads/${u.anh_dai_dien}`)
+                                        : authorAvatar
+                                ),
+                            });
+                        }
+                    } catch { /* silent */ }
+                }
+                const cachedUser = userInfoCache.get(postDetail.ID_NguoiDung);
+                if (cachedUser) { authorName = cachedUser.name; authorAvatar = cachedUser.avatar; }
+
+                // URL ảnh — thêm localhost và normalizẽ IP
+                const imageUrls = postImages.slice(0, 5).map(img => {
+                    const link = img.LinkAnh;
+                    const full = (link.startsWith('http://') || link.startsWith('https://'))
+                        ? link
+                        : `${API_BASE}/uploads/${link}`;
+                    return normalizeUrl(full);
+                });
+
+                const userLike = likes.find(l => String(l.ID_NguoiDung) === String(userId));
+                const rawPrice = parseFloat(postDetail.gia) || 0;
+
+                const hydratedPost = {
+                    id: postDetail.ID_BaiDang,
+                    author: authorName,
+                    avatar: authorAvatar,
+                    time: new Date(postDetail.thoi_gian_tao).toLocaleDateString('vi-VN'),
+                    location: postDetail.vi_tri || '',
+                    verified: false,
+                    title: postDetail.tieu_de,
+                    desc: postDetail.mo_ta || '',
+                    price: rawPrice.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
+                    img: imageUrls[0],
+                    imageUrls,
+                    likes: likes.length,
+                    comments: commentCount,
+                    category: '',
+                    categoryColor: '#7f001f',
+                    liked: !!userLike,
+                    userLikeId: userLike?.ID_Like || null,
+                    isFriendPost: reco.isFriendPost || false,
+                };
+                postDetailCache.set(cacheKey, hydratedPost);
+                return hydratedPost;
+            } catch { return null; }
+        }));
+
+        return results
+            .filter(r => r.status === 'fulfilled' && r.value !== null)
+            .map(r => r.value);
+    }, [token, userId]);
+
+    // ── Fetch lần đầu ──
+    // ── Load thêm từ API chung (Fallback) ──
+    const loadFallbackPosts = useCallback(async (page) => {
+        if (!token) return;
+        setIsLoadingMore(true);
+        try {
+            const res = await fetch(`${API_URLS.GET_ALL_WITH_DETAILS}?page=${page}&limit=${POSTS_PER_CHUNK}`, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            if (!res.ok) return;
+            const result = await res.json();
+            const rawPosts = result.data || [];
+            setTotalFallbackItems(result.total || 0);
+
+            const formattedPosts = rawPosts.map(p => {
+                const imageUrls = (p.DanhSachAnh || []).map(link => {
+                    const full = (link.startsWith('http://') || link.startsWith('https://'))
+                        ? link : `${API_BASE}/uploads/${link}`;
+                    return normalizeUrl(full);
+                });
+                const rawPrice = parseFloat(p.gia) || 0;
+
+                return {
+                    id: p.ID_BaiDang,
+                    author: p.TenNguoiDung || 'Người dùng OLODO',
+                    avatar: normalizeUrl(p.anh_dai_dien 
+                        ? (p.anh_dai_dien.startsWith('http') ? p.anh_dai_dien : `${API_BASE}/uploads/${p.anh_dai_dien}`)
+                        : `https://i.pravatar.cc/50?u=${p.ID_NguoiDung}`),
+                    time: new Date(p.thoi_gian_tao).toLocaleDateString('vi-VN'),
+                    location: p.vi_tri || '',
+                    verified: false,
+                    title: p.tieu_de,
+                    desc: p.mo_ta || '',
+                    price: rawPrice.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
+                    img: imageUrls[0] || 'https://via.placeholder.com/400x300?text=No+Image',
+                    imageUrls,
+                    likes: p.SoLuongLike || 0,
+                    comments: p.SoLuongBinhLuan || 0,
+                    category: p.TenDanhMuc || '',
+                    categoryColor: '#7f001f',
+                    liked: false, 
+                    isFriendPost: false,
+                };
+            });
+
+            if (formattedPosts.length > 0) {
+                setFeedPosts(prev => {
+                    const existingIds = new Set(prev.map(p => p.id));
+                    return [...prev, ...formattedPosts.filter(p => !existingIds.has(p.id))];
+                });
+                setFallbackPage(v => v + 1);
+            }
+        } catch (e) {
+            console.error('Fallback load error:', e);
+        } finally {
+            setIsLoadingMore(false);
+        }
+    }, [token]);
+
+    // ── Fetch lần đầu ──
+    const fetchInitialData = useCallback(async () => {
+        if (!token || !userId) return;
+        setIsLoading(true);
+        userInfoCache.clear();
+        postDetailCache.clear();
+        setSeenPostIds(new Set());
+        try {
+            const res = await fetch(`${API_URLS.RECOMMENDATIONS}${userId}`, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            if (!res.ok) throw new Error('Failed to fetch recommendations');
+            const recommendations = await res.json();
+            setAllRecommendations(recommendations);
+            
+            if (recommendations.length > 0) {
+                const firstChunk = recommendations.slice(0, INITIAL_LOAD_COUNT);
+                const posts = await hydratePostChunk(firstChunk);
+                setFeedPosts(posts);
+                setProcessedIndex(INITIAL_LOAD_COUNT);
+                setSeenPostIds(new Set(posts.map(p => p.id)));
+                
+                if (recommendations.length <= INITIAL_LOAD_COUNT) {
+                    setIsRecommendationsExhausted(true);
+                }
+            } else {
+                setIsRecommendationsExhausted(true);
+                await loadFallbackPosts(1);
+            }
+        } catch (e) {
+            console.error('Feed fetch error:', e);
+            setIsRecommendationsExhausted(true);
+            await loadFallbackPosts(1);
+        } finally {
+            setIsLoading(false);
+        }
+    }, [token, userId, hydratePostChunk, loadFallbackPosts]);
+
+    // ── Load thêm khi scroll ──
+    const handleLoadMore = useCallback(async () => {
+        const now = Date.now();
+        if (isLoadingMore || now - lastLoadTimeRef.current < 1500) return;
+        lastLoadTimeRef.current = now;
+
+        // Ưu tiên load hết Recommendations trước
+        if (!isRecommendationsExhausted && processedIndex < allRecommendations.length) {
+            setIsLoadingMore(true);
+            try {
+                const nextChunk = allRecommendations.slice(processedIndex, processedIndex + POSTS_PER_CHUNK);
+                const newPosts = await hydratePostChunk(nextChunk);
+                if (newPosts.length > 0) {
+                    setFeedPosts(prev => {
+                        const existingIds = new Set(prev.map(p => p.id));
+                        return [...prev, ...newPosts.filter(p => !existingIds.has(p.id))];
+                    });
+                }
+                const nextIdx = processedIndex + POSTS_PER_CHUNK;
+                setProcessedIndex(nextIdx);
+                if (nextIdx >= allRecommendations.length) {
+                    setIsRecommendationsExhausted(true);
+                }
+            } catch (e) {
+                console.error('Load more reco error:', e);
+                setIsRecommendationsExhausted(true);
+            } finally {
+                setIsLoadingMore(false);
+            }
+        } 
+        // Sau đó chuyển sang Fallback (bài đăng mới nhất chung)
+        else {
+            await loadFallbackPosts(fallbackPage);
+        }
+    }, [isLoadingMore, isRecommendationsExhausted, processedIndex, allRecommendations, fallbackPage, hydratePostChunk, loadFallbackPosts]);
+
+    // ── Like / Unlike thật (optimistic update) ──
+    const handleLike = useCallback(async (postId) => {
+        if (!token || !userId) return;
+        const idx = feedPosts.findIndex(p => p.id === postId);
+        if (idx === -1) return;
+        const post = feedPosts[idx];
+        const wasLiked = post.liked;
+
+        // Cập nhật UI ngay
+        setFeedPosts(prev => prev.map((p, i) => i === idx
+            ? { ...p, liked: !wasLiked, likes: wasLiked ? p.likes - 1 : p.likes + 1 }
+            : p
+        ));
+
+        try {
+            if (wasLiked) {
+                let likeId = post.userLikeId;
+                if (!likeId) {
+                    const r = await fetch(`${API_URLS.LIKE_BY_POST}${postId}`, { headers: { Authorization: `Bearer ${token}` } });
+                    const lsRaw = r.ok ? await r.json() : [];
+                    const ls = Array.isArray(lsRaw) ? lsRaw : (lsRaw?.data ?? []);
+                    likeId = ls.find(l => String(l.ID_NguoiDung) === String(userId))?.ID_Like;
+                }
+                if (likeId) {
+                    await fetch(`${API_URLS.LIKE_DELETE}${likeId}`, {
+                        method: 'DELETE',
+                        headers: { Authorization: `Bearer ${token}` },
+                    });
+                    // Xoá cache để fetch lại lần sau
+                    postDetailCache.delete(`post_${postId}`);
+                }
+            } else {
+                const r = await fetch(API_URLS.LIKE_CREATE, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                    body: JSON.stringify({ ID_BaiDang: postId, ID_NguoiDung: userId }),
+                });
+                if (r.ok) {
+                    const data = await r.json();
+                    setFeedPosts(prev => prev.map((p, i) => i === idx ? { ...p, userLikeId: data.ID_Like } : p));
+                    postDetailCache.delete(`post_${postId}`);
+                } else throw new Error('Like failed');
+            }
+        } catch {
+            // Rollback nếu API lỗi
+            setFeedPosts(prev => prev.map((p, i) => i === idx
+                ? { ...p, liked: wasLiked, likes: wasLiked ? p.likes + 1 : p.likes - 1 }
+                : p
+            ));
+        }
+    }, [token, userId, feedPosts]);
+
+    // ── Effects ──
+    useEffect(() => {
+        if (token && userId) fetchInitialData();
+    }, [token, userId, fetchInitialData]);
+
+    useEffect(() => {
+        const onScroll = () => {
+            const { scrollTop, scrollHeight, clientHeight } = document.documentElement;
+            if (scrollTop + clientHeight >= scrollHeight - 400) handleLoadMore();
+        };
+        window.addEventListener('scroll', onScroll);
+        return () => window.removeEventListener('scroll', onScroll);
+    }, [handleLoadMore]);
 
     return (
         <div className="home-page">
@@ -582,25 +941,25 @@ export default function Home() {
                 </div>
 
                 {/* Nav */}
-                    <nav className="sidebar-nav">
-                        {NAV_ITEMS.map(({ icon: Icon, label, key, badge, path }) => {
-                            const isActive = key === 'home';
-                            return (
-                                <button
-                                    key={label}
-                                    className={`nav-item ${isActive ? 'nav-active' : ''}`}
-                                    onClick={() => path && navigate(path)}
-                                >
-                                    <span className="nav-icon-wrap">
-                                        <Icon size={19} strokeWidth={2} />
-                                        {badge && <span className="nav-badge">{badge}</span>}
-                                    </span>
-                                    <span className="nav-label">{label}</span>
-                                    {isActive && <span className="nav-active-bar" />}
-                                </button>
-                            );
-                        })}
-                    </nav>
+                <nav className="sidebar-nav">
+                    {NAV_ITEMS.map(({ icon: Icon, label, key, badge, path }) => {
+                        const isActive = key === 'home';
+                        return (
+                            <button
+                                key={label}
+                                className={`nav-item ${isActive ? 'nav-active' : ''}`}
+                                onClick={() => path && navigate(path)}
+                            >
+                                <span className="nav-icon-wrap">
+                                    <Icon size={19} strokeWidth={2} />
+                                    {badge && <span className="nav-badge">{badge}</span>}
+                                </span>
+                                <span className="nav-label">{label}</span>
+                                {isActive && <span className="nav-active-bar" />}
+                            </button>
+                        );
+                    })}
+                </nav>
 
                 {/* Categories */}
                 <div className="sidebar-block">
@@ -696,6 +1055,10 @@ export default function Home() {
                 {/* Feed Controls */}
                 <div className="feed-controls">
                     <div className="tab-group">
+                        <button className={`tab-btn ${activeTab === 'recommend' ? 'tab-active' : ''}`} onClick={() => setActiveTab('recommend')}>
+                            <Zap size={14} strokeWidth={2.2} />
+                            Dành cho bạn
+                        </button>
                         <button className={`tab-btn ${activeTab === 'news' ? 'tab-active' : ''}`} onClick={() => setActiveTab('news')}>
                             <TrendingUp size={14} strokeWidth={2} />
                             Mới nhất
@@ -715,15 +1078,57 @@ export default function Home() {
                 </div>
 
                 {/* Posts */}
-                {MOCK_POSTS.map(p => (
-                    <PostCard
-                        key={p.id}
-                        post={p}
-                        onCommentClick={(postData) => navigate(`/post/${postData.id}/comments`, { state: { post: postData } })}
-                        onShareClick={(postData) => setSharePost(postData)}
-                        onMessageClick={(postData) => setMessagePost(postData)}
-                    />
-                ))}
+                {isLoading ? (
+                    <div className="feed-loading">
+                        <div className="feed-spinner" />
+                        <span>Đang tải bài viết...</span>
+                    </div>
+                ) : feedPosts.length === 0 ? (
+                    <div className="feed-empty">
+                        <span>Chưa có bài viết nào. Hãy đăng nhập để xem feed cá nhân hoá 🎯</span>
+                    </div>
+                ) : (
+                    feedPosts.map((p, index) => (
+                        <div key={p.id}>
+                            <PostCard
+                                post={p}
+                                onLike={handleLike}
+                                onCommentClick={(postData) => navigate(`/post/${postData.id}/comments`, { state: { post: postData } })}
+                                onShareClick={(postData) => setSharePost(postData)}
+                                onMessageClick={(postData) => setMessagePost(postData)}
+                            />
+
+                            {/* Gợi ý người quen xen kẽ vào Feed như mobile */}
+                            {index === 0 && (
+                                <div className="feed-widget-inline">
+                                    <div className="widget-header">
+                                        <UserPlus size={15} strokeWidth={2} color="#7f001f" />
+                                        <span className="widget-title">Người có thể bạn quen</span>
+                                    </div>
+                                    <div className="people-row-horizontal">
+                                        {PEOPLE_MAY_KNOW.map(person => (
+                                            <div key={person.id} className="person-card-small">
+                                                <div className="person-avatar-wrap">
+                                                    <img src={person.avatar} alt={person.name} className="person-avatar" />
+                                                    {person.verified && <span className="person-verified">✓</span>}
+                                                </div>
+                                                <span className="person-name">{person.name}</span>
+                                                <span className="person-mutual">{person.mutual} bạn chung</span>
+                                                <button className="btn-add-small">Thêm bạn</button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    ))
+                )}
+                {isLoadingMore && (
+                    <div className="feed-loading">
+                        <div className="feed-spinner" />
+                        <span>Đang tải thêm...</span>
+                    </div>
+                )}
 
                 {/* Modals */}
                 {sharePost && (
@@ -739,10 +1144,13 @@ export default function Home() {
                     />
                 )}
 
-                <div className="feed-end">
-                    <div className="feed-end-icon">🎉</div>
-                    <span>Bạn đã xem hết bài viết hôm nay</span>
-                </div>
+                {!isLoading && !isLoadingMore && feedPosts.length > 0 &&
+                    isRecommendationsExhausted && feedPosts.length >= (totalFallbackItems || allRecommendations.length) && (
+                        <div className="feed-end">
+                            <div className="feed-end-icon">🎉</div>
+                            <span>Bạn đã xem hết bài viết hôm nay</span>
+                        </div>
+                    )}
             </main>
 
             {/* ─── RIGHT SIDEBAR ─── */}

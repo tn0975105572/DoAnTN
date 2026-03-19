@@ -1,115 +1,34 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
     Search, MoreHorizontal, Settings, Bell, Check, CheckCheck,
     ShoppingBag, MessageSquare, UserPlus, Shield, Tag, Heart,
     Clock, Trash2, Eye, ExternalLink, ChevronLeft
 } from 'lucide-react';
 import './Notifications.css';
+import axios from 'axios';
+import { API_BASE_URL } from '../../constants';
 
-/* ════════ MOCK DATA ════════ */
-const MOCK_NOTIFICATIONS = [
-    {
-        id: 'n1',
-        type: 'order',
-        avatar: 'https://i.pravatar.cc/150?img=17',
-        sender: 'Đức Thụy',
-        text: 'đã đặt mua sản phẩm "Laptop Dell XPS 15" của bạn',
-        detail: 'Đức Thụy đã đặt mua sản phẩm Laptop Dell XPS 15 của bạn. Vui lòng xác nhận đơn hàng và chuẩn bị giao hàng trong vòng 24 giờ.',
-        product: { name: 'Laptop Dell XPS 15 — 16GB RAM', price: '28.500.000₫', img: 'https://images.unsplash.com/photo-1593642632559-0c6d3fc62b89?q=80&w=200' },
-        time: '2 phút trước',
-        timeDetail: '01/03/2026, 16:22',
-        unread: true,
-    },
-    {
-        id: 'n2',
-        type: 'comment',
-        avatar: 'https://i.pravatar.cc/150?img=5',
-        sender: 'Kim Tuyến',
-        text: 'đã bình luận về bài đăng của bạn: "Sản phẩm còn không bạn?"',
-        detail: 'Kim Tuyến đã bình luận về bài đăng "Máy lạnh Daikin 2.5HP": "Sản phẩm còn không bạn? Mình muốn xem trực tiếp có được không?"',
-        time: '15 phút trước',
-        timeDetail: '01/03/2026, 16:09',
-        unread: true,
-    },
-    {
-        id: 'n3',
-        type: 'friend',
-        avatar: 'https://i.pravatar.cc/150?img=33',
-        sender: 'Nguyễn Duy Tiến',
-        text: 'đã gửi lời mời kết bạn cho bạn',
-        detail: 'Nguyễn Duy Tiến — Sinh viên Đại học Bách khoa TP.HCM muốn kết bạn với bạn. Các bạn có 5 bạn chung.',
-        time: '1 giờ trước',
-        timeDetail: '01/03/2026, 15:24',
-        unread: true,
-    },
-    {
-        id: 'n4',
-        type: 'like',
-        avatar: 'https://i.pravatar.cc/150?img=21',
-        sender: 'Thi Nguyen',
-        text: 'và 12 người khác đã thích bài đăng của bạn',
-        detail: 'Thi Nguyen và 12 người khác đã thích bài đăng "iPhone 14 Pro Max 256GB — còn bảo hành" của bạn. Bài đăng đã đạt 45 lượt xem.',
-        time: '2 giờ trước',
-        timeDetail: '01/03/2026, 14:20',
-        unread: false,
-    },
-    {
-        id: 'n5',
-        type: 'promo',
-        avatar: '',
-        sender: 'OLODO',
-        text: 'Ưu đãi Flash Sale 50% — Chỉ hôm nay!',
-        detail: '🎉 Flash Sale đặc biệt! Giảm đến 50% phí đăng tin premium trong hôm nay. Đăng tin ngay để tiếp cận hàng ngàn sinh viên đang tìm kiếm sản phẩm.',
-        time: '3 giờ trước',
-        timeDetail: '01/03/2026, 13:00',
-        unread: false,
-    },
-    {
-        id: 'n6',
-        type: 'system',
-        avatar: '',
-        sender: 'Hệ thống',
-        text: 'Bài đăng "Xe đạp Giant ATX" đã được duyệt thành công',
-        detail: 'Bài đăng "Xe đạp Giant ATX — like new 95%" của bạn đã được duyệt và hiện đang hiển thị trên sàn giao dịch. Bài đăng sẽ tự động hết hạn sau 30 ngày.',
-        time: '5 giờ trước',
-        timeDetail: '01/03/2026, 11:00',
-        unread: false,
-    },
-    {
-        id: 'n7',
-        type: 'order',
-        avatar: 'https://i.pravatar.cc/150?img=44',
-        sender: 'Rãnh ko có gì làm',
-        text: 'đã xác nhận nhận hàng đơn #OD2026030145',
-        detail: 'Người mua đã xác nhận nhận hàng thành công. Đơn hàng #OD2026030145 đã hoàn tất. Số tiền 1.200.000₫ đã được chuyển vào ví OLODO của bạn.',
-        product: { name: 'Bàn phím cơ Keychron K2', price: '1.200.000₫', img: 'https://images.unsplash.com/photo-1587829741301-dc798b83add3?q=80&w=200' },
-        time: '1 ngày trước',
-        timeDetail: '28/02/2026, 09:15',
-        unread: false,
-    },
-    {
-        id: 'n8',
-        type: 'comment',
-        avatar: 'https://i.pravatar.cc/150?img=68',
-        sender: 'Bảo Vũ',
-        text: 'đã trả lời bình luận của bạn: "Em gửi ảnh chi tiết nha"',
-        detail: 'Bảo Vũ đã trả lời bình luận của bạn trong bài đăng "Máy ảnh Canon EOS M50": "Em gửi ảnh chi tiết nha anh, em còn giữ hộp và phụ kiện đầy đủ."',
-        time: '1 ngày trước',
-        timeDetail: '28/02/2026, 08:30',
-        unread: false,
-    },
-    {
-        id: 'n9',
-        type: 'system',
-        avatar: '',
-        sender: 'Hệ thống',
-        text: 'Tài khoản của bạn đã được xác minh thành công ✓',
-        detail: 'Chúc mừng! Tài khoản OLODO của bạn đã được xác minh danh tính sinh viên thành công. Bạn sẽ nhận được huy hiệu "Đã xác minh" trên tất cả bài đăng.',
-        time: '2 ngày trước',
-        timeDetail: '27/02/2026, 14:00',
-        unread: false,
-    },
-];
+/* ════════ MAP BACKEND → UI MODEL ════════ */
+const mapApiNotification = (n) => {
+    let type = 'system';
+    if (n.loai === 'tin_nhan') type = 'message';
+    else if (n.loai === 'phan_hoi_bai_dang') type = 'comment';
+    else if (n.loai === 'thanh_toan') type = 'order';
+    else if (n.loai === 'voucher_moi') type = 'promo';
+
+    return {
+        id: n.ID_ThongBao,
+        type,
+        avatar: n.nguoi_gui_avatar || '',
+        sender: n.nguoi_gui_ten || 'Hệ thống',
+        text: n.noi_dung,
+        detail: n.noi_dung,
+        time: new Date(n.thoi_gian_tao).toLocaleString('vi-VN'),
+        timeDetail: new Date(n.thoi_gian_tao).toLocaleString('vi-VN'),
+        unread: n.da_doc === 0,
+        raw: n,
+    };
+};
 
 const TYPE_CONFIG = {
     order: { icon: ShoppingBag, label: 'Đơn hàng', color: '#22c55e' },
@@ -118,6 +37,7 @@ const TYPE_CONFIG = {
     system: { icon: Shield, label: 'Hệ thống', color: '#8b5cf6' },
     promo: { icon: Tag, label: 'Khuyến mãi', color: '#ef4444' },
     like: { icon: Heart, label: 'Lượt thích', color: '#ec4899' },
+    message: { icon: MessageSquare, label: 'Tin nhắn', color: '#0ea5e9' },
 };
 
 const TABS = [
@@ -130,10 +50,60 @@ const TABS = [
 
 /* ════════ MAIN COMPONENT ════════ */
 export default function Notifications() {
-    const [notifications, setNotifications] = useState(MOCK_NOTIFICATIONS);
+    const [notifications, setNotifications] = useState([]);
     const [selected, setSelected] = useState(null);
     const [activeTab, setActiveTab] = useState('all');
     const [searchQuery, setSearchQuery] = useState('');
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
+
+    const backendOrigin = useMemo(() => {
+        try { return new URL(API_BASE_URL).origin; } catch { return 'http://localhost:3000'; }
+    }, []);
+
+    const normalizeUploadsUrl = useCallback((raw) => {
+        if (!raw) return '';
+        try {
+            const url = new URL(raw);
+            if (url.pathname.startsWith('/uploads/')) {
+                return `${backendOrigin}${url.pathname}`;
+            }
+            return raw;
+        } catch {
+            // raw có thể là relative path /uploads/...
+            if (typeof raw === 'string' && raw.startsWith('/uploads/')) {
+                return `${backendOrigin}${raw}`;
+            }
+            return raw;
+        }
+    }, [backendOrigin]);
+
+    useEffect(() => {
+        const userId = localStorage.getItem('userId');
+        if (!userId) {
+            setLoading(false);
+            setError('Bạn cần đăng nhập để xem thông báo.');
+            return;
+        }
+
+        const fetchNotifications = async () => {
+            try {
+                setLoading(true);
+                setError('');
+                // API_BASE_URL đã bao gồm '/api' (xem constants/index.js)
+                const res = await axios.get(`${API_BASE_URL}/thongbao/user/${userId}?limit=50`);
+                const data = res.data?.data || [];
+                const mapped = data.map(mapApiNotification);
+                setNotifications(mapped);
+            } catch (err) {
+                setError('Không thể tải thông báo. Vui lòng thử lại sau.');
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchNotifications();
+    }, []);
 
     const unreadCount = notifications.filter(n => n.unread).length;
 
@@ -163,8 +133,25 @@ export default function Notifications() {
         );
     };
 
-    const handleMarkAllRead = () => {
-        setNotifications(prev => prev.map(n => ({ ...n, unread: false })));
+    const handleDelete = async (notifId) => {
+        try {
+            await axios.delete(`${API_BASE_URL}/thongbao/delete/${notifId}`);
+        } catch (e) {
+            // API lỗi vẫn xóa local
+        }
+        setNotifications(prev => prev.filter(n => n.id !== notifId));
+        if (selected?.id === notifId) setSelected(null);
+    };
+
+    const handleMarkAllRead = async () => {
+        const userId = localStorage.getItem('userId');
+        if (!userId) return;
+        try {
+            await axios.put(`${API_BASE_URL}/thongbao/mark-all-read/${userId}`);
+            setNotifications(prev => prev.map(n => ({ ...n, unread: false })));
+        } catch (e) {
+            // giữ im lặng, UI vẫn cập nhật local
+        }
     };
 
     const renderIcon = (type, size = 12) => {
@@ -176,10 +163,11 @@ export default function Notifications() {
 
     const renderAvatar = (notif) => {
         const config = TYPE_CONFIG[notif.type];
-        if (notif.avatar) {
+        const avatarSrc = normalizeUploadsUrl(notif.avatar);
+        if (avatarSrc) {
             return (
                 <div className="notif-avatar-wrap">
-                    <img className="notif-avatar" src={notif.avatar} alt={notif.sender} />
+                    <img className="notif-avatar" src={avatarSrc} alt={notif.sender} />
                     <span className={`notif-avatar-icon ${notif.type}`}>
                         {renderIcon(notif.type, 11)}
                     </span>
@@ -224,7 +212,7 @@ export default function Notifications() {
                             <button className="notif-item-action-btn" title="Xem" onClick={(e) => { e.stopPropagation(); handleSelect(notif); }}>
                                 <Eye size={13} />
                             </button>
-                            <button className="notif-item-action-btn" title="Xóa" onClick={(e) => { e.stopPropagation(); setNotifications(prev => prev.filter(n => n.id !== notif.id)); }}>
+                            <button className="notif-item-action-btn" title="Xóa" onClick={(e) => { e.stopPropagation(); handleDelete(notif.id); }}>
                                 <Trash2 size={13} />
                             </button>
                         </div>
@@ -284,9 +272,20 @@ export default function Notifications() {
                 </div>
 
                 <div className="notif-list">
+                    {error && (
+                        <div style={{ textAlign: 'center', padding: '20px', color: '#f97373', fontSize: 13 }}>
+                            {error}
+                        </div>
+                    )}
+                    {loading && !error && (
+                        <div style={{ textAlign: 'center', padding: '40px 20px', color: '#999' }}>
+                            <Clock size={24} style={{ marginBottom: 8, opacity: 0.7 }} />
+                            <p style={{ fontSize: 14 }}>Đang tải thông báo...</p>
+                        </div>
+                    )}
                     {renderSection('Hôm nay', today)}
                     {renderSection('Trước đó', earlier)}
-                    {filtered.length === 0 && (
+                    {!loading && filtered.length === 0 && !error && (
                         <div style={{ textAlign: 'center', padding: '40px 20px', color: '#ccc' }}>
                             <Bell size={32} style={{ marginBottom: 8, opacity: 0.4 }} />
                             <p style={{ fontSize: 14 }}>Không có thông báo nào</p>
@@ -329,7 +328,7 @@ export default function Notifications() {
                                 </div>
                             </div>
                             <div className="notif-detail-actions">
-                                <button className="notif-detail-action-btn" title="Xóa">
+                                <button className="notif-detail-action-btn" title="Xóa" onClick={() => handleDelete(selected.id)}>
                                     <Trash2 size={16} />
                                 </button>
                                 <button className="notif-detail-action-btn" title="Thêm">

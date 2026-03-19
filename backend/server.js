@@ -159,110 +159,104 @@ app.get('/api/recommendation-status', async (req, res) => {
 app.get('/api/recommendations/:userId', async (req, res) => {
   const userId = req.params.userId;
   try {
-    // Lấy gợi ý từ goiy_baidang (chỉ lấy những bài có Score > 0, tối đa 10)
-    const [rows] = await pool.query(
-      'SELECT ID_BaiDang, Score FROM goiy_baidang WHERE ID_NguoiDung = ? AND Score > 0 ORDER BY Score DESC LIMIT 10',
-      [userId]
-    );
-
-    if (rows.length > 0) {
-      const postIds = rows.map(row => row.ID_BaiDang);
-      const [likes] = await pool.query(
-        `SELECT ID_BaiDang FROM likebaidang WHERE ID_NguoiDung = ? AND ID_BaiDang IN (?)`,
-        [userId, postIds]
-      );
-      const [comments] = await pool.query(
-        `SELECT ID_BaiDang FROM binhluanbaidang WHERE ID_NguoiDung = ? AND ID_BaiDang IN (?)`,
-        [userId, postIds]
-      );
-
-      const likedPosts = new Set(likes.map(l => l.ID_BaiDang));
-      const commentedPosts = new Set(comments.map(c => c.ID_BaiDang));
-
-      const recommendations = rows.map(row => ({
-        ID_BaiDang: row.ID_BaiDang,
-        Score: row.Score,
-        isFriendPost: false,
-        hasLiked: likedPosts.has(row.ID_BaiDang),
-        hasCommented: commentedPosts.has(row.ID_BaiDang)
-      }));
-      return res.json(recommendations);
-    }
-
-    // Lấy danh sách bạn bè từ quanhebanbe
+    // 1. Lấy danh sách bạn bè trước để dùng chung
     const [friends] = await pool.query(
       `SELECT ID_NguoiGui AS friend_id FROM quanhebanbe WHERE ID_NguoiNhan = ? AND trang_thai = 'da_dong_y'
        UNION
        SELECT ID_NguoiNhan AS friend_id FROM quanhebanbe WHERE ID_NguoiGui = ? AND trang_thai = 'da_dong_y'`,
       [userId, userId]
     );
-
     const friendIds = friends.map(f => f.friend_id);
 
-    // Lấy bài đăng của bạn bè
+    // 2. Lấy tối đa 5 bài viết MỚI NHẤT của bạn bè
     let friendPosts = [];
     if (friendIds.length > 0) {
       const [friendPostsResult] = await pool.query(
         `SELECT ID_BaiDang 
          FROM baidang 
-         WHERE ID_NguoiDung IN (?) AND trang_thai = 'dang_ban'`,
+         WHERE ID_NguoiDung IN (?) AND trang_thai = 'dang_ban'
+         ORDER BY thoi_gian_tao DESC LIMIT 5`,
         [friendIds]
       );
       friendPosts = friendPostsResult.map(row => ({
         ID_BaiDang: row.ID_BaiDang,
-        Score: 0,
+        Score: 100, // Đặt điểm cao để ưu tiên (nhưng thực tế sẽ dùng thứ tự mảng)
         isFriendPost: true
       }));
     }
 
-    // Lấy tất cả bài đăng ngẫu nhiên từ baidang
-    const [randomPosts] = await pool.query(
-      `SELECT ID_BaiDang 
-       FROM baidang 
-       WHERE trang_thai = 'dang_ban'
-       ORDER BY RAND()`
+    // 3. Lấy gợi ý từ hệ thống AI (người lạ/quan tâm)
+    const [aiRows] = await pool.query(
+      'SELECT ID_BaiDang, Score FROM goiy_baidang WHERE ID_NguoiDung = ? AND Score > 0 ORDER BY Score DESC LIMIT 15',
+      [userId]
     );
 
-    // Kết hợp bài đăng của bạn bè và bài ngẫu nhiên, loại bỏ trùng lặp
-    const allPosts = [
-      ...friendPosts,
-      ...randomPosts
-        .filter(row => !friendPosts.some(f => f.ID_BaiDang === row.ID_BaiDang))
-        .map(row => ({ ID_BaiDang: row.ID_BaiDang, Score: 0, isFriendPost: false }))
-    ];
+    const aiPosts = aiRows.map(row => ({
+      ID_BaiDang: row.ID_BaiDang,
+      Score: row.Score,
+      isFriendPost: false
+    }));
 
-    // Loại bỏ trùng lặp dựa trên ID_BaiDang
-    const uniquePosts = Array.from(
-      new Map(allPosts.map(post => [post.ID_BaiDang, post])).values()
-    );
+    // 4. Kết hợp: Bạn bè mới đăng lên đầu -> Sau đó đến AI gợi ý
+    // Dùng Map để loại bỏ trùng lặp (nếu bạn bè cũng nằm trong danh sách AI gợi ý)
+    const combinedMap = new Map();
 
-    // Kiểm tra tương tác like và bình luận
-    const postIds = uniquePosts.map(post => post.ID_BaiDang);
+    // Thêm bài bạn bè trước
+    friendPosts.forEach(post => combinedMap.set(post.ID_BaiDang, post));
+
+    // Thêm bài AI (nếu chưa có trong map)
+    aiPosts.forEach(post => {
+      if (!combinedMap.has(post.ID_BaiDang)) {
+        combinedMap.set(post.ID_BaiDang, post);
+      }
+    });
+
+    let finalRecommendationList = Array.from(combinedMap.values());
+
+    // 5. Nếu tổng cộng vẫn ít bài quá (dưới 10 bài), lấy thêm bài ngẫu nhiên để lấp đầy
+    if (finalRecommendationList.length < 10) {
+      const existingIds = finalRecommendationList.map(p => p.ID_BaiDang);
+      const [randomRows] = await pool.query(
+        `SELECT ID_BaiDang FROM baidang 
+         WHERE trang_thai = 'dang_ban' ${existingIds.length > 0 ? 'AND ID_BaiDang NOT IN (?)' : ''}
+         ORDER BY RAND() LIMIT 10`,
+        existingIds.length > 0 ? [existingIds] : []
+      );
+
+      randomRows.forEach(row => {
+        finalRecommendationList.push({
+          ID_BaiDang: row.ID_BaiDang,
+          Score: 0,
+          isFriendPost: false
+        });
+      });
+    }
+
+    // 6. Kiểm tra tương tác (Like/Comment) cho danh sách cuối cùng
+    const finalPostIds = finalRecommendationList.map(post => post.ID_BaiDang);
+    if (finalPostIds.length === 0) return res.json([]);
+
     const [likes] = await pool.query(
       `SELECT ID_BaiDang FROM likebaidang WHERE ID_NguoiDung = ? AND ID_BaiDang IN (?)`,
-      [userId, postIds]
+      [userId, finalPostIds]
     );
     const [comments] = await pool.query(
       `SELECT ID_BaiDang FROM binhluanbaidang WHERE ID_NguoiDung = ? AND ID_BaiDang IN (?)`,
-      [userId, postIds]
+      [userId, finalPostIds]
     );
 
     const likedPosts = new Set(likes.map(l => l.ID_BaiDang));
     const commentedPosts = new Set(comments.map(c => c.ID_BaiDang));
 
-    // Thêm hasLiked và hasCommented
-    const finalPosts = uniquePosts.map(post => ({
-      ID_BaiDang: post.ID_BaiDang,
-      Score: post.Score,
-      isFriendPost: post.isFriendPost,
+    const result = finalRecommendationList.map(post => ({
+      ...post,
       hasLiked: likedPosts.has(post.ID_BaiDang),
       hasCommented: commentedPosts.has(post.ID_BaiDang)
     }));
 
-    // Trả về tất cả bài đăng
-    res.json(finalPosts);
+    res.json(result);
   } catch (err) {
-    console.error(err);
+    console.error('Lỗi API Gợi ý:', err);
     res.status(500).json({ error: err.message });
   }
 });

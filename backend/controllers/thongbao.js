@@ -26,8 +26,9 @@ exports.getById = async (req, res) => {
 exports.getByUserId = async (req, res) => {
     try {
         const userId = req.params.userId;
-        const limit = req.query.limit || 50;
-        const data = await thongbao.getByUserId(userId, parseInt(limit));
+        const rawLimit = req.query.limit;
+        const limit = Number.isNaN(parseInt(rawLimit, 10)) ? 50 : parseInt(rawLimit, 10);
+        const data = await thongbao.getByUserId(userId, limit);
         res.json({ success: true, data });
     } catch (error) {
         res.status(500).json({ success: false, message: 'Lỗi máy chủ', error: error.message });
@@ -73,7 +74,7 @@ exports.markAllAsRead = async (req, res) => {
 exports.insert = async (req, res) => {
     try {
         const newData = req.body;
-        const insertId = await thongbao.insert(newData);
+        const insertId = await thongbao.insert(newData, req.io);
         res.status(201).json({ success: true, id: insertId, message: 'Thêm mới thành công' });
     } catch (error) {
         res.status(500).json({ success: false, message: 'Lỗi máy chủ', error: error.message });

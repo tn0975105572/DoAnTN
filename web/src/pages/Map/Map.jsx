@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { MapContainer, TileLayer, Marker, Circle as LeafletCircle, Popup } from 'react-leaflet';
 import {
   MapPin,
   Search,
@@ -10,6 +11,7 @@ import {
 } from 'lucide-react';
 import { API_BASE_URL } from '../../constants';
 import './Map.css';
+import 'leaflet/dist/leaflet.css';
 
 const DEFAULT_RADIUS_KM = 5;
 
@@ -288,15 +290,49 @@ export default function MapPage() {
         </div>
 
         <div className="map-content">
-          <div className="map-placeholder">
-            <div className="map-placeholder-inner">
-              <div className="map-grid" />
-              <div className="map-center-dot" />
-              <div className="map-radius-circle" />
-              <div className="map-note">
-                Bản đồ minh họa (có thể thay bằng Google Maps / Leaflet thực tế).
-              </div>
-            </div>
+          <div className="map-map-container">
+            {currentLocation && (
+              <MapContainer
+                center={[currentLocation.lat, currentLocation.lng]}
+                zoom={13}
+                className="map-leaflet"
+              >
+                <TileLayer
+                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  attribution="&copy; OpenStreetMap contributors"
+                />
+
+                <Marker position={[currentLocation.lat, currentLocation.lng]}>
+                  <Popup>Vị trí hiện tại của bạn (hoặc mặc định).</Popup>
+                </Marker>
+
+                <LeafletCircle
+                  center={[currentLocation.lat, currentLocation.lng]}
+                  radius={(parseFloat(radius) || DEFAULT_RADIUS_KM) * 1000}
+                  pathOptions={{ color: '#7f001f', fillColor: '#7f001f', fillOpacity: 0.12 }}
+                />
+
+                {filteredPosts.map((post) => (
+                  <Marker
+                    key={post.ID_BaiDang || post.id}
+                    position={[post.location.lat, post.location.lng]}
+                    eventHandlers={{
+                      click: () => handleViewPost(post.ID_BaiDang || post.id),
+                    }}
+                  >
+                    <Popup>
+                      <div className="map-popup">
+                        <strong>{post.tieu_de || 'Không có tiêu đề'}</strong>
+                        <br />
+                        {post.mo_ta || 'Không có mô tả.'}
+                        <br />
+                        <span>{post.distanceKm.toFixed(1)} km</span>
+                      </div>
+                    </Popup>
+                  </Marker>
+                ))}
+              </MapContainer>
+            )}
           </div>
 
           <div className="map-posts-panel">

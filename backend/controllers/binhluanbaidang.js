@@ -59,6 +59,16 @@ exports.getCommentTreeByPost = async (req, res) => {
     }
 };
 
+// Đếm số lượng bình luận của bài đăng (nhẹ, không kéo nội dung)
+exports.getCommentCountByPost = async (req, res) => {
+    try {
+        const count = await binhluanbaidang.getCommentCountByPostId(req.params.id);
+        res.json({ count: Number(count) });
+    } catch (error) {
+        res.status(500).json({ message: 'Lỗi máy chủ', error });
+    }
+};
+
 // Tạo bình luận mới
 exports.insert = async (req, res) => {
     try {

@@ -12,8 +12,8 @@ const API_URLS = {
   GET_POST_BY_ID: `${API_BASE_URL}/api/baidang/getById/`,
   GET_POST_IMAGE_BY_ID: `${API_BASE_URL}/api/baidang_anh/getById/`,
   GET_USER_INFO: `${API_BASE_URL}/api/nguoidung/get/`,
-  LIKE_BY_POST: `${API_BASE_URL}/api/likebaidang/getByPostId/`,
-  COMMENT_BY_POST: `${API_BASE_URL}/api/binhluanbaidang/getCommentTreeByPost/`,
+  LIKE_BY_POST: `${API_BASE_URL}/api/likebaidang/getLikesByPostId/`,
+  COMMENT_COUNT_BY_POST: `${API_BASE_URL}/api/binhluanbaidang/getCommentCountByPost/`,
   LIKE_CREATE: `${API_BASE_URL}/api/likebaidang/create`,
   LIKE_DELETE: `${API_BASE_URL}/api/likebaidang/delete/`,
 };
@@ -114,13 +114,15 @@ export default function KetQuaTimKiemScreen() {
               fetch(`${API_URLS.LIKE_BY_POST}${reco.ID_BaiDang}`, {
                 headers: { Authorization: `Bearer ${token}` },
               }),
-              fetch(`${API_URLS.COMMENT_BY_POST}${reco.ID_BaiDang}`, {
+              fetch(`${API_URLS.COMMENT_COUNT_BY_POST}${reco.ID_BaiDang}`, {
                 headers: { Authorization: `Bearer ${token}` },
               }),
             ]);
 
-            const likes = likesRes.ok ? await likesRes.json() : [];
-            const comments = commentsRes.ok ? await commentsRes.json() : [];
+            const likesRaw = likesRes.ok ? await likesRes.json() : [];
+            const likes = Array.isArray(likesRaw) ? likesRaw : (likesRaw?.data ?? []);
+            const commentCountRaw = commentsRes.ok ? await commentsRes.json() : { count: 0 };
+            const commentCount: number = commentCountRaw?.count ?? 0;
             const userLike = likes.find((like: any) => like.ID_NguoiDung == userId);
 
             const formattedPrice = new Intl.NumberFormat('vi-VN').format(postDetail.gia || 0);
@@ -139,7 +141,7 @@ export default function KetQuaTimKiemScreen() {
               imageUrls: limitedImageUrls,
               liked: !!userLike,
               likeCount: likes.length,
-              commentCount: comments.length,
+              commentCount: commentCount,
               userLikeId: userLike?.ID_Like,
             };
           } catch (error) {

@@ -8,6 +8,7 @@ router.get("/getById/:id", binhluanbaidangController.getById);
 router.get("/getbyID_BaiDang/:id", binhluanbaidangController.getbyID_BaiDang);
 
 router.get("/getCommentTreeByPost/:id", binhluanbaidangController.getCommentTreeByPost);
+router.get("/getCommentCountByPost/:id", binhluanbaidangController.getCommentCountByPost);
 
 router.post("/create", binhluanbaidangController.insert);
 

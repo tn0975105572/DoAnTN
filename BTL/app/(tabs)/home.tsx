@@ -28,8 +28,8 @@ const API_URLS = {
   GET_POST_BY_ID: `${API_BASE_URL}/api/baidang/getById/`,
   GET_POST_IMAGE_BY_ID: `${API_BASE_URL}/api/baidang_anh/getById/`,
   GET_USER_INFO: `${API_BASE_URL}/api/nguoidung/get/`,
-  LIKE_BY_POST: `${API_BASE_URL}/api/likebaidang/getByPostId/`,
-  COMMENT_BY_POST: `${API_BASE_URL}/api/binhluanbaidang/getCommentTreeByPost/`,
+  LIKE_BY_POST: `${API_BASE_URL}/api/likebaidang/getLikesByPostId/`,
+  COMMENT_COUNT_BY_POST: `${API_BASE_URL}/api/binhluanbaidang/getCommentCountByPost/`,
   LIKE_CREATE: `${API_BASE_URL}/api/likebaidang/create`,
   LIKE_DELETE: `${API_BASE_URL}/api/likebaidang/delete/`,
 };
@@ -740,7 +740,7 @@ const HomeScreen = () => {
                 headers,
                 signal: controllers[2].signal,
               }),
-              fetch(`${API_URLS.COMMENT_BY_POST}${reco.ID_BaiDang}`, {
+              fetch(`${API_URLS.COMMENT_COUNT_BY_POST}${reco.ID_BaiDang}`, {
                 headers,
                 signal: controllers[3].signal,
               }),
@@ -766,14 +766,17 @@ const HomeScreen = () => {
 
             const likes =
               likeRes.status === 'fulfilled' && likeRes.value.ok ? await likeRes.value.json() : [];
+            // getLikesByPostId trả về { success, data, total } — lấy .data
+            const likesData = Array.isArray(likes) ? likes : (likes?.data ?? []);
 
-            const comments =
+            const commentCountRaw =
               commentRes.status === 'fulfilled' && commentRes.value.ok
                 ? await commentRes.value.json()
-                : [];
+                : { count: 0 };
+            const commentCount: number = commentCountRaw?.count ?? 0;
 
             const authorProfile = await fetchUserInfo(postDetail.ID_NguoiDung, token);
-            const userLike = likes.find(
+            const userLike = likesData.find(
               (like: Like) => String(like.ID_NguoiDung) === String(userId),
             );
 
@@ -820,8 +823,8 @@ const HomeScreen = () => {
               time: new Date(postDetail.thoi_gian_tao).toLocaleDateString('vi-VN'),
               imageUrls: limitedImageUrls,
               liked: !!userLike,
-              likeCount: likes.length,
-              commentCount: comments.length,
+              likeCount: likesData.length,
+              commentCount: commentCount,
               userLikeId: userLike?.ID_Like,
             };
 
