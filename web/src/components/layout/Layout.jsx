@@ -6,6 +6,15 @@ import {
 import ChatWidget from '../ChatWidget/ChatWidget';
 import './Layout.css';
 
+const LOGO_SRC = '/123.png';
+const API_BASE = 'http://localhost:3000';
+const DEFAULT_AVATAR = 'https://i.pravatar.cc/80?u=guest';
+
+const normalizeUrl = (url) => {
+  if (!url) return DEFAULT_AVATAR;
+  return url.replace(/^http:\/\/(?!localhost)[\d.]+:(\d+)/, 'http://localhost:$1');
+};
+
 function ScrollToTop() {
   const { pathname } = useLocation();
   useLayoutEffect(() => {
@@ -25,14 +34,53 @@ const Layout = () => {
 
   useEffect(() => {
     const savedUser = localStorage.getItem('user');
+    const token = localStorage.getItem('token');
+    const savedUserId = localStorage.getItem('userId');
+
     if (savedUser) {
-      setCurrentUser(JSON.parse(savedUser));
+      try {
+        const parsed = JSON.parse(savedUser);
+        setCurrentUser({
+          name: parsed.ho_ten || parsed.name || 'Bạn',
+          avatar: normalizeUrl(parsed.anh_dai_dien
+            ? (parsed.anh_dai_dien.startsWith('http') ? parsed.anh_dai_dien : `${API_BASE}/uploads/${parsed.anh_dai_dien}`)
+            : DEFAULT_AVATAR)
+        });
+      } catch {
+        setCurrentUser(null);
+      }
     }
+
+    const fetchUserInfo = async () => {
+      if (!token || !savedUserId) return;
+      try {
+        const res = await fetch(`${API_BASE}/api/nguoidung/get/${savedUserId}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const u = data?.user || {};
+          setCurrentUser({
+            name: u.ho_ten || 'Bạn',
+            avatar: normalizeUrl(
+              u.anh_dai_dien
+                ? (u.anh_dai_dien.startsWith('http') ? u.anh_dai_dien : `${API_BASE}/uploads/${u.anh_dai_dien}`)
+                : DEFAULT_AVATAR
+            )
+          });
+        }
+      } catch {
+        setCurrentUser((prev) => prev);
+      }
+    };
+
+    fetchUserInfo();
   }, []);
 
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    localStorage.removeItem('userId');
     setCurrentUser(null);
   };
 
@@ -43,7 +91,10 @@ const Layout = () => {
       <header className="header">
         <div className="header-inner">
           {/* Logo */}
-          <Link to="/" className="logo">OLODO</Link>
+          <Link to="/" className="logo" aria-label="Trang chủ OLODO">
+            <img src={LOGO_SRC} alt="OLODO" className="logo-img" />
+            <span className="logo-text">OLODO</span>
+          </Link>
 
           {/* Nav Links */}
           <nav className={`nav ${menuOpen ? 'nav-open' : ''}`}>
@@ -90,9 +141,9 @@ const Layout = () => {
                 </button>
                 <div className="user-menu-group">
                   <div className="user-avatar-header">
-                    <span>{currentUser.ho_ten?.charAt(0) || 'U'}</span>
+                    <img src={currentUser.avatar || DEFAULT_AVATAR} alt={currentUser.name || 'User'} />
                   </div>
-                  <span className="user-name-header">{currentUser.ho_ten}</span>
+                  <span className="user-name-header">{currentUser.name}</span>
                   <button onClick={handleLogout} className="logout-btn" aria-label="Đăng xuất">
                     <LogOut size={16} />
                   </button>

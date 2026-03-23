@@ -675,3 +675,57 @@
   cursor: not-allowed;
   box-shadow: none;
 }
+
+/* ── Loading state ─────────────────────────────────────────── */
+.comments-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-12) var(--space-6);
+  color: var(--color-text-muted);
+}
+
+.comments-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--color-border);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: spinComment 0.7s linear infinite;
+}
+
+@keyframes spinComment {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Error banner ─────────────────────────────────────────── */
+.comments-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: rgba(220, 38, 38, 0.06);
+  border: 1px solid rgba(220, 38, 38, 0.2);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-4);
+  font-size: var(--text-sm);
+  color: #b91c1c;
+  animation: fadeSlideIn 0.2s var(--ease-out);
+}
+
+.comments-error button {
+  background: none;
+  border: none;
+  color: #b91c1c;
+  cursor: pointer;
+  font-size: var(--text-base);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  transition: background 0.15s;
+}
+
+.comments-error button:hover {
+  background: rgba(220, 38, 38, 0.1);
+}

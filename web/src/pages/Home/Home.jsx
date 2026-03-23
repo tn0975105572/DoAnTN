@@ -1,6 +1,5 @@
-// eslint-disable-next-line react-compiler/react-compiler
 'use no memo';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     Home as HomeIcon, Map as MapIcon, UserPlus, MessageCircle, Bell, Settings,
@@ -12,7 +11,6 @@ import {
 } from 'lucide-react';
 import './Home.css';
 
-/* ════════ API CONFIG ════════ */
 const API_BASE = 'http://localhost:3000';
 const API_URLS = {
     RECOMMENDATIONS: `${API_BASE}/api/recommendations/`,
@@ -24,11 +22,15 @@ const API_URLS = {
     LIKE_CREATE: `${API_BASE}/api/likebaidang/create`,
     LIKE_DELETE: `${API_BASE}/api/likebaidang/delete/`,
     GET_ALL_WITH_DETAILS: `${API_BASE}/api/baidang/getAllWithDetails`,
+    UNREAD_NOTIFICATIONS: `${API_BASE}/api/thongbao/unread/`,
+    UNREAD_MESSAGES: `${API_BASE}/api/tinnhan/unread/`,
+    PENDING_FRIEND_REQUESTS: `${API_BASE}/api/quanHeBanBe/requests/`,
 };
 const POSTS_PER_CHUNK = 5;
 const INITIAL_LOAD_COUNT = 8;
 const userInfoCache = new Map();
 const postDetailCache = new Map();
+const DEFAULT_AVATAR = 'https://i.pravatar.cc/80?u=guest';
 
 // Chuyển bất kỳ URL có IP thành localhost (giữ port & path)
 function normalizeUrl(url) {
@@ -190,6 +192,29 @@ const CATEGORIES = [
     { icon: Camera, label: 'Máy ảnh', color: '#ef4444' },
 ];
 
+const STATUS_LABELS = {
+    dang_ban: 'Đang bán',
+    da_ban: 'Đã bán',
+    cho_duyet: 'Chờ duyệt',
+    het_hang: 'Hết hàng',
+};
+
+const STATUS_COLORS = {
+    dang_ban: '#10b981',
+    da_ban: '#ef4444',
+    cho_duyet: '#f59e0b',
+    het_hang: '#9ca3af',
+};
+
+function normalizePostStatus(status) {
+    if (!status) return { label: 'Không rõ', color: '#7f001f' };
+    const key = String(status).trim().toLowerCase();
+    return {
+        label: STATUS_LABELS[key] || status,
+        color: STATUS_COLORS[key] || '#7f001f',
+    };
+}
+
 const STATS = [
     { icon: ShoppingBag, label: 'Bài đăng', value: '12,843', color: '#7f001f' },
     { icon: UserPlus, label: 'Người dùng', value: '4,219', color: '#3b82f6' },
@@ -203,7 +228,7 @@ const MOCK_POSTS = [
         time: '2 giờ trước', location: 'Hà Nội', verified: true,
         title: 'Laptop Dell XPS 15 2023 — Cần bán gấp',
         desc: 'Laptop Dell XPS 15 2023, còn bảo hành 10 tháng, tình trạng 99%, chưa sửa chữa. Cấu hình: Core i7-12700H, RAM 16GB, SSD 512GB, màn 4K OLED. Lý do bán: chuyển sang dùng MacBook.',
-        price: '28,000,000', category: 'Điện tử', categoryColor: '#3b82f6',
+        price: '28,000,000', category: 'Điện tử', categoryColor: '#3b82f6', trang_thai: 'Đang bán', statusColor: '#10b981',
         img: 'https://images.unsplash.com/photo-1593642632559-0c6d3fc62b89?q=80&w=900',
         likes: 142, comments: 38,
     },
@@ -212,7 +237,7 @@ const MOCK_POSTS = [
         time: '5 giờ trước', location: 'TP.HCM', verified: false,
         title: 'iPhone 14 Pro Max 256GB Deep Purple — Fullbox',
         desc: 'Điện thoại còn fullbox, mua tháng 3/2024, ít dùng, pin 98%, không trầy xước. Có kèm ốp lưng Apple Silicone và cường lực gốc. Thương lượng với người thiện chí.',
-        price: '22,500,000', category: 'Điện tử', categoryColor: '#3b82f6',
+        price: '22,500,000', category: 'Điện tử', categoryColor: '#3b82f6', trang_thai: 'Đang bán', statusColor: '#10b981',
         img: 'https://images.unsplash.com/photo-1681134395546-a0e04ff8e5c3?q=80&w=900',
         likes: 95, comments: 21,
     },
@@ -221,7 +246,7 @@ const MOCK_POSTS = [
         time: '1 ngày trước', location: 'Đà Nẵng', verified: true,
         title: 'Xe đạp thể thao Giant ATX 830 — Như mới',
         desc: 'Xe đạp địa hình Giant ATX 830, màu xanh dương, đã đi khoảng 500km. Còn mới, đầy đủ phụ kiện, bảo dưỡng định kỳ. Kèm mũ bảo hiểm và bộ bơm xe.',
-        price: '5,200,000', category: 'Xe cộ', categoryColor: '#10b981',
+        price: '5,200,000', category: 'Xe cộ', categoryColor: '#10b981', trang_thai: 'Đang bán', statusColor: '#10b981',
         img: 'https://images.unsplash.com/photo-1485965120184-e220f721d03e?q=80&w=900',
         likes: 67, comments: 12,
     },
@@ -468,11 +493,174 @@ function MessageModal({ post, onClose }) {
     );
 }
 
+/* ════════ LIKE TOOLTIP COMPONENT ════════ */
+function LikeTooltip({ postId, show }) {
+    const [likers, setLikers] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [fetched, setFetched] = useState(false);
+
+    useEffect(() => {
+        if (!show || fetched || loading) return;
+        const token = localStorage.getItem('token') || '';
+        if (!token) return;
+        setLoading(true);
+        (async () => {
+            try {
+                const res = await fetch(`${API_URLS.LIKE_BY_POST}${postId}`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+                if (!res.ok) return;
+                const raw = await res.json();
+                const data = Array.isArray(raw) ? raw : (raw?.data ?? []);
+                // Fetch user info for each liker
+                const likersWithInfo = await Promise.all(
+                    data.slice(0, 20).map(async (like) => {
+                        const name = like.TenNguoiDung || null;
+                        const avatar = like.anh_dai_dien || null;
+                        if (name) {
+                            return {
+                                id: like.ID_NguoiDung,
+                                name,
+                                avatar: avatar
+                                    ? normalizeUrl(avatar.startsWith('http') ? avatar : `${API_BASE}/uploads/${avatar}`)
+                                    : `https://i.pravatar.cc/30?u=${like.ID_NguoiDung}`,
+                                time: like.thoi_gian_like,
+                            };
+                        }
+                        // Fallback: fetch user info
+                        if (userInfoCache.has(like.ID_NguoiDung)) {
+                            const cached = userInfoCache.get(like.ID_NguoiDung);
+                            return {
+                                id: like.ID_NguoiDung,
+                                name: cached.name,
+                                avatar: cached.avatar,
+                                time: like.thoi_gian_like,
+                            };
+                        }
+                        try {
+                            const uRes = await fetch(`${API_URLS.GET_USER_INFO}${like.ID_NguoiDung}`, {
+                                headers: { Authorization: `Bearer ${token}` },
+                            });
+                            if (uRes.ok) {
+                                const uData = await uRes.json();
+                                const u = uData.user || {};
+                                return {
+                                    id: like.ID_NguoiDung,
+                                    name: u.ho_ten || 'Người dùng',
+                                    avatar: normalizeUrl(
+                                        u.anh_dai_dien
+                                            ? (u.anh_dai_dien.startsWith('http') ? u.anh_dai_dien : `${API_BASE}/uploads/${u.anh_dai_dien}`)
+                                            : `https://i.pravatar.cc/30?u=${like.ID_NguoiDung}`
+                                    ),
+                                    time: like.thoi_gian_like,
+                                };
+                            }
+                        } catch { /* silent */ }
+                        return {
+                            id: like.ID_NguoiDung,
+                            name: 'Người dùng',
+                            avatar: `https://i.pravatar.cc/30?u=${like.ID_NguoiDung}`,
+                            time: like.thoi_gian_like,
+                        };
+                    })
+                );
+                setLikers(likersWithInfo);
+                setFetched(true);
+            } catch (e) {
+                console.error('Error fetching likers:', e);
+            } finally {
+                setLoading(false);
+            }
+        })();
+    }, [show, fetched, loading, postId]);
+
+    if (!show) return null;
+
+    const formatTime = (timeStr) => {
+        try {
+            const date = new Date(timeStr);
+            const now = new Date();
+            const diffMs = now - date;
+            const diffMin = Math.floor(diffMs / 60000);
+            const diffHrs = Math.floor(diffMs / 3600000);
+            const diffDays = Math.floor(diffMs / 86400000);
+            if (diffMin < 1) return 'Vừa xong';
+            if (diffMin < 60) return `${diffMin}p trước`;
+            if (diffHrs < 24) return `${diffHrs}h trước`;
+            if (diffDays < 7) return `${diffDays}d trước`;
+            return date.toLocaleDateString('vi-VN');
+        } catch { return ''; }
+    };
+
+    return (
+        <div className="like-tooltip">
+            <div className="like-tooltip-arrow" />
+            {loading ? (
+                <div className="like-tooltip-loading">
+                    <div className="like-tooltip-spinner" />
+                    <span>Đang tải...</span>
+                </div>
+            ) : likers.length === 0 ? (
+                <div className="like-tooltip-empty">Chưa có ai thích</div>
+            ) : (
+                <>
+                    <div className="like-tooltip-header">
+                        <Heart size={12} fill="#7f001f" color="#7f001f" />
+                        <span>{likers.length} người đã thích</span>
+                    </div>
+                    <div className="like-tooltip-list">
+                        {likers.map((liker) => (
+                            <div key={liker.id} className="like-tooltip-item">
+                                <img src={liker.avatar} alt={liker.name} className="like-tooltip-avatar" />
+                                <div className="like-tooltip-info">
+                                    <span className="like-tooltip-name">{liker.name}</span>
+                                    {liker.time && <span className="like-tooltip-time">{formatTime(liker.time)}</span>}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </>
+            )}
+        </div>
+    );
+}
+
 /* ════════ SUB-COMPONENTS ════════ */
+
+function LikeStats({ postId, liked, likeCount, comments }) {
+    const [showTooltip, setShowTooltip] = useState(false);
+    const hoverTimeoutRef = useRef(null);
+
+    const handleMouseEnter = () => {
+        hoverTimeoutRef.current = setTimeout(() => setShowTooltip(true), 300);
+    };
+    const handleMouseLeave = () => {
+        clearTimeout(hoverTimeoutRef.current);
+        setShowTooltip(false);
+    };
+
+    return (
+        <div className="post-stats">
+            <span
+                className="stat-item stat-item-hoverable"
+                onMouseEnter={handleMouseEnter}
+                onMouseLeave={handleMouseLeave}
+            >
+                <Heart size={13} fill={liked ? '#7f001f' : 'none'} color={liked ? '#7f001f' : '#aaa'} />
+                {likeCount.toLocaleString()} thích
+                <LikeTooltip postId={postId} show={showTooltip} />
+            </span>
+            <span className="stat-item">
+                <MessageSquare size={13} color="#aaa" />
+                {comments} bình luận
+            </span>
+        </div>
+    );
+}
 
 function PostCard({ post, onCommentClick, onShareClick, onMessageClick, onLike }) {
     // Khi có onLike (API mode) → dùng giá trị từ props trực tiếp
-    // Khi không có onLike (mock mode) → dùng local state
+    // Khi không có onLike (mock mode) 
     const [localLiked, setLocalLiked] = useState(false);
     const [localLikeCount, setLocalLikeCount] = useState(post.likes ?? 0);
     const [saved, setSaved] = useState(false);
@@ -481,6 +669,7 @@ function PostCard({ post, onCommentClick, onShareClick, onMessageClick, onLike }
 
     const liked = onLike ? (post.liked ?? false) : localLiked;
     const likeCount = onLike ? (post.likes ?? 0) : localLikeCount;
+    const statusColor = post.statusColor || post.categoryColor || '#7f001f';
 
     const handleLike = () => {
         if (onLike) {
@@ -508,9 +697,9 @@ function PostCard({ post, onCommentClick, onShareClick, onMessageClick, onLike }
                             )}
                             <span
                                 className="post-category-tag"
-                                style={{ background: post.categoryColor + '18', color: post.categoryColor, borderColor: post.categoryColor + '40' }}
+                                style={{ backgroundColor: `${statusColor}18`, color: statusColor, borderColor: `${statusColor}40` }}
                             >
-                                {post.category}
+                                {post.trang_thai || 'Chưa xác định'}
                             </span>
                         </div>
                         <div className="post-time-loc">
@@ -557,16 +746,7 @@ function PostCard({ post, onCommentClick, onShareClick, onMessageClick, onLike }
             </div>
 
             {/* Stats */}
-            <div className="post-stats">
-                <span className="stat-item">
-                    <Heart size={13} fill={liked ? '#7f001f' : 'none'} color={liked ? '#7f001f' : '#aaa'} />
-                    {likeCount.toLocaleString()} thích
-                </span>
-                <span className="stat-item">
-                    <MessageSquare size={13} color="#aaa" />
-                    {post.comments} bình luận
-                </span>
-            </div>
+            <LikeStats postId={post.id} liked={liked} likeCount={likeCount} comments={post.comments} />
 
             <div className="post-divider" />
 
@@ -605,6 +785,8 @@ export default function Home() {
     // ── Auth từ localStorage ──
     const [token, setToken] = useState('');
     const [userId, setUserId] = useState('');
+    const [currentUser, setCurrentUser] = useState({ name: 'Bạn', avatar: DEFAULT_AVATAR });
+    const [badgeCounts, setBadgeCounts] = useState({ friends: 0, messages: 0, notifications: 0 });
 
     // ── Feed state ──
     const [allRecommendations, setAllRecommendations] = useState([]);
@@ -617,11 +799,21 @@ export default function Home() {
     const [isRecommendationsExhausted, setIsRecommendationsExhausted] = useState(false);
     const [seenPostIds, setSeenPostIds] = useState(new Set());
     const lastLoadTimeRef = useRef(0);
+    const isAuthenticated = !!token && !!userId;
 
     // ── Load token & userId ──
     useEffect(() => {
-        setToken(localStorage.getItem('token') || '');
-        setUserId(localStorage.getItem('userId') || '');
+        const syncAuth = () => {
+            setToken(localStorage.getItem('token') || '');
+            setUserId(localStorage.getItem('userId') || '');
+        };
+        syncAuth();
+        window.addEventListener('storage', syncAuth);
+        window.addEventListener('focus', syncAuth);
+        return () => {
+            window.removeEventListener('storage', syncAuth);
+            window.removeEventListener('focus', syncAuth);
+        };
     }, []);
 
     // ── Hydrate: gọi 4 API song song cho mỗi bài ──
@@ -691,12 +883,15 @@ export default function Home() {
 
                 const userLike = likes.find(l => String(l.ID_NguoiDung) === String(userId));
                 const rawPrice = parseFloat(postDetail.gia) || 0;
+                const statusInfo = normalizePostStatus(postDetail.trang_thai);
+                const categoryInfo = CATEGORIES.find(c => c.label === (postDetail.TenDanhMuc || postDetail.category)) || {};
 
                 const hydratedPost = {
                     id: postDetail.ID_BaiDang,
                     author: authorName,
                     avatar: authorAvatar,
                     time: new Date(postDetail.thoi_gian_tao).toLocaleDateString('vi-VN'),
+                    rawTime: new Date(postDetail.thoi_gian_tao).getTime() || 0,
                     location: postDetail.vi_tri || '',
                     verified: false,
                     title: postDetail.tieu_de,
@@ -706,11 +901,14 @@ export default function Home() {
                     imageUrls,
                     likes: likes.length,
                     comments: commentCount,
-                    category: '',
-                    categoryColor: '#7f001f',
+                    category: postDetail.TenDanhMuc || '',
+                    categoryColor: categoryInfo.color || '#7f001f',
+                    trang_thai: statusInfo.label,
+                    statusColor: statusInfo.color,
                     liked: !!userLike,
                     userLikeId: userLike?.ID_Like || null,
                     isFriendPost: reco.isFriendPost || false,
+                    typeId: postDetail.ID_LoaiBaiDang || '',
                 };
                 postDetailCache.set(cacheKey, hydratedPost);
                 return hydratedPost;
@@ -744,6 +942,8 @@ export default function Home() {
                 });
                 const rawPrice = parseFloat(p.gia) || 0;
 
+                const statusInfo = normalizePostStatus(p.trang_thai);
+                const categoryInfo = CATEGORIES.find(c => c.label === (p.TenDanhMuc || p.category)) || {};
                 return {
                     id: p.ID_BaiDang,
                     author: p.TenNguoiDung || 'Người dùng OLODO',
@@ -751,6 +951,7 @@ export default function Home() {
                         ? (p.anh_dai_dien.startsWith('http') ? p.anh_dai_dien : `${API_BASE}/uploads/${p.anh_dai_dien}`)
                         : `https://i.pravatar.cc/50?u=${p.ID_NguoiDung}`),
                     time: new Date(p.thoi_gian_tao).toLocaleDateString('vi-VN'),
+                    rawTime: new Date(p.thoi_gian_tao).getTime() || 0,
                     location: p.vi_tri || '',
                     verified: false,
                     title: p.tieu_de,
@@ -761,9 +962,12 @@ export default function Home() {
                     likes: p.SoLuongLike || 0,
                     comments: p.SoLuongBinhLuan || 0,
                     category: p.TenDanhMuc || '',
-                    categoryColor: '#7f001f',
+                    categoryColor: categoryInfo.color || '#7f001f',
+                    trang_thai: statusInfo.label,
+                    statusColor: statusInfo.color,
                     liked: false, 
                     isFriendPost: false,
+                    typeId: p.ID_LoaiBaiDang || '',
                 };
             });
 
@@ -912,6 +1116,20 @@ export default function Home() {
         if (token && userId) fetchInitialData();
     }, [token, userId, fetchInitialData]);
 
+    const filteredFeed = useMemo(() => {
+        let base = feedPosts;
+        if (activeFilter !== 'Tất cả') {
+            base = base.filter(p => (p.category || '').toLowerCase() === activeFilter.toLowerCase());
+        }
+        if (activeTab === 'news') {
+            return [...base].sort((a, b) => (b.rawTime || 0) - (a.rawTime || 0));
+        }
+        if (activeTab === 'popular') {
+            return [...base].sort((a, b) => (b.likes || 0) - (a.likes || 0));
+        }
+        return base;
+    }, [feedPosts, activeFilter, activeTab]);
+
     useEffect(() => {
         const onScroll = () => {
             const { scrollTop, scrollHeight, clientHeight } = document.documentElement;
@@ -920,6 +1138,77 @@ export default function Home() {
         window.addEventListener('scroll', onScroll);
         return () => window.removeEventListener('scroll', onScroll);
     }, [handleLoadMore]);
+
+    // ── Badge counts & user info ──
+    useEffect(() => {
+        if (!isAuthenticated) {
+            setBadgeCounts({ friends: 0, messages: 0, notifications: 0 });
+            setCurrentUser({ name: 'Khách', avatar: DEFAULT_AVATAR });
+            return;
+        }
+
+        const headers = { Authorization: `Bearer ${token}` };
+        const buildAvatar = (raw) => normalizeUrl(
+            raw
+                ? (raw.startsWith('http') ? raw : `${API_BASE}/uploads/${raw}`)
+                : DEFAULT_AVATAR
+        );
+
+        const fetchBadgesAndUser = async () => {
+            try {
+                const [notiRes, msgRes, friendRes, userRes] = await Promise.all([
+                    fetch(`${API_URLS.UNREAD_NOTIFICATIONS}${userId}`, { headers }),
+                    fetch(`${API_URLS.UNREAD_MESSAGES}${userId}`, { headers }),
+                    fetch(`${API_URLS.PENDING_FRIEND_REQUESTS}${userId}`, { headers }),
+                    fetch(`${API_URLS.GET_USER_INFO}${userId}`, { headers }),
+                ]);
+
+                let notifications = 0;
+                if (notiRes.ok) {
+                    const data = await notiRes.json();
+                    notifications = data?.unread_count ?? data?.data?.unread_count ?? 0;
+                }
+
+                let messages = 0;
+                if (msgRes.ok) {
+                    const data = await msgRes.json();
+                    const payload = data?.data ?? data;
+                    messages = payload?.total_unread ?? payload?.totalUnread ?? 0;
+                }
+
+                let friends = 0;
+                if (friendRes.ok) {
+                    const data = await friendRes.json();
+                    friends = data?.count ?? (Array.isArray(data?.data) ? data.data.length : 0);
+                }
+
+                if (userRes.ok) {
+                    const data = await userRes.json();
+                    const u = data?.user || {};
+                    setCurrentUser({
+                        name: u.ho_ten || 'Bạn',
+                        avatar: buildAvatar(u.anh_dai_dien),
+                    });
+                } else {
+                    setCurrentUser({ name: 'Bạn', avatar: DEFAULT_AVATAR });
+                }
+
+                setBadgeCounts({ friends, messages, notifications });
+            } catch (err) {
+                console.error('Badge/user fetch failed', err);
+                setBadgeCounts({ friends: 0, messages: 0, notifications: 0 });
+            }
+        };
+
+        fetchBadgesAndUser();
+    }, [isAuthenticated, token, userId]);
+
+    const navBadges = {
+        messages: badgeCounts.messages,
+        notifications: badgeCounts.notifications,
+        'add-friends': badgeCounts.friends,
+    };
+    const lockedNavKeys = new Set(['map', 'add-friends', 'messages', 'notifications']);
 
     return (
         <div className="home-page">
@@ -942,17 +1231,22 @@ export default function Home() {
 
                 {/* Nav */}
                 <nav className="sidebar-nav">
-                    {NAV_ITEMS.map(({ icon: Icon, label, key, badge, path }) => {
+                    {NAV_ITEMS.map(({ icon: Icon, label, key, path }) => {
                         const isActive = key === 'home';
+                        const badge = navBadges[key] || 0;
+                        const isLocked = !isAuthenticated && lockedNavKeys.has(key);
                         return (
                             <button
                                 key={label}
-                                className={`nav-item ${isActive ? 'nav-active' : ''}`}
-                                onClick={() => path && navigate(path)}
+                                className={`nav-item ${isActive ? 'nav-active' : ''} ${isLocked ? 'nav-disabled' : ''}`}
+                                onClick={() => {
+                                    if (isLocked) return;
+                                    if (path) navigate(path);
+                                }}
                             >
                                 <span className="nav-icon-wrap">
                                     <Icon size={19} strokeWidth={2} />
-                                    {badge && <span className="nav-badge">{badge}</span>}
+                                    {badge > 0 && <span className="nav-badge">{badge}</span>}
                                 </span>
                                 <span className="nav-label">{label}</span>
                                 {isActive && <span className="nav-active-bar" />}
@@ -1027,7 +1321,7 @@ export default function Home() {
                 {/* Create Post */}
                 <div className="create-post">
                     <div className="create-top">
-                        <img src="https://i.pravatar.cc/80?img=7" alt="You" className="create-avatar" />
+                        <img src={currentUser.avatar} alt="You" className="create-avatar" />
                         <div className="create-fake-input">
                             <span>Bạn muốn bán gì hôm nay? 🛒</span>
                         </div>
@@ -1083,12 +1377,12 @@ export default function Home() {
                         <div className="feed-spinner" />
                         <span>Đang tải bài viết...</span>
                     </div>
-                ) : feedPosts.length === 0 ? (
+                ) : filteredFeed.length === 0 ? (
                     <div className="feed-empty">
                         <span>Chưa có bài viết nào. Hãy đăng nhập để xem feed cá nhân hoá 🎯</span>
                     </div>
                 ) : (
-                    feedPosts.map((p, index) => (
+                    filteredFeed.map((p, index) => (
                         <div key={p.id}>
                             <PostCard
                                 post={p}
@@ -1144,8 +1438,8 @@ export default function Home() {
                     />
                 )}
 
-                {!isLoading && !isLoadingMore && feedPosts.length > 0 &&
-                    isRecommendationsExhausted && feedPosts.length >= (totalFallbackItems || allRecommendations.length) && (
+                {!isLoading && !isLoadingMore && filteredFeed.length > 0 &&
+                    isRecommendationsExhausted && filteredFeed.length >= (totalFallbackItems || allRecommendations.length) && (
                         <div className="feed-end">
                             <div className="feed-end-icon">🎉</div>
                             <span>Bạn đã xem hết bài viết hôm nay</span>
@@ -1158,9 +1452,9 @@ export default function Home() {
 
                 {/* User Mini Card */}
                 <div className="user-mini-card">
-                    <img src="https://i.pravatar.cc/80?img=7" alt="You" className="user-mini-avatar" />
+                    <img src={currentUser.avatar} alt="You" className="user-mini-avatar" />
                     <div className="user-mini-info">
-                        <span className="user-mini-name">Bạn</span>
+                        <span className="user-mini-name">{currentUser.name || 'Bạn'}</span>
                         <span className="user-mini-sub">Xem hồ sơ →</span>
                     </div>
                 </div>

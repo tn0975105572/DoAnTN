@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import {
     ArrowLeft, MessageSquare, Send, Heart,
@@ -6,90 +6,90 @@ import {
 } from 'lucide-react';
 import './PostComments.css';
 
-// ─── Dữ liệu mẫu đa cấp ─────────────────────────────────────────────────────
-const MOCK_COMMENTS = [
-    {
-        id: 1,
-        author: 'Phạm Minh Đức',
-        avatar: 'https://i.pravatar.cc/80?img=12',
-        time: '1 giờ trước',
-        text: 'Sản phẩm còn bảo hành không bạn? Mình rất quan tâm đến cái này!',
-        likes: 5, liked: false,
-        replies: [
-            {
-                id: 11, author: 'Nguyễn Minh Tuấn', avatar: 'https://i.pravatar.cc/80?img=11',
-                time: '55 phút trước', text: 'Còn bảo hành 6 tháng nữa bạn nhé, mua mới được 6 tháng thôi.',
-                likes: 2, liked: false, isAuthor: true,
-                replies: [
-                    { id: 111, author: 'Phạm Minh Đức', avatar: 'https://i.pravatar.cc/80?img=12', time: '50 phút trước', text: 'Oke bạn ơi, mình có thể xem thêm ảnh thực tế được không?', likes: 0, liked: false, replies: [] },
-                    { id: 112, author: 'Lê Thị Lan', avatar: 'https://i.pravatar.cc/80?img=47', time: '40 phút trước', text: 'Bạn ship được không ạ? Mình ở Đà Nẵng.', likes: 1, liked: false, replies: [] },
-                ],
-            },
-        ],
-    },
-    {
-        id: 2, author: 'Nguyễn Thị Hương', avatar: 'https://i.pravatar.cc/80?img=25',
-        time: '45 phút trước', text: 'Cho mình xem thêm ảnh thực tế được không? Trông có vẻ ổn đó.',
-        likes: 1, liked: false,
-        replies: [
-            { id: 21, author: 'Vũ Hoàng Nam', avatar: 'https://i.pravatar.cc/80?img=65', time: '30 phút trước', text: 'Mình đã mua rồi, sản phẩm rất tốt, recommend!', likes: 4, liked: false, replies: [] },
-        ],
-    },
-    {
-        id: 3, author: 'Trần Văn Nam', avatar: 'https://i.pravatar.cc/80?img=33',
-        time: '30 phút trước', text: 'Giá còn thương lượng được không ạ? 😊',
-        likes: 0, liked: false, replies: [],
-    },
-];
+/* ════════ API CONFIG ════════ */
+const API_BASE = 'http://localhost:3000';
+const API_URLS = {
+    GET_COMMENT_TREE: `${API_BASE}/api/binhluanbaidang/getCommentTreeByPost/`,
+    CREATE_COMMENT: `${API_BASE}/api/binhluanbaidang/create`,
+    GET_USER_INFO: `${API_BASE}/api/nguoidung/get/`,
+    LIKE_BY_POST: `${API_BASE}/api/likebaidang/getLikesByPostId/`,
+    COMMENT_COUNT_BY_POST: `${API_BASE}/api/binhluanbaidang/getCommentCountByPost/`,
+};
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-let nextId = 1000;
-const genId = () => ++nextId;
-
-function addReplyTo(comments, targetId, newReply) {
-    return comments.map((c) => {
-        if (c.id === targetId) return { ...c, replies: [...(c.replies || []), newReply] };
-        if (c.replies?.length) return { ...c, replies: addReplyTo(c.replies, targetId, newReply) };
-        return c;
-    });
+// Chuyển bất kỳ URL có IP thành localhost
+function normalizeUrl(url) {
+    if (!url) return url;
+    return url.replace(/^http:\/\/(?!localhost)[\d.]+:(\d+)/, 'http://localhost:$1');
 }
 
-function toggleLikeOn(comments, targetId) {
-    return comments.map((c) => {
-        if (c.id === targetId) return { ...c, liked: !c.liked, likes: c.liked ? c.likes - 1 : c.likes + 1 };
-        if (c.replies?.length) return { ...c, replies: toggleLikeOn(c.replies, targetId) };
-        return c;
-    });
-}
+// Cache user info
+const userInfoCache = new Map();
 
+// ─── Helpers: đếm tổng comments ──────────────────────────────────────────
 function countAll(comments) {
-    return comments.reduce((acc, c) => acc + 1 + countAll(c.replies || []), 0);
+    return comments.reduce((acc, c) => acc + 1 + countAll(c.children || []), 0);
 }
 
-// ─── CommentItem (đệ quy) ────────────────────────────────────────────────────
-function CommentItem({ comment, depth = 0, onReply, onLike, replyingTo, myAvatar }) {
+// ─── Extract all user IDs from comment tree ──────────────────────────────
+function extractUserIds(comments, ids = new Set()) {
+    comments.forEach((comment) => {
+        if (comment.ID_NguoiDung) ids.add(comment.ID_NguoiDung);
+        if (comment.children?.length) extractUserIds(comment.children, ids);
+    });
+    return ids;
+}
+
+// ─── CommentItem (đệ quy, dùng cho API data) ────────────────────────────
+function CommentItem({ comment, userMap, depth = 0, onReply, onLike, replyingTo, myAvatar, currentUserId }) {
     const [collapsed, setCollapsed] = useState(false);
     const [showMenu, setShowMenu] = useState(false);
-    const hasReplies = comment.replies?.length > 0;
-    const isReplying = replyingTo === comment.id;
+    const hasReplies = comment.children?.length > 0;
+    const isReplying = replyingTo === comment.ID_BinhLuan;
     const indent = Math.min(depth, 3);
+
+    const user = userMap[comment.ID_NguoiDung] || {};
+    const authorName = user.ho_ten || 'Người dùng';
+    const avatarUrl = user.anh_dai_dien
+        ? normalizeUrl(user.anh_dai_dien.startsWith('http') ? user.anh_dai_dien : `${API_BASE}/uploads/${user.anh_dai_dien}`)
+        : `https://i.pravatar.cc/80?u=${comment.ID_NguoiDung}`;
+    const isAuthor = String(comment.ID_NguoiDung) === String(currentUserId);
+
+    const normalizedContent = comment.noi_dung ? comment.noi_dung.replace(/\s+/g, ' ').trim() : '';
+
+    const timeString = (() => {
+        try {
+            const date = new Date(comment.thoi_gian_binh_luan);
+            const now = new Date();
+            const diffMs = now.getTime() - date.getTime();
+            const diffMin = Math.floor(diffMs / 60000);
+            const diffHrs = Math.floor(diffMs / 3600000);
+            const diffDays = Math.floor(diffMs / 86400000);
+            if (diffMin < 1) return 'Vừa xong';
+            if (diffMin < 60) return `${diffMin} phút trước`;
+            if (diffHrs < 24) return `${diffHrs} giờ trước`;
+            if (diffDays < 7) return `${diffDays} ngày trước`;
+            return date.toLocaleDateString('vi-VN');
+        } catch {
+            return '';
+        }
+    })();
 
     return (
         <div className={`comment-node depth-${indent}`}>
             {depth > 0 && <div className="thread-line" />}
             <div className="comment-item">
                 <div className="comment-left">
-                    <img src={comment.avatar} alt={comment.author} className="comment-avatar" />
+                    <img src={avatarUrl} alt={authorName} className="comment-avatar" />
                     {hasReplies && !collapsed && <div className="avatar-connector" />}
                 </div>
                 <div className="comment-body">
-                    <div className={`comment-bubble ${comment.isAuthor ? 'is-author' : ''}`}>
+                    <div className={`comment-bubble ${isAuthor ? 'is-author' : ''}`}>
                         <div className="comment-header">
                             <span className="comment-author">
-                                {comment.author}
-                                {comment.isAuthor && <span className="author-badge">Tác giả</span>}
+                                {authorName}
+                                {isAuthor && <span className="author-badge">Tác giả</span>}
                             </span>
-                            <span className="comment-time">{comment.time}</span>
+                            <span className="comment-time">{timeString}</span>
                             <button className="comment-menu-btn" onClick={() => setShowMenu(!showMenu)} aria-label="Tùy chọn">
                                 <MoreHorizontal size={15} />
                             </button>
@@ -100,33 +100,43 @@ function CommentItem({ comment, depth = 0, onReply, onLike, replyingTo, myAvatar
                                 </div>
                             )}
                         </div>
-                        <p className="comment-text">{comment.text}</p>
+                        <p className="comment-text">{normalizedContent}</p>
                     </div>
                     <div className="comment-actions">
-                        <button className={`action-btn like-btn ${comment.liked ? 'liked' : ''}`} onClick={() => onLike(comment.id)}>
+                        <button className={`action-btn like-btn ${comment.liked ? 'liked' : ''}`} onClick={() => onLike?.(comment.ID_BinhLuan)}>
                             <Heart size={13} strokeWidth={2} fill={comment.liked ? 'currentColor' : 'none'} />
                             {comment.likes > 0 && <span>{comment.likes}</span>}
                         </button>
-                        <button className="action-btn reply-btn" onClick={() => onReply(comment.id)}>
+                        <button className="action-btn reply-btn" onClick={() => onReply(comment.ID_BinhLuan)}>
                             <Reply size={13} strokeWidth={2} /> Trả lời
                         </button>
                         {hasReplies && (
                             <button className="action-btn collapse-btn" onClick={() => setCollapsed(!collapsed)}>
                                 {collapsed
-                                    ? <><ChevronDown size={13} /> Xem {comment.replies.length} trả lời</>
+                                    ? <><ChevronDown size={13} /> Xem {comment.children.length} trả lời</>
                                     : <><ChevronUp size={13} /> Ẩn trả lời</>}
                             </button>
                         )}
                     </div>
                     {isReplying && (
-                        <ReplyInput parentId={comment.id} onReply={onReply} myAvatar={myAvatar} replyingTo={comment.author} />
+                        <ReplyInput parentId={comment.ID_BinhLuan} onReply={onReply} myAvatar={myAvatar} replyingTo={authorName} />
                     )}
                 </div>
             </div>
             {hasReplies && !collapsed && (
                 <div className="replies-container">
-                    {comment.replies.map((r) => (
-                        <CommentItem key={r.id} comment={r} depth={depth + 1} onReply={onReply} onLike={onLike} replyingTo={replyingTo} myAvatar={myAvatar} />
+                    {comment.children.map((r) => (
+                        <CommentItem
+                            key={r.ID_BinhLuan}
+                            comment={r}
+                            userMap={userMap}
+                            depth={depth + 1}
+                            onReply={onReply}
+                            onLike={onLike}
+                            replyingTo={replyingTo}
+                            myAvatar={myAvatar}
+                            currentUserId={currentUserId}
+                        />
                     ))}
                 </div>
             )}
@@ -134,7 +144,7 @@ function CommentItem({ comment, depth = 0, onReply, onLike, replyingTo, myAvatar
     );
 }
 
-// ─── ReplyInput ──────────────────────────────────────────────────────────────
+// ─── ReplyInput ──────────────────────────────────────────────────────────
 function ReplyInput({ parentId, onReply, myAvatar, replyingTo }) {
     const [text, setText] = useState('');
     const inputRef = useRef(null);
@@ -161,56 +171,208 @@ function ReplyInput({ parentId, onReply, myAvatar, replyingTo }) {
     );
 }
 
-// ─── PostComments (trang chính) ──────────────────────────────────────────────
+// ─── PostComments (trang chính — gọi API thật) ───────────────────────────
 export default function PostComments() {
     const navigate = useNavigate();
     const { postId } = useParams();
     const { state } = useLocation();
     const post = state?.post;
 
-    const [comments, setComments] = useState(MOCK_COMMENTS);
+    const [comments, setComments] = useState([]);
+    const [userMap, setUserMap] = useState({});
+    const userMapRef = useRef({});
     const [newComment, setNewComment] = useState('');
     const [replyingTo, setReplyingTo] = useState(null);
     const [sortMode, setSortMode] = useState('newest');
+    const [isLoading, setIsLoading] = useState(true);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [error, setError] = useState(null);
 
-    const MY_AVATAR = 'https://i.pravatar.cc/80?img=7';
+    // ── Auth từ localStorage ──
+    const [token, setToken] = useState('');
+    const [userId, setUserId] = useState('');
+
+    useEffect(() => {
+        setToken(localStorage.getItem('token') || '');
+        setUserId(localStorage.getItem('userId') || '');
+    }, []);
+
+    // keep ref in sync
+    useEffect(() => {
+        userMapRef.current = userMap;
+    }, [userMap]);
+
+    // ── Fetch user info ──
+    const fetchUserById = useCallback(async (id, signal) => {
+        if (userInfoCache.has(id)) return userInfoCache.get(id);
+        try {
+            const headers = token ? { Authorization: `Bearer ${token}` } : {};
+            const res = await fetch(`${API_URLS.GET_USER_INFO}${id}`, { headers, signal });
+            if (!res.ok) {
+                const fallback = { ID_NguoiDung: id, ho_ten: 'Người dùng', anh_dai_dien: null };
+                userInfoCache.set(id, fallback);
+                return fallback;
+            }
+            const data = await res.json();
+            const user = data.user || data;
+            userInfoCache.set(id, user);
+            return user;
+        } catch (err) {
+            if (err.name === 'AbortError') throw err;
+            const fallback = { ID_NguoiDung: id, ho_ten: 'Người dùng', anh_dai_dien: null };
+            userInfoCache.set(id, fallback);
+            return fallback;
+        }
+    }, [token]);
+
+    // ── Fetch comments + user info ──
+    const fetchComments = useCallback(async (signal) => {
+        if (!postId) return;
+        setIsLoading(true);
+        setError(null);
+        try {
+            const headers = token ? { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } : {};
+            const res = await fetch(`${API_URLS.GET_COMMENT_TREE}${postId}`, { headers, signal });
+            if (!res.ok) throw new Error(`Không thể tải bình luận (status ${res.status})`);
+            const dataComments = await res.json();
+            setComments(dataComments);
+
+            // Fetch user info cho tất cả user IDs
+            const userIds = extractUserIds(dataComments);
+            if (userId) userIds.add(userId);
+
+            const idsToFetch = Array.from(userIds).filter(id => !userMapRef.current[id]);
+            if (idsToFetch.length > 0) {
+                const fetchedUsers = await Promise.all(
+                    idsToFetch.map(id =>
+                        fetchUserById(id, signal).catch(err => {
+                            if (err.name === 'AbortError') throw err;
+                            return { ID_NguoiDung: id, ho_ten: 'Người dùng', anh_dai_dien: null };
+                        })
+                    )
+                );
+                setUserMap(prev => {
+                    const merged = { ...prev };
+                    fetchedUsers.forEach(u => {
+                        if (u?.ID_NguoiDung) merged[u.ID_NguoiDung] = u;
+                    });
+                    return merged;
+                });
+            }
+        } catch (err) {
+            if (err.name === 'AbortError') return;
+            console.error('Lỗi khi fetch comments:', err);
+            setError(err.message || 'Lỗi khi tải bình luận');
+        } finally {
+            setIsLoading(false);
+        }
+    }, [postId, token, userId, fetchUserById]);
+
+    useEffect(() => {
+        if (!postId) return;
+        const controller = new AbortController();
+        fetchComments(controller.signal);
+        return () => controller.abort();
+    }, [postId, token, userId, fetchComments]);
+
+    // ── My avatar ──
+    const myUser = userMap[userId] || {};
+    const myAvatar = myUser.anh_dai_dien
+        ? normalizeUrl(myUser.anh_dai_dien.startsWith('http') ? myUser.anh_dai_dien : `${API_BASE}/uploads/${myUser.anh_dai_dien}`)
+        : 'https://i.pravatar.cc/80?img=7';
+
     const totalCount = countAll(comments);
 
     const displayPost = post || {
         id: postId || '1',
-        author: 'Nguyễn Minh Tuấn',
+        author: 'Đang tải...',
         avatar: 'https://i.pravatar.cc/150?img=11',
-        time: '2 giờ trước',
-        location: 'Hà Nội',
-        title: 'MacBook Pro 14" M3 – Còn BH 6 tháng',
-        price: '38.000.000',
+        time: '',
+        location: '',
+        title: 'Đang tải bài viết...',
+        price: '',
         img: 'https://images.unsplash.com/photo-1593642632559-0c6d3fc62b89?q=80&w=400',
     };
 
-    const handleSubmitComment = (e) => {
+    // ── Submit comment (API thật) ──
+    const handleSubmitComment = async (e) => {
         e.preventDefault();
-        if (!newComment.trim()) return;
-        setComments((prev) => [
-            { id: genId(), author: 'Bạn', avatar: MY_AVATAR, time: 'Vừa xong', text: newComment.trim(), likes: 0, liked: false, replies: [] },
-            ...prev,
-        ]);
-        setNewComment('');
-    };
+        if (!newComment.trim() || isSubmitting) return;
+        if (!userId || !token) {
+            setError('Vui lòng đăng nhập để bình luận.');
+            return;
+        }
 
-    const handleReply = (id, text) => {
-        if (text) {
-            setComments((prev) => addReplyTo(prev, id, { id: genId(), author: 'Bạn', avatar: MY_AVATAR, time: 'Vừa xong', text, likes: 0, liked: false, replies: [] }));
-            setReplyingTo(null);
-        } else {
-            setReplyingTo((prev) => (prev === id ? null : id));
+        setIsSubmitting(true);
+        try {
+            const payload = {
+                ID_BaiDang: postId,
+                ID_NguoiDung: userId,
+                noi_dung: newComment.trim(),
+                ID_BinhLuanCha: null,
+            };
+            const res = await fetch(API_URLS.CREATE_COMMENT, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify(payload),
+            });
+            if (!res.ok) throw new Error('Không thể thêm bình luận.');
+
+            // Reload comments
+            await fetchComments();
+            setNewComment('');
+        } catch (err) {
+            console.error(err);
+            setError(err.message || 'Lỗi khi gửi bình luận.');
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
-    const handleLike = (id) => setComments((prev) => toggleLikeOn(prev, id));
+    // ── Reply (API thật) ──
+    const handleReply = async (id, text) => {
+        if (text) {
+            if (!userId || !token) {
+                setError('Vui lòng đăng nhập để trả lời.');
+                return;
+            }
+            setIsSubmitting(true);
+            try {
+                const payload = {
+                    ID_BaiDang: postId,
+                    ID_NguoiDung: userId,
+                    noi_dung: text,
+                    ID_BinhLuanCha: id,
+                };
+                const res = await fetch(API_URLS.CREATE_COMMENT, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                    body: JSON.stringify(payload),
+                });
+                if (!res.ok) throw new Error('Không thể trả lời bình luận.');
+                await fetchComments();
+                setReplyingTo(null);
+            } catch (err) {
+                console.error(err);
+                setError(err.message || 'Lỗi khi gửi trả lời.');
+            } finally {
+                setIsSubmitting(false);
+            }
+        } else {
+            setReplyingTo(prev => (prev === id ? null : id));
+        }
+    };
 
-    const sortedComments = [...comments].sort((a, b) =>
-        sortMode === 'top' ? b.likes - a.likes : b.id - a.id
-    );
+    const handleLike = (id) => {
+        // Placeholder — có thể thêm API like comment sau
+    };
+
+    // ── Sort comments ──
+    const sortedComments = [...comments].sort((a, b) => {
+        if (sortMode === 'top') return (b.likes || 0) - (a.likes || 0);
+        // newest: theo thời gian
+        return new Date(b.thoi_gian_binh_luan) - new Date(a.thoi_gian_binh_luan);
+    });
 
     return (
         <div className="post-comments-page" onClick={() => setReplyingTo(null)}>
@@ -250,31 +412,55 @@ export default function PostComments() {
                 </div>
             </div>
 
+            {/* Error */}
+            {error && (
+                <div className="comments-error">
+                    <span>⚠️ {error}</span>
+                    <button onClick={() => setError(null)}>✕</button>
+                </div>
+            )}
+
             {/* Comment list */}
             <div className="comments-list" onClick={(e) => e.stopPropagation()}>
-                {sortedComments.length === 0 && (
+                {isLoading ? (
+                    <div className="comments-loading">
+                        <div className="comments-spinner" />
+                        <span>Đang tải bình luận...</span>
+                    </div>
+                ) : sortedComments.length === 0 ? (
                     <div className="comments-empty">
                         <Smile size={40} strokeWidth={1.5} />
                         <p>Hãy là người đầu tiên bình luận!</p>
                     </div>
+                ) : (
+                    sortedComments.map((c) => (
+                        <CommentItem
+                            key={c.ID_BinhLuan}
+                            comment={c}
+                            userMap={userMap}
+                            depth={0}
+                            onReply={handleReply}
+                            onLike={handleLike}
+                            replyingTo={replyingTo}
+                            myAvatar={myAvatar}
+                            currentUserId={userId}
+                        />
+                    ))
                 )}
-                {sortedComments.map((c) => (
-                    <CommentItem key={c.id} comment={c} depth={0}
-                        onReply={handleReply} onLike={handleLike}
-                        replyingTo={replyingTo} myAvatar={MY_AVATAR} />
-                ))}
             </div>
 
             {/* Input sticky */}
             <form className="comments-form" onSubmit={handleSubmitComment} onClick={(e) => e.stopPropagation()}>
-                <img src={MY_AVATAR} alt="Bạn" className="form-my-avatar" />
+                <img src={myAvatar} alt="Bạn" className="form-my-avatar" />
                 <div className="comments-input-wrap">
                     <input
-                        type="text" className="comments-input" placeholder="Viết bình luận..."
+                        type="text" className="comments-input"
+                        placeholder={isSubmitting ? "Đang gửi..." : "Viết bình luận..."}
                         value={newComment} onChange={(e) => setNewComment(e.target.value)} maxLength={500}
+                        disabled={isSubmitting}
                     />
                 </div>
-                <button type="submit" className="comments-send" disabled={!newComment.trim()} aria-label="Gửi">
+                <button type="submit" className="comments-send" disabled={!newComment.trim() || isSubmitting} aria-label="Gửi">
                     <Send size={18} strokeWidth={2} />
                 </button>
             </form>

@@ -113,9 +113,9 @@ app.use((req, res, next) => {
   next();
 });
 
-// Cron job chạy Python script mỗi 10 phút
+// Cron job chạy Python script mỗi 5 phút
 let isRecommendationRunning = false;
-cron.schedule('*/1000000 */10 * * *', () => {
+cron.schedule('*/5 * * * *', () => {
   if (isRecommendationRunning) {
     console.log('⏳ Script gợi ý đang chạy, bỏ qua cron job');
     return;

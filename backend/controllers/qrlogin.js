@@ -7,15 +7,32 @@ const SECRET_KEY = process.env.JWT_SECRET || "default_secret";
 // In-memory storage for QR sessions (for demo/development)
 // In production, consider using Redis or a database table
 const qrSessions = new Map();
+const SESSION_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const STATUS_RATE_LIMIT_WINDOW = 60 * 1000; // 1 minute
+const STATUS_RATE_LIMIT_MAX = 30; // max 30 checks / minute / session
+
+// Định kỳ dọn dẹp session hết hạn
+setInterval(() => {
+    const now = Date.now();
+    for (const [id, session] of qrSessions.entries()) {
+        if (session.expiresAt <= now) {
+            qrSessions.delete(id);
+        }
+    }
+}, 60 * 1000);
 
 exports.generateSession = (req, res) => {
     const sessionId = uuidv4();
-    const expiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes
+    const expiresAt = Date.now() + SESSION_TTL_MS;
 
     qrSessions.set(sessionId, {
         status: 'pending',
         expiresAt,
-        userId: null
+        userId: null,
+        originIp: req.ip,
+        tokenRetrieved: false,
+        rateLimitWindowStart: Date.now(),
+        rateLimitCount: 0
     });
 
     res.json({
@@ -46,6 +63,7 @@ exports.verifySession = async (req, res) => {
     // Update session status
     session.status = 'authenticated';
     session.userId = userId;
+    session.authenticatedIp = req.ip;
 
     // Generate token for the web login
     const user = await pool.query('SELECT * FROM nguoidung WHERE ID_NguoiDung = ?', [userId]);
@@ -76,6 +94,17 @@ exports.verifySession = async (req, res) => {
     res.json({ success: true, message: 'Xác thực thành công' });
 };
 
+// Kiểm tra rate limit cho /status
+function checkStatusRateLimit(session) {
+    const now = Date.now();
+    if (now - session.rateLimitWindowStart > STATUS_RATE_LIMIT_WINDOW) {
+        session.rateLimitWindowStart = now;
+        session.rateLimitCount = 0;
+    }
+    session.rateLimitCount += 1;
+    return session.rateLimitCount <= STATUS_RATE_LIMIT_MAX;
+}
+
 exports.checkStatus = (req, res) => {
     const { sessionId } = req.params;
     const session = qrSessions.get(sessionId);
@@ -89,15 +118,30 @@ exports.checkStatus = (req, res) => {
         return res.status(410).json({ success: false, message: 'Phiên đã hết hạn' });
     }
 
+    // Ràng buộc IP: chỉ client tạo QR mới được kiểm tra
+    if (session.originIp && session.originIp !== req.ip) {
+        return res.status(403).json({ success: false, message: 'IP không khớp phiên' });
+    }
+
+    // Rate limit để tránh brute force
+    if (!checkStatusRateLimit(session)) {
+        return res.status(429).json({ success: false, message: 'Quá nhiều yêu cầu, thử lại sau' });
+    }
+
     if (session.status === 'authenticated') {
+        if (session.tokenRetrieved) {
+            qrSessions.delete(sessionId);
+            return res.status(410).json({ success: false, message: 'Phiên đã được dùng' });
+        }
+        session.tokenRetrieved = true;
         const response = {
             success: true,
             status: 'authenticated',
             token: session.token,
             user: session.userData
         };
-        // Option: clear session after successful retrieval
-        // qrSessions.delete(sessionId); 
+        // Xóa ngay sau khi phát token
+        qrSessions.delete(sessionId);
         return res.json(response);
     }
 

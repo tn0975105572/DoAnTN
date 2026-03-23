@@ -546,6 +546,12 @@
   transition: background 0.18s, color 0.18s;
 }
 
+.nav-item.nav-disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
 .nav-item:hover:not(.nav-active) {
   background: #fff5f5;
   color: #7f001f;
@@ -1022,7 +1028,7 @@
 /* ── Post Card (Premium: warm card, gold accent on hover) ── */
 .post-card {
   border: 1px solid var(--color-border);
-  overflow: hidden;
+  overflow: visible;
   transition: box-shadow var(--transition-normal), transform var(--transition-normal), border-color var(--transition-fast);
 }
 
@@ -2462,4 +2468,159 @@
   border: 1px solid rgba(127, 0, 31, 0.15);
   text-transform: uppercase;
   letter-spacing: 0.02em;
-}
+}
+
+/* ══════════════════════════════════════
+   LIKE TOOLTIP (hover on like count)
+══════════════════════════════════════ */
+.stat-item-hoverable {
+  position: relative;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.stat-item-hoverable:hover {
+  color: #7f001f;
+}
+
+.like-tooltip {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 0;
+  background: #fff;
+  border: 1px solid #f0ede6;
+  border-radius: 14px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.14), 0 2px 8px rgba(0, 0, 0, 0.06);
+  min-width: 240px;
+  max-width: 300px;
+  max-height: 320px;
+  overflow: hidden;
+  z-index: 1000;
+  animation: likeTooltipFadeIn 0.2s ease-out;
+}
+
+@keyframes likeTooltipFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.like-tooltip-arrow {
+  position: absolute;
+  bottom: -6px;
+  left: 20px;
+  transform: rotate(45deg);
+  width: 12px;
+  height: 12px;
+  background: #fff;
+  border-right: 1px solid #f0ede6;
+  border-bottom: 1px solid #f0ede6;
+}
+
+.like-tooltip-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #7f001f;
+  border-bottom: 1px solid #f5f3ed;
+}
+
+.like-tooltip-list {
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 6px 0;
+  scrollbar-width: thin;
+  scrollbar-color: #e0dcd4 transparent;
+}
+
+.like-tooltip-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.like-tooltip-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.like-tooltip-list::-webkit-scrollbar-thumb {
+  background: #e0dcd4;
+  border-radius: 4px;
+}
+
+.like-tooltip-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 14px;
+  transition: background 0.15s;
+}
+
+.like-tooltip-item:hover {
+  background: #fffcf5;
+}
+
+.like-tooltip-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1.5px solid #f0ede6;
+  flex-shrink: 0;
+}
+
+.like-tooltip-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.like-tooltip-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #333;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.like-tooltip-time {
+  font-size: 11px;
+  color: #aaa;
+  font-weight: 400;
+}
+
+.like-tooltip-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 14px;
+  font-size: 12px;
+  color: #aaa;
+}
+
+.like-tooltip-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #f0ede6;
+  border-top-color: #7f001f;
+  border-radius: 50%;
+  animation: likeTooltipSpin 0.6s linear infinite;
+}
+
+@keyframes likeTooltipSpin {
+  to { transform: rotate(360deg); }
+}
+
+.like-tooltip-empty {
+  padding: 14px;
+  font-size: 12px;
+  color: #aaa;
+  text-align: center;
+}

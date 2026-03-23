@@ -193,19 +193,12 @@ exports.insert = async (req, res) => {
   try {
     const newData = req.body;
     const userId = newData.ID_NguoiDung;
+    let connection;
 
-    // Kiểm tra đủ điểm để đăng bài
-    const [userPoints] = await pool.query(
-      'SELECT diem_so FROM nguoidung WHERE ID_NguoiDung = ?',
-      [userId]
-    );
-
-    if (!userPoints[0] || userPoints[0].diem_so < 20) {
+    if (!userId) {
       return res.status(400).json({
         success: false,
-        message: "Không đủ điểm để đăng bài (cần ít nhất 20 điểm)",
-        currentPoints: userPoints[0]?.diem_so || 0,
-        requiredPoints: 20
+        message: "Thiếu ID_NguoiDung"
       });
     }
 
@@ -228,27 +221,61 @@ exports.insert = async (req, res) => {
         .replace("T", " ");
     }
 
-    const insertId = await baidang.insert(newData);
-
-    // Trừ điểm sau khi đăng bài thành công
     try {
-      await pool.query('CALL AddPointsToUser(?, ?, ?, ?, ?)', [
+      connection = await pool.getConnection();
+      await connection.beginTransaction();
+
+      // Khóa hàng điểm số để tránh race
+      const [userPoints] = await connection.query(
+        'SELECT diem_so FROM nguoidung WHERE ID_NguoiDung = ? FOR UPDATE',
+        [userId]
+      );
+
+      const currentPoints = userPoints[0]?.diem_so;
+      if (currentPoints === undefined) {
+        await connection.rollback();
+        return res.status(404).json({
+          success: false,
+          message: "Không tìm thấy người dùng"
+        });
+      }
+
+      if (currentPoints < 20) {
+        await connection.rollback();
+        return res.status(400).json({
+          success: false,
+          message: "Không đủ điểm để đăng bài (cần ít nhất 20 điểm)",
+          currentPoints,
+          requiredPoints: 20
+        });
+      }
+
+      await connection.query("INSERT INTO baidang SET ?", [newData]);
+
+      await connection.query('CALL AddPointsToUser(?, ?, ?, ?, ?)', [
         userId,
         -20, // Trừ 20 điểm
         'dang_bai',
         'Đăng bài mới',
         newData.ID_BaiDang
       ]);
-    } catch (pointError) {
-      console.error('Error deducting points:', pointError);
-      // Không rollback bài đăng vì đã tạo thành công
-    }
 
-    res.status(201).json({
-      success: true,
-      ID_BaiDang: newData.ID_BaiDang,
-      message: "Đăng bài thành công, đã trừ 20 điểm",
-    });
+      await connection.commit();
+
+      res.status(201).json({
+        success: true,
+        ID_BaiDang: newData.ID_BaiDang,
+        message: "Đăng bài thành công, đã trừ 20 điểm",
+      });
+    } catch (txnError) {
+      if (connection) {
+        await connection.rollback();
+      }
+      console.error("Error creating post transaction:", txnError);
+      res.status(500).json({ message: "Lỗi máy chủ", error: txnError.message });
+    } finally {
+      if (connection) connection.release();
+    }
   } catch (error) {
     res.status(500).json({ message: "Lỗi máy chủ", error });
   }
