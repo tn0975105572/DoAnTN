@@ -25,6 +25,8 @@ const API_URLS = {
     UNREAD_NOTIFICATIONS: `${API_BASE}/api/thongbao/unread/`,
     UNREAD_MESSAGES: `${API_BASE}/api/tinnhan/unread/`,
     PENDING_FRIEND_REQUESTS: `${API_BASE}/api/quanHeBanBe/requests/`,
+    FRIEND_SUGGESTIONS: `${API_BASE}/api/quanhebanbe/suggestions/`,
+    FRIEND_REQUEST: `${API_BASE}/api/quanhebanbe/request`,
 };
 const POSTS_PER_CHUNK = 5;
 const INITIAL_LOAD_COUNT = 8;
@@ -252,7 +254,7 @@ const MOCK_POSTS = [
     },
 ];
 
-const PEOPLE_MAY_KNOW = [
+const PEOPLE_MAY_KNOW_FALLBACK = [
     { id: 1, name: 'Cooper George', mutual: 2, avatar: 'https://i.pravatar.cc/150?img=33', verified: true },
     { id: 2, name: 'Terry Bator', mutual: 5, avatar: 'https://i.pravatar.cc/150?img=44', verified: false },
     { id: 3, name: 'Skylar Affhoff', mutual: 3, avatar: 'https://i.pravatar.cc/150?img=55', verified: true },
@@ -345,149 +347,6 @@ function ShareModal({ post, onClose }) {
                         </button>
                     ))}
                 </div>
-            </div>
-        </div>
-    );
-}
-
-/* ════════ MESSAGE MODAL COMPONENT ════════ */
-const MOCK_FRIENDS = [
-    { id: 1, name: 'Nguyễn Văn A', avatar: 'https://i.pravatar.cc/100?img=1' },
-    { id: 2, name: 'Trần Thị B', avatar: 'https://i.pravatar.cc/100?img=2' },
-    { id: 3, name: 'Lê Văn C', avatar: 'https://i.pravatar.cc/100?img=3' },
-    { id: 4, name: 'Phạm Thị D', avatar: 'https://i.pravatar.cc/100?img=4' },
-    { id: 5, name: 'Hoàng Văn E', avatar: 'https://i.pravatar.cc/100?img=5' },
-];
-
-function MessageModal({ post, onClose }) {
-    const [view, setView] = useState('selection'); // 'selection', 'direct', 'friends'
-    const [searchQuery, setSearchQuery] = useState('');
-    const [selectedFriends, setSelectedFriends] = useState([]);
-    const [message, setMessage] = useState('');
-    const [isSending, setIsSending] = useState(false);
-
-    const filteredFriends = MOCK_FRIENDS.filter(f =>
-        f.name.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-
-    const toggleFriend = (id) => {
-        setSelectedFriends(prev =>
-            prev.includes(id) ? prev.filter(fid => fid !== id) : [...prev, id]
-        );
-    };
-
-    const handleSend = () => {
-        if (view === 'friends' && selectedFriends.length === 0) return;
-        setIsSending(true);
-        // Simulate sending
-        setTimeout(() => {
-            setIsSending(false);
-            onClose();
-        }, 1500);
-    };
-
-    const renderContent = () => {
-        if (view === 'selection') {
-            return (
-                <div className="message-selection-view">
-                    <p className="selection-subtitle">Chọn phương thức liên hệ</p>
-                    <button className="selection-btn" onClick={() => setView('direct')}>
-                        <div className="selection-icon-wrap owner">
-                            <Send size={20} />
-                        </div>
-                        <div className="selection-info">
-                            <span className="selection-label">Nhắn tin với chủ sở hữu</span>
-                            <span className="selection-desc">Liên hệ trực tiếp với người đăng bài</span>
-                        </div>
-                        <ChevronRight size={18} color="#aaa" />
-                    </button>
-                    <button className="selection-btn" onClick={() => setView('friends')}>
-                        <div className="selection-icon-wrap friends">
-                            <Check size={20} />
-                        </div>
-                        <div className="selection-info">
-                            <span className="selection-label">Gửi cho bạn bè</span>
-                            <span className="selection-desc">Chia sẻ bài viết này với bạn bè của bạn</span>
-                        </div>
-                        <ChevronRight size={18} color="#aaa" />
-                    </button>
-                </div>
-            );
-        }
-
-        return (
-            <>
-                <div className="message-post-preview">
-                    <img src={post.img} alt={post.title} className="msg-preview-img" />
-                    <div className="msg-preview-info">
-                        <span className="msg-preview-title">{post.title}</span>
-                        <span className="msg-preview-price">{post.price} ₫</span>
-                    </div>
-                </div>
-
-                <div className="message-input-section">
-                    <textarea
-                        className="message-textarea"
-                        placeholder={view === 'direct' ? "Nhập tin nhắn cho người bán..." : "Thêm tin nhắn..."}
-                        value={message}
-                        onChange={e => setMessage(e.target.value)}
-                    />
-                </div>
-
-                {view === 'friends' && (
-                    <>
-                        <div className="friends-search">
-                            <Search size={16} color="#aaa" />
-                            <input
-                                type="text"
-                                placeholder="Tìm kiếm bạn bè..."
-                                value={searchQuery}
-                                onChange={e => setSearchQuery(e.target.value)}
-                            />
-                        </div>
-
-                        <div className="friends-list">
-                            {filteredFriends.map(friend => (
-                                <div
-                                    key={friend.id}
-                                    className={`friend-item ${selectedFriends.includes(friend.id) ? 'selected' : ''}`}
-                                    onClick={() => toggleFriend(friend.id)}
-                                >
-                                    <img src={friend.avatar} alt={friend.name} className="friend-avatar" />
-                                    <span className="friend-name">{friend.name}</span>
-                                    <div className="friend-checkbox">
-                                        {selectedFriends.includes(friend.id) && <Check size={12} strokeWidth={3} />}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </>
-                )}
-
-                <div className="message-footer">
-                    <button
-                        className="send-message-btn"
-                        disabled={(view === 'friends' && selectedFriends.length === 0) || isSending}
-                        onClick={handleSend}
-                    >
-                        {isSending ? 'Đang gửi...' : view === 'direct' ? 'Gửi cho chủ bài đăng' : `Gửi cho ${selectedFriends.length} bạn bè`}
-                    </button>
-                    <button className="back-btn" onClick={() => setView('selection')}>Quay lại</button>
-                </div>
-            </>
-        );
-    };
-
-    return (
-        <div className="modal-overlay" onClick={onClose}>
-            <div className="message-modal" onClick={e => e.stopPropagation()}>
-                <div className="modal-header">
-                    <h3 className="modal-title">{view === 'selection' ? 'Nhắn tin' : view === 'direct' ? 'Liên hệ chủ bài' : 'Gửi cho bạn bè'}</h3>
-                    <button className="modal-close-btn" onClick={onClose}>
-                        <X size={20} />
-                    </button>
-                </div>
-                {renderContent()}
             </div>
         </div>
     );
@@ -780,13 +639,15 @@ export default function Home() {
     const [activeFilter, setActiveFilter] = useState('Tất cả');
     const [searchFocused, setSearchFocused] = useState(false);
     const [sharePost, setSharePost] = useState(null);
-    const [messagePost, setMessagePost] = useState(null);
 
     // ── Auth từ localStorage ──
     const [token, setToken] = useState('');
     const [userId, setUserId] = useState('');
     const [currentUser, setCurrentUser] = useState({ name: 'Bạn', avatar: DEFAULT_AVATAR });
     const [badgeCounts, setBadgeCounts] = useState({ friends: 0, messages: 0, notifications: 0 });
+    const [peopleSuggestions, setPeopleSuggestions] = useState(PEOPLE_MAY_KNOW_FALLBACK);
+    const inlineRailRef = useRef(null);
+    const [toast, setToast] = useState(null);
 
     // ── Feed state ──
     const [allRecommendations, setAllRecommendations] = useState([]);
@@ -888,6 +749,7 @@ export default function Home() {
 
                 const hydratedPost = {
                     id: postDetail.ID_BaiDang,
+                    authorId: postDetail.ID_NguoiDung,
                     author: authorName,
                     avatar: authorAvatar,
                     time: new Date(postDetail.thoi_gian_tao).toLocaleDateString('vi-VN'),
@@ -946,6 +808,7 @@ export default function Home() {
                 const categoryInfo = CATEGORIES.find(c => c.label === (p.TenDanhMuc || p.category)) || {};
                 return {
                     id: p.ID_BaiDang,
+                    authorId: p.ID_NguoiDung,
                     author: p.TenNguoiDung || 'Người dùng OLODO',
                     avatar: normalizeUrl(p.anh_dai_dien 
                         ? (p.anh_dai_dien.startsWith('http') ? p.anh_dai_dien : `${API_BASE}/uploads/${p.anh_dai_dien}`)
@@ -1209,6 +1072,92 @@ export default function Home() {
         'add-friends': badgeCounts.friends,
     };
     const lockedNavKeys = new Set(['map', 'add-friends', 'messages', 'notifications']);
+    const inlineSuggestions = useMemo(() => peopleSuggestions.slice(0, 4), [peopleSuggestions]);
+    const sidebarSuggestions = useMemo(() => peopleSuggestions.slice(0, 3), [peopleSuggestions]);
+    const scrollInlineRail = useCallback((dir) => {
+        const el = inlineRailRef.current;
+        if (!el) return;
+        const card = el.querySelector('.person-card-small');
+        const cardWidth = card?.clientWidth || 160;
+        const gap = 12;
+        const step = (cardWidth + gap) * 2; // scroll 2 cards each click
+        el.scrollBy({ left: dir === 'next' ? step : -step, behavior: 'smooth' });
+    }, []);
+
+    const handleQuickAddFriend = useCallback(async (targetId, name) => {
+        if (!token || !userId) {
+            setToast({ type: 'error', text: 'Bạn cần đăng nhập để kết bạn.' });
+            return;
+        }
+        setPeopleSuggestions(prev => prev.map(p => p.id === targetId ? { ...p, status: 'sent' } : p));
+        try {
+            const res = await fetch(API_URLS.FRIEND_REQUEST, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({ idNguoiGui: userId, idNguoiNhan: targetId }),
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            setToast({ type: 'success', text: `Đã gửi lời mời tới ${name || 'bạn'}.` });
+        } catch (err) {
+            console.error('Quick add friend failed', err);
+            setPeopleSuggestions(prev => prev.map(p => p.id === targetId ? { ...p, status: null } : p));
+            setToast({ type: 'error', text: `Không gửi được lời mời tới ${name || 'bạn'}.` });
+        }
+    }, [token, userId]);
+
+    const handleQuickDismiss = useCallback((targetId) => {
+        setPeopleSuggestions(prev => prev.filter(p => p.id !== targetId));
+    }, []);
+
+    // ── Load "Có thể bạn quen" giống AddFriends.jsx ──
+    useEffect(() => {
+        if (!userId || !token) {
+            setPeopleSuggestions(PEOPLE_MAY_KNOW_FALLBACK);
+            return;
+        }
+
+        let cancelled = false;
+        const headers = { Authorization: `Bearer ${token}` };
+        const toAvatar = (raw) => normalizeUrl(
+            raw
+                ? (raw.startsWith('http') ? raw : `${API_BASE}/uploads/${raw}`)
+                : DEFAULT_AVATAR
+        );
+
+        const loadSuggestions = async () => {
+            try {
+                const res = await fetch(`${API_URLS.FRIEND_SUGGESTIONS}${userId}`, { headers });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const payload = await res.json();
+                const list = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
+                if (list.length === 0) {
+                    if (!cancelled) setPeopleSuggestions(PEOPLE_MAY_KNOW_FALLBACK);
+                    return;
+                }
+                const mapped = list.map((u, idx) => {
+                    const id = u.ID_NguoiDung ?? u.id ?? u.userId ?? `sug-${idx}`;
+                    return {
+                        id,
+                        name: u.ho_ten || u.name || 'Người dùng',
+                        mutual: Number(u.so_nguoi_chung ?? u.mutual ?? 0) || 0,
+                        avatar: toAvatar(u.anh_dai_dien),
+                        verified: !!u.verified,
+                        status: u.status || null,
+                    };
+                });
+                if (!cancelled) setPeopleSuggestions(mapped);
+            } catch (err) {
+                console.error('Load friend suggestions failed', err);
+                if (!cancelled) setPeopleSuggestions(PEOPLE_MAY_KNOW_FALLBACK);
+            }
+        };
+
+        loadSuggestions();
+        return () => { cancelled = true; };
+    }, [token, userId]);
 
     return (
         <div className="home-page">
@@ -1389,7 +1338,22 @@ export default function Home() {
                                 onLike={handleLike}
                                 onCommentClick={(postData) => navigate(`/post/${postData.id}/comments`, { state: { post: postData } })}
                                 onShareClick={(postData) => setSharePost(postData)}
-                                onMessageClick={(postData) => setMessagePost(postData)}
+                                onMessageClick={(postData) => {
+                                    if (!isAuthenticated) {
+                                        setToast({ type: 'error', text: 'Bạn cần đăng nhập để nhắn tin.' });
+                                        return;
+                                    }
+                                    const targetUserId = postData?.authorId || '';
+                                    if (!targetUserId) {
+                                        setToast({ type: 'error', text: 'Không xác định được người nhận tin nhắn.' });
+                                        return;
+                                    }
+                                    if (String(targetUserId) === String(userId)) {
+                                        setToast({ type: 'error', text: 'Không thể nhắn tin cho chính bạn.' });
+                                        return;
+                                    }
+                                    navigate('/messages');
+                                }}
                             />
 
                             {/* Gợi ý người quen xen kẽ vào Feed như mobile */}
@@ -1399,18 +1363,46 @@ export default function Home() {
                                         <UserPlus size={15} strokeWidth={2} color="#7f001f" />
                                         <span className="widget-title">Người có thể bạn quen</span>
                                     </div>
-                                    <div className="people-row-horizontal">
-                                        {PEOPLE_MAY_KNOW.map(person => (
-                                            <div key={person.id} className="person-card-small">
-                                                <div className="person-avatar-wrap">
-                                                    <img src={person.avatar} alt={person.name} className="person-avatar" />
-                                                    {person.verified && <span className="person-verified">✓</span>}
+                                    <div className="people-rail">
+                                        {inlineSuggestions.length > 4 && (
+                                            <button
+                                                type="button"
+                                                className="rail-btn rail-btn-prev"
+                                                onClick={() => scrollInlineRail('prev')}
+                                                aria-label="Previous suggestions"
+                                            >
+                                                <ChevronRight size={16} strokeWidth={2.5} />
+                                            </button>
+                                        )}
+                                        <div className="people-row-horizontal" ref={inlineRailRef}>
+                                            {inlineSuggestions.map(person => (
+                                                <div key={person.id} className="person-card-small">
+                                                    <div className="person-avatar-wrap">
+                                                        <img src={person.avatar} alt={person.name} className="person-avatar" />
+                                                        {person.verified && <span className="person-verified">✓</span>}
+                                                    </div>
+                                                    <span className="person-name">{person.name}</span>
+                                                    <span className="person-mutual">{person.mutual} bạn chung</span>
+                                                    <button
+                                                        className={`btn-add-small ${person.status === 'sent' ? 'sent' : ''}`}
+                                                        disabled={person.status === 'sent'}
+                                                        onClick={() => handleQuickAddFriend(person.id, person.name)}
+                                                    >
+                                                        {person.status === 'sent' ? 'Đã gửi' : 'Thêm bạn'}
+                                                    </button>
                                                 </div>
-                                                <span className="person-name">{person.name}</span>
-                                                <span className="person-mutual">{person.mutual} bạn chung</span>
-                                                <button className="btn-add-small">Thêm bạn</button>
-                                            </div>
-                                        ))}
+                                            ))}
+                                        </div>
+                                        {inlineSuggestions.length > 4 && (
+                                            <button
+                                                type="button"
+                                                className="rail-btn rail-btn-next"
+                                                onClick={() => scrollInlineRail('next')}
+                                                aria-label="Next suggestions"
+                                            >
+                                                <ChevronRight size={16} strokeWidth={2.5} />
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
                             )}
@@ -1424,17 +1416,17 @@ export default function Home() {
                     </div>
                 )}
 
+                {toast && (
+                    <div className={`toast ${toast.type}`}>
+                        {toast.text}
+                    </div>
+                )}
+
                 {/* Modals */}
                 {sharePost && (
                     <ShareModal
                         post={sharePost}
                         onClose={() => setSharePost(null)}
-                    />
-                )}
-                {messagePost && (
-                    <MessageModal
-                        post={messagePost}
-                        onClose={() => setMessagePost(null)}
                     />
                 )}
 
@@ -1466,7 +1458,7 @@ export default function Home() {
                         <span className="widget-title">Có thể bạn quen</span>
                     </div>
                     <div className="people-list">
-                        {PEOPLE_MAY_KNOW.map(p => (
+                        {sidebarSuggestions.map(p => (
                             <div key={p.id} className="person-row">
                                 <div className="person-avatar-wrap">
                                     <img src={p.avatar} alt={p.name} className="person-avatar" />
@@ -1480,13 +1472,24 @@ export default function Home() {
                                     </span>
                                 </div>
                                 <div className="person-btns">
-                                    <button className="btn-add"><Plus size={14} strokeWidth={2.5} /></button>
-                                    <button className="btn-decline">✕</button>
+                                    <button
+                                        className={`btn-add ${p.status === 'sent' ? 'btn-add-sent' : ''}`}
+                                        disabled={p.status === 'sent'}
+                                        onClick={() => handleQuickAddFriend(p.id, p.name)}
+                                    >
+                                        {p.status === 'sent' ? <Check size={14} strokeWidth={2.5} /> : <Plus size={14} strokeWidth={2.5} />}
+                                    </button>
+                                    <button className="btn-decline" onClick={() => handleQuickDismiss(p.id)}>✕</button>
                                 </div>
                             </div>
                         ))}
                     </div>
-                    <button className="widget-see-all">Xem tất cả <ChevronRight size={13} strokeWidth={2} /></button>
+                    <button
+                        className="widget-see-all"
+                        onClick={() => navigate('/add-friends')}
+                    >
+                        Xem tất cả <ChevronRight size={13} strokeWidth={2} />
+                    </button>
                 </div>
 
                 {/* App Download */}
@@ -1538,6 +1541,7 @@ export default function Home() {
                 </div>
 
             </aside>
+
         </div>
     );
 }

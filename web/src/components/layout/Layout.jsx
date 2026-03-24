@@ -136,7 +136,7 @@ const Layout = () => {
                 <button className="header-icon-btn" aria-label="Yêu thích">
                   <Heart size={20} />
                 </button>
-                <button className="header-icon-btn" aria-label="Tin nhắn">
+                <button className="header-icon-btn" aria-label="Tin nhắn" onClick={() => navigate('/messages')}>
                   <MessageCircle size={20} />
                 </button>
                 <div className="user-menu-group">
@@ -201,7 +201,6 @@ const Layout = () => {
         </div>
       </footer>
 
-      {/* ══════ CHAT WIDGET ══════ */}
       <ChatWidget />
     </div>
   );

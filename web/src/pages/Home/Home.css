@@ -464,6 +464,7 @@
   border: 1px solid var(--color-border);
   box-shadow: var(--shadow-sm);
   transition: box-shadow var(--transition-normal), border-color var(--transition-fast), transform var(--transition-normal);
+  flex-shrink: 0;
 }
 
 .widget:hover,
@@ -481,6 +482,13 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+  /* Allow sidebar content to scroll independently when taller than viewport */
+  max-height: calc(100vh - 60px);
+  overflow-y: auto;
+  padding-right: var(--space-1);
+  scrollbar-gutter: stable;
+  padding-bottom: var(--space-10);
+  scrollbar-width: thin;
 }
 
 /* Search */
@@ -1354,6 +1362,13 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+  /* Allow sidebar content to scroll independently when taller than viewport */
+  max-height: calc(100vh - 60px);
+  overflow-y: auto;
+  padding-right: var(--space-1);
+  scrollbar-gutter: stable;
+  padding-bottom: var(--space-10);
+  scrollbar-width: thin;
 }
 
 /* User Mini Card */
@@ -1508,6 +1523,15 @@
 .btn-add:hover {
   opacity: 0.87;
   transform: scale(1.06);
+}
+
+.btn-add.btn-add-sent,
+.btn-add:disabled {
+  background: #e5e7eb;
+  color: #888;
+  cursor: default;
+  transform: none;
+  opacity: 1;
 }
 
 .btn-decline {
@@ -2347,10 +2371,11 @@
   display: flex;
   gap: 12px;
   overflow-x: auto;
-  padding-bottom: 10px;
+  padding: 6px 4px 12px;
   scrollbar-width: thin;
   scrollbar-color: #eee transparent;
   scroll-behavior: smooth;
+  scroll-snap-type: x mandatory;
 }
 
 .people-row-horizontal::-webkit-scrollbar {
@@ -2375,6 +2400,7 @@
   text-align: center;
   background: #fafafa;
   transition: transform 0.2s, box-shadow 0.2s;
+  scroll-snap-align: start;
 }
 
 .person-card-small:hover {
@@ -2392,6 +2418,97 @@
   width: 60px;
   height: 60px;
   margin-bottom: 10px;
+}
+
+.people-rail {
+  position: relative;
+}
+
+.people-rail::before,
+.people-rail::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 36px;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.people-rail::before {
+  left: 0;
+  background: linear-gradient(90deg, #fff 0%, rgba(255, 255, 255, 0) 100%);
+}
+
+.people-rail::after {
+  right: 0;
+  background: linear-gradient(270deg, #fff 0%, rgba(255, 255, 255, 0) 100%);
+}
+
+.rail-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #7f001f;
+  z-index: 3;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s, opacity 0.15s;
+}
+
+.rail-btn:hover {
+  transform: translateY(-50%) scale(1.05);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+}
+
+.rail-btn:active {
+  transform: translateY(-50%) scale(0.97);
+}
+
+.rail-btn-prev {
+  left: 4px;
+  transform: translateY(-50%) rotate(180deg);
+}
+
+.rail-btn-next {
+  right: 4px;
+}
+
+.toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  color: #fff;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+  z-index: 999;
+  animation: fadeInUp 0.25s ease, fadeOut 0.3s ease 3.5s forwards;
+}
+
+.toast.success {
+  background: #0d9488;
+}
+
+.toast.error {
+  background: #dc2626;
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeOut {
+  to { opacity: 0; transform: translateY(10px); }
 }
 
 .person-card-small .person-avatar {
@@ -2451,6 +2568,13 @@
 
 .btn-add-small:hover {
   background: var(--color-primary-light, #b30026);
+}
+
+.btn-add-small.sent,
+.btn-add-small:disabled {
+  background: #d1d5db;
+  color: #555;
+  cursor: default;
 }
 
 /* ── Friend Badge ── */
