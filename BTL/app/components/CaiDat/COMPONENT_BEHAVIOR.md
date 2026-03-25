@@ -1,0 +1,342 @@
+# CaiDat Component Behavior Memory
+
+Nguon doc: `BTL/app/components/CaiDat`
+Muc dich: luu lai cach hoat dong hien tai cua tung component theo code dang ton tai.
+Luu y: day la ban ghi nho theo code hien tai, khong phai tai lieu thiet ke. Neu code doi, file nay can duoc cap nhat de giu dung hanh vi thuc te.
+
+## 1. `dangnhap.tsx`
+- Component chinh: `LoginScreen`.
+- State chinh:
+  - `email`
+  - `password`
+  - `isPasswordSecure`
+  - `isLoading`
+- API dang nhap:
+  - `POST ${API_BASE_URL}/api/nguoidung/login`
+  - body: `{ email, mat_khau }`
+- Hanh vi:
+  - Neu thieu email hoac mat khau: show `Toast` loi, khong goi API.
+  - Dang nhap thanh cong:
+    - luu `userToken` vao `AsyncStorage`
+    - luu `userInfo` vao `AsyncStorage`
+    - show `Toast` thanh cong
+    - delay 1.5s roi `router.replace('/caidat')`
+  - Dang nhap that bai:
+    - show `Toast` voi `message` tu server hoac thong diep mac dinh
+  - Loi mang:
+    - show `Toast` loi ket noi
+- Chuc nang phu:
+  - `handleForgotPassword`: chi show `Toast` thong bao dang phat trien
+  - `handleSocialLogin`: chi show `Toast` thong bao dang phat trien cho `google`, `facebook`, `zalo`
+  - Nut dang ky: `router.push('/components/CaiDat/dangky')`
+
+## 2. `dangky.tsx`
+- Component chinh: `RegisterScreen`.
+- Dang ky theo 3 buoc:
+  - Buoc 1: tai khoan (`name`, `email`, `username`, `password`, `confirmPassword`)
+  - Buoc 2: thong tin (`selectedUniversity`, `selectedProvince`, `selectedDistrict`, `address`)
+  - Buoc 3: avatar
+- Du lieu khoi tao:
+  - load truong tu `../../../universities.json`
+  - load tinh/thanh tu `https://provinces.open-api.vn/api/p/`
+- Hanh vi validate:
+  - Buoc 1:
+    - bat buoc nhap day du truong chinh
+    - mat khau va xac nhan phai khop
+    - email phai hop le
+  - Buoc 2:
+    - bat buoc chon truong, tinh/thanh, quan/huyen theo logic trong code
+- Avatar:
+  - cho chon anh bang camera hoac thu vien
+  - upload qua `POST ${API_BASE_URL}/api/upload`
+  - field upload: `avatar`
+  - neu upload that bai thi bao loi va dung dang ky
+- Dia chi:
+  - khi chon tinh/thanh, goi `https://provinces.open-api.vn/api/p/{provinceCode}?depth=2` de lay quan/huyen
+  - `vi_tri_day_du` duoc ghep tu `address`, `districtName`, `provinceName`
+- Payload dang ky gui len `POST ${API_BASE_URL}/api/nguoidung/create`:
+  - `ten_dang_nhap`
+  - `mat_khau`
+  - `email`
+  - `ho_ten`
+  - `truong_hoc`
+  - `vi_tri`
+  - `que_quan`
+  - `anh_dai_dien`
+  - `da_xac_thuc: 0`
+- Sau dang ky thanh cong:
+  - hien `Alert`
+  - goi tiep `loginAfterRegister(email, mat_khau)`
+- `loginAfterRegister`:
+  - goi `POST /api/nguoidung/login`
+  - neu thanh cong:
+    - luu `userToken`
+    - luu `userInfo`
+    - `router.replace('/(tabs)/caidat')`
+  - neu that bai hoac loi mang:
+    - chuyen sang `/components/CaiDat/dangnhap`
+
+## 3. `capnhatmk.tsx`
+- Component chinh: `UpdatePasswordScreen`.
+- State chinh:
+  - `oldPassword`
+  - `newPassword`
+  - `confirmPassword`
+  - 3 state an/hien mat khau: `isOldSecure`, `isPasswordSecure`, `isConfirmSecure`
+  - `isLoading`
+  - `userInfo`
+- `useEffect` dau man hinh:
+  - doc `userInfo` tu `AsyncStorage`
+  - neu khong co `userInfo` thi show `Toast` loi va chuyen ve `/components/CaiDat/dangnhap`
+- Hanh vi doi mat khau:
+  - bat buoc nhap du 3 truong
+  - mat khau moi va xac nhan phai khop
+  - mat khau moi toi thieu 6 ky tu
+  - bat buoc phai co `userInfo`
+  - bat buoc phai co `userToken`, neu khong thi coi nhu het phien dang nhap va chuyen ve login
+- API:
+  - `PUT ${API_BASE_URL}/api/nguoidung/update/${userInfo.ID_NguoiDung}`
+  - header co `Authorization: Bearer {token}`
+  - body: `{ mat_khau_cu, mat_khau }`
+- Ket qua:
+  - thanh cong: show `Toast`, delay 1.5s roi `router.back()` neu co the, neu khong thi `router.replace('/caidat')`
+  - that bai: doc `message` tu server va show `Toast`
+  - loi mang: show `Toast` loi ket noi
+
+## 4. `thongtincanhan.tsx`
+- Component chinh: `ThongTinCaNhanScreen`.
+- State chinh:
+  - `isLoading`, `isSaving`, `isDeleting`
+  - `showDeleteModal`, `deletePassword`
+  - `userInfo`
+  - `avatar`, `avatarFile`
+  - `hoTen`, `truongHoc`, `viTri`
+- Tai du lieu:
+  - dung `useFocusEffect`
+  - moi lan focus se doc `userInfo` tu `AsyncStorage`
+  - neu doc duoc thi do vao state form
+- Doi avatar:
+  - chon tu thu vien qua `expo-image-picker`
+  - luu uri tam vao `avatar` va `avatarFile`
+- Upload avatar:
+  - `POST ${API_BASE_URL}/api/upload`
+  - header co bearer token
+  - body la `FormData` voi field `avatar`
+  - tra ve `imageUrl`
+- Luu thong tin:
+  - neu co `avatarFile` thi upload truoc
+  - payload update:
+    - `ho_ten`
+    - `truong_hoc`
+    - `vi_tri`
+    - `anh_dai_dien`
+  - goi `PUT ${API_BASE_URL}/api/nguoidung/update/${userId}`
+  - neu server tra `responseData.user` thi dung object do
+  - neu khong, tu ghep object moi tu state hien tai
+  - luu nguoc `userInfo` vao `AsyncStorage`
+  - cap nhat lai state hien tai
+- Xoa tai khoan:
+  - buoc 1: `Alert` xac nhan xoa
+  - buoc 2: mo `Modal` yeu cau nhap mat khau
+  - buoc 3: goi `DELETE ${API_BASE_URL}/api/nguoidung/delete/${userId}`
+    - header co bearer token
+    - body: `{ mat_khau }`
+  - neu thanh cong va `deleteData.success`:
+    - xoa hang loat key trong `AsyncStorage` nhu `userToken`, `userInfo`, `cart`, `preferences`, `session`, `notifications`
+    - dong modal
+    - dieu huong ra khoi phien dang nhap theo logic cua man hinh
+  - neu that bai: in log va hien `Alert`
+- Man hinh nay la noi chinh de sua thong tin ca nhan trong module Cai dat.
+
+## 5. `tichdiem.tsx`
+- Component chinh: `TichDiemScreen`.
+- Muc tieu:
+  - hien diem hien tai
+  - hien lich su tich diem
+  - mua diem bang ZaloPay
+  - tu dong kiem tra trang thai giao dich pending
+- State chinh:
+  - `userInfo`
+  - `pointHistory`
+  - `isLoading`
+  - `isRefreshing`
+  - `isProcessing`
+  - `pendingTransId`
+- Nguyen tac quan trong trong code:
+  - diem hien thi uu tien lay moi nhat tu API, khong tin hoan toan vao cache `AsyncStorage`
+- `loadUserData`:
+  - doc `userInfo` va `userToken` tu `AsyncStorage`
+  - neu co `ID_NguoiDung` va token thi goi `GET /api/nguoidung/getById/{id}?_t={Date.now()}`
+  - co them header chong cache
+  - neu thanh cong:
+    - cap nhat `userInfo` state
+    - ghi de `AsyncStorage.userInfo`
+  - neu loi thi fallback ve du lieu cache
+- `loadPointHistory`:
+  - goi `GET /api/lich_su_tich_diem/getByUserId/{id}?limit=20`
+  - luu ket qua vao `pointHistory`
+- Deep link ZaloPay:
+  - `handleDeepLink` xu ly URL co `payment-result`
+  - lay `app_trans_id` tu URL
+  - luu `pending_zalopay_trans_id` vao `AsyncStorage`
+  - goi `GET /api/zalopay/order-status/{appTransId}?userId={userId}`
+  - `return_code`:
+    - `1`: thanh cong
+    - `2`: dang xu ly
+    - `3`: that bai
+  - neu thanh cong va `points_added > 0`:
+    - cong diem ngay tren state
+    - cap nhat `AsyncStorage.userInfo`
+    - xoa pending trans id
+    - load lai lich su diem
+- Kiem tra pending khi app foreground:
+  - lang nghe `AppState`
+  - neu app tu background ve active va co `pending_zalopay_trans_id` thi check lai order status
+- Kiem tra pending khi focus man hinh:
+  - dung `useFocusEffect`
+  - neu co pending thi check lai order status
+  - sau do refresh du lieu nhu binh thuong
+- Mua diem bang ZaloPay:
+  - `handleZaloPay(points, amount)`
+  - goi `POST /api/zalopay/payment`
+  - body: `{ userId, amount, points, description }`
+  - neu server tra `return_code === 1` va co `order_url`:
+    - luu `app_trans_id` vao `pending_zalopay_trans_id`
+    - mo link thanh toan bang `Linking.openURL`
+- Kiem tra thu cong:
+  - `checkPaymentStatus()`
+  - dung `pendingTransId` hoac doc tu `AsyncStorage`
+  - goi lai `GET /api/zalopay/order-status/{transId}?userId={id}`
+- UI co 3 goi diem co san:
+  - 1000 diem / 20000
+  - 5000 diem / 90000
+  - 10000 diem / 150000
+- Co nut `Kiem tra thanh toan` de check thu cong.
+
+## 6. `xemvideo.tsx`
+- Component chinh: `XemVideoScreen`.
+- Muc tieu:
+  - bat buoc user da xac thuc moi duoc xem video nhan diem
+  - moi ngay chi nhan diem 1 lan tren thiet bi nay
+- State chinh:
+  - `userInfo`
+  - `isLoading`
+  - `isVerified`
+  - `isWatching`
+  - `watchProgress`
+  - `hasWatchedToday`
+  - `isWatchingVideo`
+  - `watchTimer`
+  - `videoUrls`
+  - `isVideoLoading`
+  - `currentVideoIndex`
+- `loadUserData`:
+  - doc `userInfo` va `userToken`
+  - goi `GET /api/nguoidung/getById/{id}?_t={Date.now()}` de lay trang thai xac thuc moi nhat
+  - neu thanh cong:
+    - set `userInfo`
+    - set `isVerified = latestUser.da_xac_thuc === 1`
+    - cap nhat `AsyncStorage.userInfo`
+  - neu loi thi fallback ve cache
+- `fetchVideos`:
+  - hien tai KHONG goi API that
+  - chi nap danh sach video mau co san tu Google sample bucket
+- Gioi han moi ngay:
+  - doc key `watched_video_{today}` tu `AsyncStorage`
+  - neu da ton tai thi khoa luot nhan diem trong ngay
+- Neu chua xac thuc:
+  - UI se thong bao va cho nut sang `/components/CaiDat/Xacminh/xacminh`
+- Theo doi xem video:
+  - `handlePlaybackStatusUpdate` cap nhat tien do va `watchTimer`
+  - neu xem du dieu kien va video ket thuc thi goi `awardPoints()`
+- Cong diem:
+  - `POST ${API_BASE_URL}/api/lich_su_tich_diem/addPoints`
+  - body:
+    - `userId`
+    - `pointChange: 100`
+    - `transactionType: 'tang_diem'`
+    - `description: 'Xem video quảng cáo'`
+    - `referenceId: null`
+  - neu thanh cong:
+    - cong 100 diem vao state hien tai
+    - cap nhat `AsyncStorage.userInfo`
+    - luu `watched_video_{today} = 'true'`
+    - show `Alert` thong bao nhan diem
+- Dieu huong:
+  - co nut `router.back()`
+  - co nut sang flow xac minh neu chua verify
+
+## 7. `Lsgiaodich.tsx`
+- Component chinh: `LichSuGiaoDichScreen`.
+- Hien tai chi la man placeholder.
+- Khong goi API.
+- Khong co state phuc tap.
+- Chi hien 2 dong text:
+  - `Lịch Sử Giao Dịch`
+  - `Tính năng đang phát triển`
+
+## 8. `Xacminh/xacminh.tsx`
+- Component export mac dinh: `VerificationFlow`.
+- Day la mot flow xac minh nhieu buoc dung `NavigationContainer` + `createNativeStackNavigator` ben trong file.
+- Cac man trong flow:
+  - `Instruction`
+  - `FaceCapture`
+  - `IDCapture`
+  - `IDConfirm`
+- Utility quan trong:
+  - `getAuthToken()` doc `userToken` tu `AsyncStorage` va lam sach dau nhay neu co
+  - `getUserInfo()` doc `userInfo` tu `AsyncStorage`
+  - `uploadVerificationImages(userId, faceUri, idUri)`:
+    - `POST ${API_BASE_URL}/api/xacthuc/${userId}`
+    - upload 2 file:
+      - `anh_khuon_mat`
+      - `anh_cmnd`
+  - `updateVerificationStatus(userId)`:
+    - `PUT ${API_BASE_URL}/api/nguoidung/update/${userId}`
+    - body: `{ da_xac_thuc: 1 }`
+- `InstructionScreen`:
+  - hien huong dan quy trinh xac minh
+  - cho bat dau flow sang `FaceCapture`
+- `FaceCaptureScreen`:
+  - xin quyen camera bang `expo-camera`
+  - co the chup anh khuon mat hoac chon tu thu vien
+  - thanh cong thi chuyen sang `IDCapture` kem `faceUri`
+- `IDCaptureScreen`:
+  - xin quyen camera
+  - chup anh CCCD hoac chon tu thu vien
+  - thanh cong thi chuyen sang `IDConfirm` kem `faceUri` va `idUri`
+- `IDConfirmScreen`:
+  - hien preview 2 anh
+  - co nut chup lai
+  - co nut tai len
+  - `handleUpload()`:
+    - kiem tra du 2 anh
+    - doc `userInfo`
+    - kiem tra `ID_NguoiDung`
+    - upload 2 anh xac minh
+    - update `da_xac_thuc = 1`
+    - show `Toast` thanh cong
+    - `navigation.popToTop()` sau khi xong
+  - neu loi tung buoc thi show `Toast`/`Alert`
+- Ban chat hien tai cua flow nay:
+  - xac minh tren client, upload len backend, sau do client tu danh dau user da xac thuc.
+
+## 9. Mo hinh du lieu local duoc cac component CaiDat dung chung
+- `AsyncStorage.userToken`: token dang nhap
+- `AsyncStorage.userInfo`: thong tin user cache
+- `AsyncStorage.pending_zalopay_trans_id`: ma giao dich ZaloPay dang cho xu ly
+- `AsyncStorage.watched_video_{today}`: danh dau da nhan thuong xem video trong ngay
+
+## 10. Dieu huong chinh trong module CaiDat
+- Login thanh cong: `router.replace('/caidat')`
+- Dang ky xong auto login thanh cong: `router.replace('/(tabs)/caidat')`
+- Dang ky xong nhung auto login that bai: `router.replace('/components/CaiDat/dangnhap')`
+- Het phien / khong co thong tin user o man doi mat khau: `router.replace('/components/CaiDat/dangnhap')`
+- Xem video chua xac thuc: sang `/components/CaiDat/Xacminh/xacminh`
+
+## 11. Ghi chu de giu nho dung hanh vi hien tai
+- `thongtincanhan.tsx` uu tien du lieu cache `AsyncStorage`, khong tu goi API getById khi vao man.
+- `tichdiem.tsx` va `xemvideo.tsx` uu tien refresh tu API de lay diem/xac thuc moi nhat.
+- `Lsgiaodich.tsx` hien chua co logic nghiep vu.
+- `xemvideo.tsx` chi la danh sach video mau, chua co API danh sach video that.
+- `xacthuc.tsx` la flow noi bo gom nhieu man trong cung 1 file, khong phai 1 component don le.

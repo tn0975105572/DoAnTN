@@ -1,0 +1,11 @@
+export { default as ChangePasswordView } from './ChangePasswordView';
+export { default as LoginPrompt } from './LoginPrompt';
+export { default as PersonalInfoView } from './PersonalInfoView';
+export { default as PointsHistoryView } from './PointsHistoryView';
+export { default as QrLoginView } from './QrLoginView';
+export { default as SettingsItem } from './SettingsItem';
+export { default as SettingsSection } from './SettingsSection';
+export { default as TwoFactorView } from './TwoFactorView';
+export { default as UserProfile } from './UserProfile';
+export { default as VerificationView } from './VerificationView';
+export { default as VideoEarnView } from './VideoEarnView';

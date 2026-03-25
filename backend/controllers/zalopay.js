@@ -25,7 +25,7 @@ const zalopayController = {};
 
 zalopayController.createOrder = async (req, res) => {
     try {
-        const { userId, amount, points, description } = req.body;
+        const { userId, amount, points, description, redirectBaseUrl } = req.body;
 
         if (!userId || !amount) {
             return res.status(400).json({ return_code: 0, return_message: "Thiếu thông tin bắt buộc" });
@@ -43,10 +43,14 @@ zalopayController.createOrder = async (req, res) => {
         // Create app_trans_id first
         const app_trans_id = `${moment().format('YYMMDD')}_${transID}`;
 
+        const webRedirectUrl = redirectBaseUrl
+            ? `${redirectBaseUrl}${redirectBaseUrl.includes('?') ? '&' : '?'}zalopay_return=1&app_trans_id=${app_trans_id}`
+            : null;
+
         // Deep link URL to redirect back to app after payment
         // Include points in embed_data so callback can use it
         const embed_data = {
-            redirecturl: `OLODO://payment-result?app_trans_id=${app_trans_id}`,
+            redirecturl: webRedirectUrl || `OLODO://payment-result?app_trans_id=${app_trans_id}`,
             points: finalPoints,
         };
 

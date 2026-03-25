@@ -1,754 +1,641 @@
-import { useState, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
+import { Lock, LogOut, Play, ShieldCheck, Star, User } from 'lucide-react';
 import {
-    User, Star, Play, Lock, QrCode, ShieldCheck,
-    Globe, Moon, HelpCircle, LogOut, ChevronRight,
-    Edit2, CheckCircle, ShieldAlert, ChevronLeft, Camera
-} from 'lucide-react';
-import { QRCodeCanvas } from 'qrcode.react';
+    ChangePasswordView,
+    LoginPrompt,
+    PersonalInfoView,
+    PointsHistoryView,
+    SettingsItem,
+    SettingsSection,
+    UserProfile,
+    VerificationView,
+    VideoEarnView
+} from '../../components/settings';
+import { API_BASE_URL } from '../../constants';
 import './Settings.css';
 
-/* ════════ SUB-COMPONENTS ════════ */
+const PAYMENT_QR_LIFETIME_SECONDS = 180;
+const PAYMENT_AUTO_POLL_INTERVAL_MS = 8000;
+const SETTINGS_BACKEND_ORIGIN = (() => {
+    try {
+        return new URL(API_BASE_URL).origin;
+    } catch {
+        return 'http://localhost:3000';
+    }
+})();
 
-/* Login Prompt — khi chưa đăng nhập */
-function LoginPrompt({ onLogin, onRegister }) {
-    return (
-        <div className="settings-login-prompt">
-            <div className="settings-login-prompt-icon">
-                <User size={28} />
-            </div>
-            <h3>Trải nghiệm tốt hơn!</h3>
-            <p>Đăng nhập để lưu các cài đặt và thông tin cá nhân của bạn.</p>
-            <div className="settings-login-buttons">
-                <button className="settings-btn-login" onClick={onLogin}>Đăng nhập</button>
-                <button className="settings-btn-register" onClick={onRegister}>Đăng ký</button>
-            </div>
-        </div>
-    );
+function getStoredPaymentCountdown() {
+    const pendingTransId = localStorage.getItem('pending_zalopay_trans_id');
+    if (!pendingTransId) return 0;
+
+    const startedAt = Number(localStorage.getItem('pending_zalopay_started_at') || 0);
+    if (!startedAt) return PAYMENT_QR_LIFETIME_SECONDS;
+
+    const elapsedSeconds = Math.floor((Date.now() - startedAt) / 1000);
+    return Math.max(0, PAYMENT_QR_LIFETIME_SECONDS - elapsedSeconds);
 }
 
-/* ════════ PERSONAL INFO VIEW ════════ */
-function PersonalInfoView({ user, onBack, onSave }) {
-    const [formData, setFormData] = useState({
-        ho_ten: user?.ho_ten || '',
-        email: user?.email || '',
-        so_dien_thoai: user?.so_dien_thoai || '',
-        dia_chi: user?.dia_chi || '',
-        ngay_sinh: user?.ngay_sinh || '',
-        truong: user?.truong || ''
-    });
+function getStoredPaymentStatus() {
+    const pendingTransId = localStorage.getItem('pending_zalopay_trans_id');
+    if (!pendingTransId) return 'idle';
 
-    const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
-
-    return (
-        <div className="settings-subview">
-            <div className="settings-subview-header">
-                <button className="settings-back-btn" onClick={onBack}>
-                    <ChevronLeft size={24} />
-                </button>
-                <h2>Thông tin cá nhân</h2>
-                <div style={{ width: 24 }} /> {/* Spacer to center title */}
-            </div>
-
-            <div className="settings-subview-content">
-                <div className="settings-avatar-edit-lg">
-                    <img src={user?.anh_dai_dien || 'https://i.pravatar.cc/150'} alt="Avatar" />
-                    <button className="settings-avatar-change-btn">
-                        <Camera size={16} />
-                        Thay đổi ảnh
-                    </button>
-                </div>
-
-                <div className="settings-form-group">
-                    <label>Họ và tên</label>
-                    <input name="ho_ten" value={formData.ho_ten} onChange={handleChange} placeholder="Nhập họ và tên" />
-                </div>
-                <div className="settings-form-group">
-                    <label>Email</label>
-                    <input name="email" type="email" value={formData.email} onChange={handleChange} placeholder="Nhập email" disabled />
-                    <span className="settings-input-hint">Email không thể thay đổi</span>
-                </div>
-                <div className="settings-form-group">
-                    <label>Số điện thoại</label>
-                    <input name="so_dien_thoai" value={formData.so_dien_thoai} onChange={handleChange} placeholder="Nhập số điện thoại" />
-                </div>
-                <div className="settings-form-group">
-                    <label>Ngày sinh</label>
-                    <input name="ngay_sinh" type="date" value={formData.ngay_sinh} onChange={handleChange} />
-                </div>
-                <div className="settings-form-group">
-                    <label>Trường học</label>
-                    <input name="truong" value={formData.truong} onChange={handleChange} placeholder="Ví dụ: Đại học Bách Khoa" />
-                </div>
-                <div className="settings-form-group">
-                    <label>Địa chỉ</label>
-                    <textarea name="dia_chi" value={formData.dia_chi} onChange={handleChange} placeholder="Nhập địa chỉ của bạn" rows={3}></textarea>
-                </div>
-
-                <button className="settings-save-btn" onClick={() => onSave(formData)}>
-                    Lưu thay đổi
-                </button>
-            </div>
-        </div>
-    );
+    return getStoredPaymentCountdown() > 0 ? 'qr_ready' : 'expired';
 }
 
-/* ════════ POINTS & HISTORY VIEW ════════ */
-const MOCK_POINT_HISTORY = [
-    {
-        id: 1,
-        type: 'earn',
-        points: 50,
-        title: 'Xem video kiếm điểm',
-        time: 'Hôm nay · 10:45',
-        description: 'Hoàn thành nhiệm vụ xem video quảng cáo 30 giây.',
-    },
-    {
-        id: 2,
-        type: 'earn',
-        points: 20,
-        title: 'Điểm thưởng đăng ký',
-        time: 'Hôm qua · 21:10',
-        description: 'Nhận điểm khi tạo tài khoản OLODO lần đầu.',
-    },
-    {
-        id: 3,
-        type: 'use',
-        points: -30,
-        title: 'Đổi ưu đãi vận chuyển',
-        time: '2 ngày trước · 15:20',
-        description: 'Sử dụng điểm để giảm phí vận chuyển đơn hàng.',
-    },
-];
+function normalizeSettingsUploadsUrl(raw) {
+    if (!raw || typeof raw !== 'string') return raw;
+    if (raw.startsWith('blob:') || raw.startsWith('data:')) return raw;
 
-function PointsHistoryView({ user, onBack }) {
-    const currentPoints = user?.diem_so || 0;
+    if (!raw.startsWith('http')) {
+        const cleanPath = raw.startsWith('/uploads/') ? raw : `/uploads/${raw.replace(/^\/+/, '')}`;
+        return `${SETTINGS_BACKEND_ORIGIN}${cleanPath}`;
+    }
 
-    return (
-        <div className="settings-subview">
-            <div className="settings-subview-header">
-                <button className="settings-back-btn" onClick={onBack}>
-                    <ChevronLeft size={24} />
-                </button>
-                <h2>Tích điểm & lịch sử</h2>
-                <div style={{ width: 24 }} />
-            </div>
-
-            <div className="settings-subview-content">
-                <div className="points-summary">
-                    <div className="points-balance">
-                        <div className="points-balance-label">Điểm hiện tại</div>
-                        <div className="points-balance-value">
-                            <Star size={20} fill="#FFD700" color="#FFD700" />
-                            <span>{currentPoints}</span>
-                        </div>
-                        <div className="points-balance-sub">Tích điểm để đổi quà và ưu đãi dành riêng cho sinh viên.</div>
-                    </div>
-
-                    <div className="points-tier">
-                        <div className="points-tier-left">
-                            <div className="points-tier-label">Hạng thành viên</div>
-                            <div className="points-tier-name">
-                                {currentPoints >= 500 ? 'Gold' : currentPoints >= 200 ? 'Silver' : 'Starter'}
-                            </div>
-                            <div className="points-tier-progress-text">
-                                Còn {Math.max(0, 200 - currentPoints)} điểm để lên hạng Silver
-                            </div>
-                        </div>
-                        <div className="points-tier-right">
-                            <div className="points-progress">
-                                <div
-                                    className="points-progress-fill"
-                                    style={{ width: `${Math.min(100, (currentPoints / 200) * 100)}%` }}
-                                />
-                            </div>
-                            <div className="points-progress-scale">
-                                <span>0</span>
-                                <span>200</span>
-                                <span>500+</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="points-history">
-                    <div className="points-history-header">
-                        <h3>Lịch sử tích điểm</h3>
-                        <span className="points-history-count">
-                            {MOCK_POINT_HISTORY.length} hoạt động gần đây
-                        </span>
-                    </div>
-
-                    <div className="points-history-list">
-                        {MOCK_POINT_HISTORY.map((item) => (
-                            <div
-                                key={item.id}
-                                className={`points-history-item ${item.type === 'use' ? 'points-use' : 'points-earn'}`}
-                            >
-                                <div className="points-history-icon">
-                                    {item.type === 'use' ? (
-                                        <Play size={16} />
-                                    ) : (
-                                        <Star size={16} />
-                                    )}
-                                </div>
-                                <div className="points-history-body">
-                                    <div className="points-history-main">
-                                        <div className="points-history-title">{item.title}</div>
-                                        <div className="points-history-points">
-                                            {item.type === 'use' ? '' : '+'}
-                                            {item.points}đ
-                                        </div>
-                                    </div>
-                                    <div className="points-history-meta">
-                                        <span className="points-history-time">{item.time}</span>
-                                        <span className="points-history-desc">{item.description}</span>
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-}
-
-/* ════════ VIDEO EARN POINTS VIEW ════════ */
-function VideoEarnView({ user, onBack, onEarnPoints }) {
-    const [hasClaimed, setHasClaimed] = useState(false);
-
-    const handleClaim = () => {
-        if (hasClaimed) return;
-        onEarnPoints?.(30);
-        setHasClaimed(true);
-    };
-
-    return (
-        <div className="settings-subview">
-            <div className="settings-subview-header">
-                <button className="settings-back-btn" onClick={onBack}>
-                    <ChevronLeft size={24} />
-                </button>
-                <h2>Video kiếm điểm</h2>
-                <div style={{ width: 24 }} />
-            </div>
-
-            <div className="settings-subview-content">
-                <div className="video-hero-card">
-                    <div className="video-hero-left">
-                        <div className="video-hero-title">Xem video để nhận điểm thưởng</div>
-                        <div className="video-hero-sub">
-                            Hoàn thành nhiệm vụ xem video quảng cáo để tích thêm điểm cho tài khoản OLODO của bạn.
-                        </div>
-                        <div className="video-hero-meta">
-                            <span>+30 điểm / lượt</span>
-                            <span>~30 giây</span>
-                            <span>Tối đa 3 lần/ngày (demo)</span>
-                        </div>
-                    </div>
-                    <div className="video-hero-right">
-                        <div className="video-points-now">
-                            <span>Điểm hiện tại</span>
-                            <strong>{user?.diem_so || 0}</strong>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="video-task-card">
-                    <div className="video-thumb-wrap">
-                        <div className="video-thumb">
-                            <div className="video-thumb-play">
-                                <Play size={26} />
-                            </div>
-                        </div>
-                    </div>
-                    <div className="video-task-body">
-                        <div className="video-task-header">
-                            <div className="video-task-title">Video quảng cáo sinh viên OLODO</div>
-                            <span className="video-reward-pill">+30 điểm</span>
-                        </div>
-                        <p className="video-task-desc">
-                            Đây là phiên bản demo. Khi tích hợp backend, hệ thống sẽ kiểm tra thời lượng xem video thực tế
-                            trước khi cộng điểm vào tài khoản của bạn.
-                        </p>
-                        <button
-                            className={`video-primary-btn ${hasClaimed ? 'video-primary-btn-disabled' : ''}`}
-                            onClick={handleClaim}
-                            disabled={hasClaimed}
-                        >
-                            {hasClaimed ? 'Bạn đã nhận điểm cho lượt xem này' : 'Xem xong – Nhận điểm'}
-                        </button>
-                        <div className="video-note">
-                            Lưu ý: Tính năng đang ở chế độ mô phỏng trên web. Điểm được lưu vào tài khoản cục bộ của bạn.
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-}
-
-/* ════════ CHANGE PASSWORD VIEW ════════ */
-function ChangePasswordView({ onBack }) {
-    const [form, setForm] = useState({
-        currentPassword: '',
-        newPassword: '',
-        confirmPassword: '',
-    });
-    const [error, setError] = useState('');
-
-    const handleChange = (e) => {
-        setForm({ ...form, [e.target.name]: e.target.value });
-        setError('');
-    };
-
-    const handleSubmit = (e) => {
-        e.preventDefault();
-        if (!form.currentPassword || !form.newPassword || !form.confirmPassword) {
-            setError('Vui lòng điền đầy đủ các trường.');
-            return;
+    try {
+        const url = new URL(raw);
+        if (url.pathname.startsWith('/uploads/')) {
+            return `${SETTINGS_BACKEND_ORIGIN}${url.pathname}`;
         }
-        if (form.newPassword.length < 6) {
-            setError('Mật khẩu mới phải có ít nhất 6 ký tự.');
-            return;
-        }
-        if (form.newPassword !== form.confirmPassword) {
-            setError('Xác nhận mật khẩu không khớp.');
-            return;
-        }
+        return raw.replace(/^http:\/\/(?!localhost)[\d.]+:(\d+)/, 'http://localhost:$1');
+    } catch {
+        return raw.replace(/^http:\/\/(?!localhost)[\d.]+:(\d+)/, 'http://localhost:$1');
+    }
+}
 
-        alert('Đổi mật khẩu thành công (mô phỏng). Khi có backend, màn hình này sẽ gọi API để đổi mật khẩu thực tế.');
-        onBack();
+function normalizeSettingsUser(userData) {
+    if (!userData || typeof userData !== 'object') return userData;
+
+    return {
+        ...userData,
+        anh_dai_dien: normalizeSettingsUploadsUrl(userData.anh_dai_dien),
     };
-
-    return (
-        <div className="settings-subview">
-            <div className="settings-subview-header">
-                <button className="settings-back-btn" onClick={onBack}>
-                    <ChevronLeft size={24} />
-                </button>
-                <h2>Đổi mật khẩu</h2>
-                <div style={{ width: 24 }} />
-            </div>
-
-            <div className="settings-subview-content">
-                <form className="pw-form" onSubmit={handleSubmit}>
-                    <p className="pw-hint">
-                        Để đảm bảo an toàn, hãy sử dụng mật khẩu khó đoán, kết hợp chữ hoa, chữ thường, số và ký tự đặc biệt.
-                    </p>
-
-                    <div className="settings-form-group">
-                        <label>Mật khẩu hiện tại</label>
-                        <input
-                            type="password"
-                            name="currentPassword"
-                            value={form.currentPassword}
-                            onChange={handleChange}
-                            placeholder="Nhập mật khẩu đang dùng"
-                        />
-                    </div>
-
-                    <div className="settings-form-group">
-                        <label>Mật khẩu mới</label>
-                        <input
-                            type="password"
-                            name="newPassword"
-                            value={form.newPassword}
-                            onChange={handleChange}
-                            placeholder="Nhập mật khẩu mới"
-                        />
-                    </div>
-
-                    <div className="settings-form-group">
-                        <label>Nhập lại mật khẩu mới</label>
-                        <input
-                            type="password"
-                            name="confirmPassword"
-                            value={form.confirmPassword}
-                            onChange={handleChange}
-                            placeholder="Nhập lại mật khẩu mới"
-                        />
-                    </div>
-
-                    {error && <div className="pw-error">{error}</div>}
-
-                    <button type="submit" className="settings-save-btn">
-                        Xác nhận đổi mật khẩu
-                    </button>
-                </form>
-            </div>
-        </div>
-    );
 }
 
-/* ════════ QR LOGIN VIEW ════════ */
-function QrLoginView({ onBack }) {
-    const demoCode = 'OL-QR-123-456';
-    const demoUrl = `${window.location.origin}/login?session=${demoCode}`;
-
-    return (
-        <div className="settings-subview">
-            <div className="settings-subview-header">
-                <button className="settings-back-btn" onClick={onBack}>
-                    <ChevronLeft size={24} />
-                </button>
-                <h2>Quét mã QR đăng nhập</h2>
-                <div style={{ width: 24 }} />
-            </div>
-
-            <div className="settings-subview-content">
-                <div className="qr-card">
-                    <div className="qr-left">
-                        <div className="qr-title">Đăng nhập nhanh bằng ứng dụng OLODO</div>
-                        <p className="qr-sub">
-                            Mở app OLODO trên điện thoại, vào mục <strong>Quét mã QR</strong> và hướng camera vào mã bên phải
-                            để đăng nhập nhanh trên trình duyệt này.
-                        </p>
-                        <ul className="qr-steps">
-                            <li>1. Đăng nhập tài khoản của bạn trên app OLODO.</li>
-                            <li>2. Chọn mục <strong>Đăng nhập web bằng QR</strong>.</li>
-                            <li>3. Quét mã QR trên màn hình này và xác nhận trên điện thoại.</li>
-                        </ul>
-                        <div className="qr-code-text">
-                            <span>Mã phiên demo:</span>
-                            <code>{demoCode}</code>
-                        </div>
-                        <p className="qr-note">
-                            Lưu ý: Đây là bản mô phỏng giao diện. Khi kết nối backend, mã QR sẽ được tạo động và xác thực thật.
-                        </p>
-                    </div>
-                    <div className="qr-right">
-                        <div className="qr-box">
-                            <div className="qr-box-inner">
-                                <QRCodeCanvas
-                                    value={demoUrl}
-                                    size={120}
-                                    bgColor="#f9fafb"
-                                    fgColor="#111827"
-                                    includeMargin
-                                />
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-}
-
-/* ════════ TWO FACTOR AUTH VIEW ════════ */
-function TwoFactorView({ enabled, onToggle, onBack }) {
-    const videoRef = useRef(null);
-    const canvasRef = useRef(null);
-    const [cameraOn, setCameraOn] = useState(false);
-    const [hasCaptured, setHasCaptured] = useState(false);
-    const [cameraError, setCameraError] = useState('');
-
-    useEffect(() => {
-        if (!cameraOn || !navigator.mediaDevices?.getUserMedia) return;
-
-        let stream;
-        setCameraError('');
-
-        navigator.mediaDevices
-            .getUserMedia({ video: true })
-            .then((mediaStream) => {
-                stream = mediaStream;
-                if (videoRef.current) {
-                    videoRef.current.srcObject = mediaStream;
-                    videoRef.current.play().catch(() => {});
-                }
-            })
-            .catch(() => {
-                setCameraError('Không truy cập được camera. Vui lòng kiểm tra quyền truy cập hoặc thử trình duyệt khác.');
-            });
-
-        return () => {
-            if (stream) {
-                stream.getTracks().forEach((t) => t.stop());
-            }
-        };
-    }, [cameraOn]);
-
-    const handleCapture = () => {
-        const video = videoRef.current;
-        const canvas = canvasRef.current;
-        if (!video || !canvas) return;
-
-        const width = video.videoWidth || 640;
-        const height = video.videoHeight || 480;
-        canvas.width = width;
-        canvas.height = height;
-
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
-        ctx.drawImage(video, 0, 0, width, height);
-
-        setHasCaptured(true);
-
-        if (!enabled) {
-            onToggle();
-        }
-    };
-
-    return (
-        <div className="settings-subview">
-            <div className="settings-subview-header">
-                <button className="settings-back-btn" onClick={onBack}>
-                    <ChevronLeft size={24} />
-                </button>
-                <h2>Xác thực 2 yếu tố (2FA)</h2>
-                <div style={{ width: 24 }} />
-            </div>
-
-            <div className="settings-subview-content">
-                <div className="twofa-card">
-                    <div className="twofa-header">
-                        <div>
-                            <div className="twofa-title">Bảo vệ tài khoản tốt hơn</div>
-                            <p className="twofa-sub">
-                                Khi bật 2FA, ngoài mật khẩu bạn sẽ cần nhập thêm mã dùng một lần khi đăng nhập trên thiết bị lạ.
-                            </p>
-                        </div>
-                        <span className={`twofa-status-pill ${enabled ? 'on' : 'off'}`}>
-                            {enabled ? 'ĐÃ BẬT' : 'CHƯA BẬT'}
-                        </span>
-                    </div>
-
-                    <div className="twofa-switch-row">
-                        <div className="twofa-switch-text">
-                            <div className="twofa-switch-title">Bật / tắt xác thực 2 yếu tố</div>
-                            <p>Khuyến nghị nên bật để tăng mức độ an toàn cho tài khoản OLODO của bạn.</p>
-                        </div>
-                        <button
-                            type="button"
-                            className={`twofa-switch-btn ${enabled ? 'on' : 'off'}`}
-                            onClick={onToggle}
-                        >
-                            <span className="twofa-switch-knob" />
-                        </button>
-                    </div>
-
-                    <div className="twofa-section">
-                        <div className="twofa-section-title">Cách hoạt động</div>
-                        <ul className="twofa-steps">
-                            <li>1. Đăng nhập bằng email và mật khẩu như bình thường.</li>
-                            <li>2. Hệ thống yêu cầu bạn nhập mã 6 số từ ứng dụng hoặc SMS.</li>
-                            <li>3. Sau khi mã hợp lệ, bạn mới hoàn tất đăng nhập.</li>
-                        </ul>
-                    </div>
-
-                    <div className="twofa-section">
-                        <div className="twofa-section-title">Xác thực CCCD + khuôn mặt (demo)</div>
-                        <p className="twofa-backup-note">
-                            Hệ thống sẽ dùng camera để chụp ảnh thẻ CCCD và khuôn mặt của bạn. Ảnh chỉ được xử lý và lưu trên
-                            thiết bị này trong bản demo, không gửi lên server.
-                        </p>
-
-                        <div className="twofa-camera">
-                            <div className="twofa-preview">
-                                {cameraOn ? (
-                                    <video ref={videoRef} className="twofa-video" autoPlay playsInline />
-                                ) : (
-                                    <div className="twofa-video-placeholder">
-                                        Cho phép truy cập camera để bắt đầu chụp ảnh xác thực.
-                                    </div>
-                                )}
-                                <div className="twofa-face-frame" />
-                            </div>
-                            <canvas
-                                ref={canvasRef}
-                                className={`twofa-canvas ${hasCaptured ? 'visible' : ''}`}
-                            />
-                        </div>
-
-                        <div className="twofa-camera-actions">
-                            <button
-                                type="button"
-                                className="twofa-btn"
-                                onClick={() => setCameraOn(true)}
-                            >
-                                Mở camera
-                            </button>
-                            <button
-                                type="button"
-                                className="twofa-btn twofa-btn-primary"
-                                onClick={handleCapture}
-                                disabled={!cameraOn}
-                            >
-                                Chụp ảnh xác thực
-                            </button>
-                        </div>
-
-                        {cameraError && <div className="twofa-error">{cameraError}</div>}
-                        {hasCaptured && !cameraError && (
-                            <div className="twofa-success">
-                                Đã chụp ảnh CCCD + khuôn mặt (demo). Xác thực 2 bước đã được bật cho tài khoản này.
-                            </div>
-                        )}
-                    </div>
-
-                    <div className="twofa-section">
-                        <div className="twofa-section-title">Mã dự phòng (demo)</div>
-                        <p className="twofa-backup-note">
-                            Lưu lại các mã này ở nơi an toàn. Dùng khi bạn mất điện thoại hoặc không nhận được mã.
-                        </p>
-                        <div className="twofa-backup-list">
-                            <code>OL-92KD-1A</code>
-                            <code>OL-7BQP-3F</code>
-                            <code>OL-5XZT-9M</code>
-                        </div>
-                    </div>
-
-                    <p className="twofa-footnote">
-                        Đây là giao diện mô phỏng. Khi có backend, việc kiểm tra ảnh CCCD + khuôn mặt, gửi mã SMS/app và xác
-                        thực đăng nhập sẽ được xử lý qua API bảo mật.
-                    </p>
-                </div>
-            </div>
-        </div>
-    );
-}
-
-/* User Profile Card */
-function UserProfile({ user, isVerified, onEdit, onVerification }) {
-    return (
-        <div className="settings-profile-card">
-            <div className="settings-avatar-wrap">
-                <img
-                    className={`settings-avatar ${isVerified ? 'verified' : 'unverified'}`}
-                    src={user.anh_dai_dien || 'https://i.pravatar.cc/150'}
-                    alt={user.ho_ten}
-                />
-                <button className="settings-avatar-edit" onClick={onEdit}>
-                    <Edit2 size={13} />
-                </button>
-            </div>
-
-            <div className="settings-profile-info">
-                <div className="settings-profile-name">{user.ho_ten || 'Người dùng'}</div>
-                <div className="settings-profile-email">{user.email || 'Không có email'}</div>
-                <div className="settings-profile-points">
-                    <Star size={15} fill="#FFD700" color="#FFD700" />
-                    {user.diem_so || 0} điểm
-                </div>
-            </div>
-
-            <div className="settings-profile-actions">
-                <button
-                    className={`settings-verification ${isVerified ? 'verified' : 'unverified'}`}
-                    onClick={onVerification}
-                >
-                    {isVerified ? <CheckCircle size={14} /> : <ShieldAlert size={14} />}
-                    {isVerified ? 'Đã xác thực' : 'Chưa xác thực'}
-                    {!isVerified && <ChevronRight size={14} />}
-                </button>
-                <button className="settings-edit-btn" onClick={onEdit}>
-                    <Edit2 size={16} />
-                </button>
-            </div>
-        </div>
-    );
-}
-
-/* Settings Section */
-function SettingsSection({ title, children }) {
-    return (
-        <div className="settings-section">
-            <div className="settings-section-title">{title}</div>
-            <div className="settings-section-body">{children}</div>
-        </div>
-    );
-}
-
-/* Settings Item */
-function SettingsItem({ icon: Icon, label, isSwitch, switchValue, onSwitchChange, onClick, iconColor }) {
-    return (
-        <button className="settings-item" onClick={isSwitch ? undefined : onClick} style={isSwitch ? { cursor: 'default' } : {}}>
-            <span className="settings-item-icon" style={iconColor ? { background: iconColor + '15', color: iconColor } : {}}>
-                <Icon size={18} />
-            </span>
-            <span className="settings-item-label">{label}</span>
-            {isSwitch ? (
-                <button
-                    className={`settings-switch ${switchValue ? 'on' : ''}`}
-                    onClick={(e) => { e.stopPropagation(); onSwitchChange?.(); }}
-                >
-                    <span className="settings-switch-knob" />
-                </button>
-            ) : (
-                <ChevronRight size={18} className="settings-item-chevron" />
-            )}
-        </button>
-    );
-}
-
-/* ════════ MAIN PAGE ════════ */
 export default function Settings() {
     const navigate = useNavigate();
     const [currentUser, setCurrentUser] = useState(() => {
         const saved = localStorage.getItem('user');
-        return saved ? JSON.parse(saved) : null;
+        return saved ? normalizeSettingsUser(JSON.parse(saved)) : null;
     });
-    const [isDarkMode, setIsDarkMode] = useState(false);
     const [isVerified, setIsVerified] = useState(() => {
         const saved = localStorage.getItem('user');
         return saved ? JSON.parse(saved).da_xac_thuc === 1 : false;
     });
-    const [twoFactorEnabled, setTwoFactorEnabled] = useState(() => {
-        const saved = localStorage.getItem('twoFactorEnabled');
-        return saved === 'true';
+    const [activeView, setActiveView] = useState('main');
+    const [isSavingProfile, setIsSavingProfile] = useState(false);
+    const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+    const [pointHistory, setPointHistory] = useState([]);
+    const [isLoadingPoints, setIsLoadingPoints] = useState(false);
+    const [pointError, setPointError] = useState('');
+    const [isChangingPassword, setIsChangingPassword] = useState(false);
+    const [isSubmittingVerification, setIsSubmittingVerification] = useState(false);
+    const [hasWatchedToday, setHasWatchedToday] = useState(false);
+    const [isAwardingPoints, setIsAwardingPoints] = useState(false);
+    const [isCreatingPayment, setIsCreatingPayment] = useState(false);
+    const [isCheckingPayment, setIsCheckingPayment] = useState(false);
+    const [pendingTransId, setPendingTransId] = useState(() => localStorage.getItem('pending_zalopay_trans_id'));
+    const [paymentQrUrl, setPaymentQrUrl] = useState(() => localStorage.getItem('pending_zalopay_order_url'));
+    const [selectedPackage, setSelectedPackage] = useState(() => {
+        const saved = localStorage.getItem('pending_zalopay_package');
+        return saved ? JSON.parse(saved) : null;
     });
-    const [activeView, setActiveView] = useState('main'); // 'main' | 'personal_info' | 'points_history' | 'video_earn' | 'change_password' | 'qr_login' | 'two_factor'
+    const [paymentMessage, setPaymentMessage] = useState('');
+    const [paymentStatus, setPaymentStatus] = useState(getStoredPaymentStatus);
+    const [paymentCountdown, setPaymentCountdown] = useState(getStoredPaymentCountdown);
+    const [paymentSuccessInfo, setPaymentSuccessInfo] = useState(null);
+    const [hasReturnedFromZaloPay, setHasReturnedFromZaloPay] = useState(false);
+
+    const token = localStorage.getItem('token');
+    const authHeaders = useMemo(
+        () => (token ? { Authorization: `Bearer ${token}` } : {}),
+        [token]
+    );
+    const currentUserId = currentUser?.ID_NguoiDung || localStorage.getItem('userId');
+
+    const syncUserState = useCallback((userData) => {
+        const normalizedUser = normalizeSettingsUser(userData);
+
+        setCurrentUser(normalizedUser);
+        setIsVerified(normalizedUser?.da_xac_thuc === 1);
+        localStorage.setItem('user', JSON.stringify(normalizedUser));
+        if (normalizedUser?.ID_NguoiDung) {
+            localStorage.setItem('userId', String(normalizedUser.ID_NguoiDung));
+        }
+    }, []);
+
+    const loadLatestUser = useCallback(async () => {
+        if (!currentUserId || !token) return null;
+
+        const response = await axios.get(`${API_BASE_URL}/nguoidung/get/${currentUserId}`, {
+            headers: authHeaders,
+        });
+
+        const userData = response.data?.user || response.data;
+        syncUserState(userData);
+        return userData;
+    }, [authHeaders, currentUserId, syncUserState, token]);
+
+    const loadPointData = useCallback(async () => {
+        if (!currentUserId || !token) return;
+
+        setIsLoadingPoints(true);
+        setPointError('');
+
+        try {
+            const [userResponse, historyResponse] = await Promise.all([
+                axios.get(`${API_BASE_URL}/nguoidung/get/${currentUserId}`, {
+                    headers: authHeaders,
+                }),
+                axios.get(`${API_BASE_URL}/lich_su_tich_diem/getByUserId/${currentUserId}?limit=20`, {
+                    headers: authHeaders,
+                }),
+            ]);
+
+            syncUserState(userResponse.data?.user || userResponse.data);
+            setPointHistory(Array.isArray(historyResponse.data) ? historyResponse.data : []);
+        } catch (error) {
+            setPointError(error.response?.data?.message || 'Không thể tải dữ liệu tích điểm.');
+        } finally {
+            setIsLoadingPoints(false);
+        }
+    }, [authHeaders, currentUserId, syncUserState, token]);
 
     const handleLogout = () => {
         if (window.confirm('Bạn có chắc chắn muốn đăng xuất khỏi tài khoản này không?')) {
-            localStorage.removeItem('token');
-            localStorage.removeItem('user');
+            ['token', 'user', 'userId', 'cart', 'preferences', 'session', 'notifications'].forEach((key) => {
+                localStorage.removeItem(key);
+            });
             setCurrentUser(null);
             setIsVerified(false);
         }
     };
 
-    const handleVerification = () => {
-        if (isVerified) {
-            alert('Tài khoản của bạn đã được xác thực thành công với CCCD gắn chip.');
-        } else {
-            alert('Xác thực CCCD giúp bảo vệ tài khoản của bạn. Chức năng đang được phát triển.');
+    const handleVerification = () => setActiveView('verification');
+
+    const handleSavePersonalInfo = async (data, avatarFile) => {
+        if (!currentUserId || !token) {
+            alert('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+            return;
+        }
+
+        setIsSavingProfile(true);
+
+        try {
+            let avatarUrl = currentUser?.anh_dai_dien || '';
+
+            if (avatarFile) {
+                const formData = new FormData();
+                formData.append('avatar', avatarFile);
+
+                const uploadResponse = await axios.post(`${API_BASE_URL}/upload`, formData, {
+                    headers: {
+                        ...authHeaders,
+                        'Content-Type': 'multipart/form-data',
+                    },
+                });
+
+                avatarUrl = uploadResponse.data?.imageUrl || avatarUrl;
+            }
+
+            const updatePayload = {
+                ho_ten: data.ho_ten,
+                truong_hoc: data.truong_hoc,
+                vi_tri: data.vi_tri,
+                anh_dai_dien: avatarUrl,
+            };
+
+            const updateResponse = await axios.put(
+                `${API_BASE_URL}/nguoidung/update/${currentUserId}`,
+                updatePayload,
+                { headers: authHeaders }
+            );
+
+            const updatedUser = updateResponse.data?.user || { ...currentUser, ...updatePayload };
+            syncUserState(updatedUser);
+            alert('Cập nhật thông tin cá nhân thành công!');
+            setActiveView('main');
+        } catch (error) {
+            alert(error.response?.data?.message || 'Không thể cập nhật thông tin cá nhân.');
+        } finally {
+            setIsSavingProfile(false);
         }
     };
 
-    const handleSavePersonalInfo = (data) => {
-        // Mock save implementation
-        const updatedUser = { ...currentUser, ...data };
-        setCurrentUser(updatedUser);
-        localStorage.setItem('user', JSON.stringify(updatedUser));
-        alert('Cập nhật thông tin thành công!');
-        setActiveView('main');
+    const handleDeleteAccount = async (password, resetPassword, closeBox) => {
+        if (!password?.trim()) {
+            alert('Vui lòng nhập mật khẩu để xác nhận xóa.');
+            return;
+        }
+
+        if (!currentUserId || !token) {
+            alert('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+            return;
+        }
+
+        setIsDeletingAccount(true);
+
+        try {
+            const response = await axios.delete(`${API_BASE_URL}/nguoidung/delete/${currentUserId}`, {
+                headers: authHeaders,
+                data: { mat_khau: password.trim() },
+            });
+
+            if (response.data?.success) {
+                ['token', 'user', 'userId', 'cart', 'preferences', 'session', 'notifications'].forEach((key) => {
+                    localStorage.removeItem(key);
+                });
+                resetPassword('');
+                closeBox(false);
+                alert('Xóa tài khoản thành công!');
+                navigate('/login');
+                return;
+            }
+
+            alert(response.data?.message || 'Không thể xóa tài khoản.');
+        } catch (error) {
+            alert(error.response?.data?.message || 'Không thể xóa tài khoản.');
+        } finally {
+            setIsDeletingAccount(false);
+        }
     };
 
-    const handleEarnPointsFromVideo = (amount) => {
-        if (!currentUser) return;
-        const updatedUser = {
-            ...currentUser,
-            diem_so: (currentUser.diem_so || 0) + amount,
+    const handleChangePassword = async (form, setError) => {
+        if (!currentUserId || !token) {
+            setError('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+            return;
+        }
+
+        setIsChangingPassword(true);
+        try {
+            await axios.put(
+                `${API_BASE_URL}/nguoidung/update/${currentUserId}`,
+                {
+                    mat_khau_cu: form.currentPassword,
+                    mat_khau: form.newPassword,
+                },
+                { headers: authHeaders }
+            );
+            alert('Đã cập nhật mật khẩu mới.');
+            setActiveView('main');
+        } catch (error) {
+            setError(error.response?.data?.message || 'Không thể cập nhật mật khẩu.');
+        } finally {
+            setIsChangingPassword(false);
+        }
+    };
+
+    const handleVerificationUpload = async ({ faceFile, idFile, setError }) => {
+        if (!currentUserId || !token) {
+            setError('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+            return;
+        }
+
+        setIsSubmittingVerification(true);
+        try {
+            const formData = new FormData();
+            formData.append('anh_khuon_mat', faceFile);
+            formData.append('anh_cmnd', idFile);
+
+            await axios.post(`${API_BASE_URL}/xacthuc/${currentUserId}`, formData, {
+                headers: {
+                    ...authHeaders,
+                    'Content-Type': 'multipart/form-data',
+                },
+            });
+
+            await axios.put(
+                `${API_BASE_URL}/nguoidung/update/${currentUserId}`,
+                { da_xac_thuc: 1 },
+                { headers: authHeaders }
+            );
+
+            const refreshedUser = await loadLatestUser();
+            syncUserState({ ...refreshedUser, da_xac_thuc: 1 });
+            alert('Xác minh tài khoản thành công!');
+            setActiveView('main');
+        } catch (error) {
+            setError(error.response?.data?.message || 'Không thể tải ảnh xác minh lên.');
+        } finally {
+            setIsSubmittingVerification(false);
+        }
+    };
+
+    const handleAwardVideoPoints = async () => {
+        if (!currentUserId || !token) {
+            alert('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+            return;
+        }
+
+        if (!isVerified) {
+            setActiveView('verification');
+            return;
+        }
+
+        const todayKey = `watched_video_${new Date().toDateString()}`;
+        if (localStorage.getItem(todayKey)) {
+            setHasWatchedToday(true);
+            alert('Bạn đã xem video hôm nay rồi!');
+            return;
+        }
+
+        setIsAwardingPoints(true);
+        try {
+            await axios.post(
+                `${API_BASE_URL}/lich_su_tich_diem/addPoints`,
+                {
+                    userId: currentUserId,
+                    pointChange: 100,
+                    transactionType: 'tang_diem',
+                    description: 'Xem video quảng cáo',
+                    referenceId: null,
+                },
+                { headers: authHeaders }
+            );
+
+            localStorage.setItem(todayKey, 'true');
+            setHasWatchedToday(true);
+            await Promise.all([loadLatestUser(), loadPointData()]);
+            alert('Bạn đã nhận được 100 điểm!');
+        } catch (error) {
+            alert(error.response?.data?.message || 'Không thể cộng điểm từ video.');
+        } finally {
+            setIsAwardingPoints(false);
+        }
+    };
+
+    const clearPendingPaymentStorage = useCallback((options = {}) => {
+        const { preserveSelectedPackage = false } = options;
+        setPendingTransId(null);
+        setPaymentQrUrl(null);
+        if (!preserveSelectedPackage) {
+            setSelectedPackage(null);
+        }
+        localStorage.removeItem('pending_zalopay_trans_id');
+        localStorage.removeItem('pending_zalopay_order_url');
+        localStorage.removeItem('pending_zalopay_package');
+        localStorage.removeItem('pending_zalopay_started_at');
+    }, []);
+
+    const handleBuyPointPackage = async (pkg) => {
+        if (!currentUserId || !token) {
+            alert('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+            return;
+        }
+
+        setIsCreatingPayment(true);
+        setPaymentStatus('creating');
+        setPaymentCountdown(0);
+        setPaymentMessage('Đang tạo mã thanh toán ZaloPay...');
+        setSelectedPackage(pkg);
+        setPaymentSuccessInfo(null);
+
+        try {
+            const response = await axios.post(
+                `${API_BASE_URL}/zalopay/payment`,
+                {
+                    userId: currentUserId,
+                    amount: pkg.amount,
+                    points: pkg.points,
+                    description: `Mua ${pkg.points} điểm`,
+                    redirectBaseUrl: `${window.location.origin}/settings`,
+                },
+                { headers: authHeaders }
+            );
+
+            if (response.data?.return_code === 1 && response.data?.order_url) {
+                setPendingTransId(response.data.app_trans_id || null);
+                setPaymentQrUrl(response.data.order_url);
+                setPaymentMessage('Mã QR đã sẵn sàng. Hệ thống sẽ tự kiểm tra và cộng điểm sau khi thanh toán thành công.');
+                setPaymentStatus('qr_ready');
+                setPaymentCountdown(PAYMENT_QR_LIFETIME_SECONDS);
+                localStorage.setItem('pending_zalopay_trans_id', response.data.app_trans_id || '');
+                localStorage.setItem('pending_zalopay_order_url', response.data.order_url);
+                localStorage.setItem('pending_zalopay_package', JSON.stringify(pkg));
+                localStorage.setItem('pending_zalopay_started_at', String(Date.now()));
+                return;
+            }
+
+            setPaymentStatus('failure');
+            setPaymentMessage(response.data?.return_message || 'Không thể tạo thanh toán ZaloPay.');
+        } catch (error) {
+            setPaymentStatus('failure');
+            setPaymentMessage(error.response?.data?.return_message || 'Không thể tạo thanh toán ZaloPay.');
+        } finally {
+            setIsCreatingPayment(false);
+        }
+    };
+
+    const checkPaymentStatus = useCallback(async (options = {}) => {
+        const { expireIfPending = false, silentPending = false } = options;
+        const transId = pendingTransId || localStorage.getItem('pending_zalopay_trans_id');
+        if (!transId || !currentUserId || !token) {
+            setPaymentStatus('idle');
+            setPaymentMessage('Không có giao dịch ZaloPay nào đang chờ.');
+            return;
+        }
+
+        setIsCheckingPayment(true);
+        setPaymentStatus('checking');
+        try {
+            const response = await axios.get(
+                `${API_BASE_URL}/zalopay/order-status/${transId}?userId=${currentUserId}`,
+                { headers: authHeaders }
+            );
+
+            const data = response.data;
+            if (data.return_code === 1) {
+                const savedPackage = selectedPackage || JSON.parse(localStorage.getItem('pending_zalopay_package') || 'null');
+                const pointsAdded = Number(data.points_added || 0);
+                const newBalance = Number.isFinite(Number(data.new_balance))
+                    ? Number(data.new_balance)
+                    : Number(currentUser?.diem_so || 0);
+
+                if (Number.isFinite(newBalance)) {
+                    syncUserState({
+                        ...(currentUser || {}),
+                        ID_NguoiDung: currentUserId,
+                        diem_so: newBalance,
+                        da_xac_thuc: isVerified ? 1 : 0,
+                    });
+                }
+
+                setPaymentSuccessInfo({
+                    pointsAdded,
+                    newBalance,
+                    packagePoints: savedPackage?.points || 0,
+                });
+                setPaymentStatus('success');
+                setPaymentMessage(
+                    pointsAdded
+                        ? `Thanh toán thành công. +${pointsAdded} điểm đã được cộng vào tài khoản.`
+                        : 'Thanh toán thành công. Giao dịch đã được xử lý trước đó hoặc điểm đã được cộng.'
+                );
+                setPaymentCountdown(0);
+                clearPendingPaymentStorage({ preserveSelectedPackage: true });
+
+                try {
+                    await loadPointData();
+                } catch (refreshError) {
+                    console.warn('Không thể tải lại dữ liệu điểm sau khi thanh toán thành công:', refreshError);
+                }
+                return;
+            }
+
+            if (data.return_code === 3) {
+                setPaymentStatus('failure');
+                setPaymentMessage(data.return_message || 'Thanh toán thất bại hoặc bị hủy.');
+                setPaymentCountdown(0);
+                clearPendingPaymentStorage({ preserveSelectedPackage: true });
+                return;
+            }
+
+            if (expireIfPending) {
+                setPaymentStatus('expired');
+                setPaymentCountdown(0);
+                setPaymentMessage('Mã QR đã hết hạn. Hãy bấm "Tạo QR mới" để tạo lại mã thanh toán.');
+                return;
+            }
+
+            setPaymentStatus('pending');
+            if (!silentPending) {
+                setPaymentMessage(data.return_message || 'Giao dịch đang được xử lý. Hệ thống sẽ tự động kiểm tra lại.');
+            }
+        } catch (error) {
+            if (expireIfPending) {
+                setPaymentStatus('expired');
+                setPaymentCountdown(0);
+                setPaymentMessage('Mã QR đã hết hạn. Hãy bấm "Tạo QR mới" để tạo lại mã thanh toán.');
+                return;
+            }
+
+            setPaymentStatus('failure');
+            setPaymentMessage(error.response?.data?.message || 'Không thể kiểm tra trạng thái thanh toán.');
+        } finally {
+            setIsCheckingPayment(false);
+        }
+    }, [authHeaders, clearPendingPaymentStorage, currentUser, currentUserId, isVerified, loadPointData, pendingTransId, selectedPackage, syncUserState, token]);
+
+    const handleOpenPaymentLink = useCallback(() => {
+        if (!paymentQrUrl) return;
+
+        const popup = window.open(paymentQrUrl, '_blank', 'noopener,noreferrer');
+        if (popup) {
+            popup.focus?.();
+            return;
+        }
+
+        setPaymentMessage('Trình duyệt đang chặn tab thanh toán. Bạn có thể quét QR trực tiếp hoặc cho phép popup rồi thử lại.');
+    }, [paymentQrUrl]);
+
+    const handleCreatePaymentQr = useCallback(() => {
+        if (!selectedPackage) {
+            setPaymentMessage('Hãy chọn một gói điểm trước khi tạo mã QR.');
+            return;
+        }
+
+        handleBuyPointPackage(selectedPackage);
+    }, [handleBuyPointPackage, selectedPackage]);
+
+    useEffect(() => {
+        if (activeView === 'personal_info' && currentUserId && token) {
+            loadLatestUser().catch(() => {});
+        }
+
+        if (activeView === 'points_history' && currentUserId && token) {
+            loadPointData().catch(() => {});
+        }
+
+        if (activeView === 'video_earn') {
+            const todayKey = `watched_video_${new Date().toDateString()}`;
+            setHasWatchedToday(localStorage.getItem(todayKey) === 'true');
+            if (currentUserId && token) {
+                loadLatestUser().catch(() => {});
+            }
+        }
+    }, [activeView, currentUserId, loadLatestUser, loadPointData, token]);
+
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const returned = params.get('zalopay_return');
+        const transId = params.get('app_trans_id');
+
+        if (returned === '1') {
+            setActiveView('points_history');
+            setHasReturnedFromZaloPay(true);
+            setPaymentStatus('pending');
+            setPaymentMessage('Đã quay lại từ ZaloPay. Hệ thống đang kiểm tra trạng thái thanh toán...');
+            setPaymentCountdown(0);
+            if (transId) {
+                setPendingTransId(transId);
+                localStorage.setItem('pending_zalopay_trans_id', transId);
+            }
+
+            const cleanUrl = `${window.location.origin}/settings`;
+            window.history.replaceState({}, document.title, cleanUrl);
+        }
+    }, []);
+
+    useEffect(() => {
+        if (activeView !== 'points_history' || !pendingTransId) return undefined;
+
+        if ((paymentStatus === 'qr_ready' || paymentStatus === 'pending') && paymentCountdown > 0) {
+            const countdownTimer = setInterval(() => {
+                setPaymentCountdown((prev) => (prev > 0 ? prev - 1 : 0));
+            }, 1000);
+
+            return () => clearInterval(countdownTimer);
+        }
+
+        return undefined;
+    }, [activeView, paymentCountdown, paymentStatus, pendingTransId]);
+
+    useEffect(() => {
+        if (activeView !== 'points_history' || !pendingTransId) return undefined;
+        if ((paymentStatus === 'qr_ready' || paymentStatus === 'pending') && paymentCountdown === 0 && !isCheckingPayment) {
+            checkPaymentStatus({ expireIfPending: true, silentPending: true }).catch(() => {});
+        }
+        return undefined;
+    }, [activeView, checkPaymentStatus, isCheckingPayment, paymentCountdown, paymentStatus, pendingTransId]);
+
+    useEffect(() => {
+        if (activeView !== 'points_history' || !pendingTransId) return undefined;
+        if (!['qr_ready', 'pending'].includes(paymentStatus) || paymentCountdown <= 0) return undefined;
+
+        const pollTimer = setInterval(() => {
+            if (!isCheckingPayment) {
+                checkPaymentStatus({ silentPending: true }).catch(() => {});
+            }
+        }, PAYMENT_AUTO_POLL_INTERVAL_MS);
+
+        return () => clearInterval(pollTimer);
+    }, [activeView, checkPaymentStatus, isCheckingPayment, paymentCountdown, paymentStatus, pendingTransId]);
+
+    useEffect(() => {
+        if (!pendingTransId || !['qr_ready', 'pending'].includes(paymentStatus)) return undefined;
+
+        const handleFocus = () => {
+            setActiveView('points_history');
+            checkPaymentStatus({ silentPending: true }).catch(() => {});
         };
-        setCurrentUser(updatedUser);
-        localStorage.setItem('user', JSON.stringify(updatedUser));
-        alert(`Bạn đã nhận thêm ${amount} điểm!`);
-    };
 
-    const handleToggleTwoFactor = () => {
-        const next = !twoFactorEnabled;
-        setTwoFactorEnabled(next);
-        localStorage.setItem('twoFactorEnabled', String(next));
-        alert(
-            next
-                ? 'Đã bật xác thực 2 yếu tố (mô phỏng). Từ giờ khi có backend, bạn sẽ cần thêm mã 6 số khi đăng nhập.'
-                : 'Đã tắt xác thực 2 yếu tố cho tài khoản này (mô phỏng).'
-        );
-    };
+        window.addEventListener('focus', handleFocus);
+        return () => window.removeEventListener('focus', handleFocus);
+    }, [checkPaymentStatus, paymentStatus, pendingTransId]);
+
+    useEffect(() => {
+        if (hasReturnedFromZaloPay && activeView === 'points_history' && pendingTransId) {
+            checkPaymentStatus({ silentPending: true }).catch(() => {});
+            setHasReturnedFromZaloPay(false);
+        }
+    }, [activeView, checkPaymentStatus, hasReturnedFromZaloPay, pendingTransId]);
+
+    useEffect(() => {
+        if (paymentStatus === 'expired' && paymentQrUrl && !paymentMessage) {
+            setPaymentMessage('Mã QR đã hết hạn. Hãy bấm "Tạo QR mới" để tạo lại mã thanh toán.');
+        }
+    }, [paymentMessage, paymentQrUrl, paymentStatus]);
 
     if (activeView === 'personal_info' && currentUser) {
         return (
@@ -757,6 +644,9 @@ export default function Settings() {
                     user={currentUser}
                     onBack={() => setActiveView('main')}
                     onSave={handleSavePersonalInfo}
+                    isSaving={isSavingProfile}
+                    onDeleteAccount={handleDeleteAccount}
+                    isDeleting={isDeletingAccount}
                 />
             </div>
         );
@@ -768,6 +658,24 @@ export default function Settings() {
                 <PointsHistoryView
                     user={currentUser}
                     onBack={() => setActiveView('main')}
+                    pointHistory={pointHistory}
+                    isLoading={isLoadingPoints}
+                    error={pointError}
+                    onRefresh={loadPointData}
+                    onBuyPackage={handleBuyPointPackage}
+                    onCreatePaymentQr={handleCreatePaymentQr}
+                    paymentState={{
+                        isCreatingPayment,
+                        isCheckingPayment,
+                        pendingTransId,
+                        paymentQrUrl,
+                        selectedPackage,
+                        paymentMessage,
+                        paymentStatus,
+                        paymentCountdown,
+                        paymentSuccessInfo,
+                    }}
+                    onOpenPaymentLink={handleOpenPaymentLink}
                 />
             </div>
         );
@@ -779,7 +687,11 @@ export default function Settings() {
                 <VideoEarnView
                     user={currentUser}
                     onBack={() => setActiveView('main')}
-                    onEarnPoints={handleEarnPointsFromVideo}
+                    onEarnPoints={handleAwardVideoPoints}
+                    isVerified={isVerified}
+                    hasWatchedToday={hasWatchedToday}
+                    isLoading={isAwardingPoints}
+                    onGoVerify={() => setActiveView('verification')}
                 />
             </div>
         );
@@ -790,28 +702,21 @@ export default function Settings() {
             <div className="settings-page">
                 <ChangePasswordView
                     onBack={() => setActiveView('main')}
+                    onSubmit={handleChangePassword}
+                    isSaving={isChangingPassword}
                 />
             </div>
         );
     }
 
-    if (activeView === 'qr_login' && currentUser) {
+    if (activeView === 'verification' && currentUser) {
         return (
             <div className="settings-page">
-                <QrLoginView
+                <VerificationView
                     onBack={() => setActiveView('main')}
-                />
-            </div>
-        );
-    }
-
-    if (activeView === 'two_factor' && currentUser) {
-        return (
-            <div className="settings-page">
-                <TwoFactorView
-                    enabled={twoFactorEnabled}
-                    onToggle={handleToggleTwoFactor}
-                    onBack={() => setActiveView('main')}
+                    onSubmit={handleVerificationUpload}
+                    isSaving={isSubmittingVerification}
+                    isVerified={isVerified}
                 />
             </div>
         );
@@ -819,13 +724,10 @@ export default function Settings() {
 
     return (
         <div className="settings-page">
-
-            {/* Header */}
             <div className="settings-header">
                 <h1>Tài khoản</h1>
             </div>
 
-            {/* Profile or Login Prompt */}
             {currentUser ? (
                 <UserProfile
                     user={currentUser}
@@ -840,7 +742,6 @@ export default function Settings() {
                 />
             )}
 
-            {/* Account Settings — chỉ hiện khi đã đăng nhập */}
             {currentUser && (
                 <SettingsSection title="Tài khoản">
                     <SettingsItem
@@ -868,45 +769,14 @@ export default function Settings() {
                         onClick={() => setActiveView('change_password')}
                     />
                     <SettingsItem
-                        icon={QrCode}
-                        label="Quét mã QR đăng nhập"
-                        iconColor="#10b981"
-                        onClick={() => setActiveView('qr_login')}
-                    />
-                    <SettingsItem
                         icon={ShieldCheck}
-                        label="Xác thực 2 yếu tố"
+                        label="Xác minh tài khoản"
                         iconColor="#f59e0b"
-                        onClick={() => setActiveView('two_factor')}
+                        onClick={() => setActiveView('verification')}
                     />
                 </SettingsSection>
             )}
 
-            {/* General Settings — luôn hiện */}
-            <SettingsSection title="Cài đặt chung">
-                <SettingsItem
-                    icon={Globe}
-                    label="Ngôn ngữ"
-                    iconColor="#3b82f6"
-                    onClick={() => alert('Chức năng Ngôn ngữ đang được phát triển.')}
-                />
-                <SettingsItem
-                    icon={Moon}
-                    label="Chế độ tối"
-                    iconColor="#8b5cf6"
-                    isSwitch
-                    switchValue={isDarkMode}
-                    onSwitchChange={() => setIsDarkMode(!isDarkMode)}
-                />
-                <SettingsItem
-                    icon={HelpCircle}
-                    label="Hỗ trợ & Góp ý"
-                    iconColor="#10b981"
-                    onClick={() => alert('Chức năng Hỗ trợ đang được phát triển.')}
-                />
-            </SettingsSection>
-
-            {/* Logout — chỉ hiện khi đã đăng nhập */}
             {currentUser && (
                 <button className="settings-logout-btn" onClick={handleLogout}>
                     <LogOut size={18} />
