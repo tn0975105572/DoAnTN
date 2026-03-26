@@ -1,5 +1,5 @@
 'use no memo';
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { createElement, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     Home as HomeIcon, Map as MapIcon, UserPlus, MessageCircle, Bell, Settings,
@@ -30,6 +30,9 @@ const API_URLS = {
 };
 const POSTS_PER_CHUNK = 5;
 const INITIAL_LOAD_COUNT = 8;
+const INITIAL_PAGE_LOADING_MIN_MS = 700;
+const VIEW_HISTORY_STORAGE_PREFIX = 'olodo_home_seen_posts_';
+const VIEW_HISTORY_LIMIT = 250;
 const userInfoCache = new Map();
 const postDetailCache = new Map();
 const DEFAULT_AVATAR = 'https://i.pravatar.cc/80?u=guest';
@@ -39,6 +42,95 @@ function normalizeUrl(url) {
     if (!url) return url;
     // Khớp http://192.168.x.x:PORT hoặc http://10.x.x.x:PORT, ...
     return url.replace(/^http:\/\/(?!localhost)[\d.]+:(\d+)/, 'http://localhost:$1');
+}
+
+function getViewHistoryStorageKey(userId) {
+    return `${VIEW_HISTORY_STORAGE_PREFIX}${userId || 'guest'}`;
+}
+
+function readPostViewHistory(userId) {
+    if (!userId) return {};
+
+    try {
+        const raw = localStorage.getItem(getViewHistoryStorageKey(userId));
+        if (!raw) return {};
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+        return {};
+    }
+}
+
+function writePostViewHistory(userId, history) {
+    if (!userId || !history || typeof history !== 'object') return;
+
+    try {
+        const trimmedHistory = Object.fromEntries(
+            Object.entries(history)
+                .sort(([, left], [, right]) => (Number(right?.lastSeenAt) || 0) - (Number(left?.lastSeenAt) || 0))
+                .slice(0, VIEW_HISTORY_LIMIT)
+        );
+        localStorage.setItem(getViewHistoryStorageKey(userId), JSON.stringify(trimmedHistory));
+    } catch {
+        // Ignore storage failures on restrictive browsers.
+    }
+}
+
+function getPostViewMeta(viewHistory, postId) {
+    const entry = viewHistory?.[String(postId)];
+    const count = Number(entry?.count || 0);
+    const lastSeenAt = Number(entry?.lastSeenAt || 0);
+
+    return {
+        count: Number.isFinite(count) && count > 0 ? count : 0,
+        lastSeenAt: Number.isFinite(lastSeenAt) && lastSeenAt > 0 ? lastSeenAt : 0,
+    };
+}
+
+function compareItemsByViewPriority(left, right) {
+    const leftBucket = (left.count > 0 ? 2 : 0) + (left.isFriendPost ? 0 : 1);
+    const rightBucket = (right.count > 0 ? 2 : 0) + (right.isFriendPost ? 0 : 1);
+
+    if (leftBucket !== rightBucket) return leftBucket - rightBucket;
+    if (left.count !== right.count) return left.count - right.count;
+    if (left.lastSeenAt !== right.lastSeenAt) return left.lastSeenAt - right.lastSeenAt;
+    if (left.baseScore !== right.baseScore) return right.baseScore - left.baseScore;
+
+    return String(left.id).localeCompare(String(right.id));
+}
+
+function sortRecommendationsByViewHistory(recommendations, viewHistory) {
+    return [...recommendations].sort((left, right) => compareItemsByViewPriority(
+        {
+            id: left.ID_BaiDang,
+            isFriendPost: !!left.isFriendPost,
+            baseScore: Number(left.Score) || 0,
+            ...getPostViewMeta(viewHistory, left.ID_BaiDang),
+        },
+        {
+            id: right.ID_BaiDang,
+            isFriendPost: !!right.isFriendPost,
+            baseScore: Number(right.Score) || 0,
+            ...getPostViewMeta(viewHistory, right.ID_BaiDang),
+        }
+    ));
+}
+
+function sortPostsByViewHistory(posts, viewHistory) {
+    return [...posts].sort((left, right) => compareItemsByViewPriority(
+        {
+            id: left.id,
+            isFriendPost: !!left.isFriendPost,
+            baseScore: Number(left.rawTime) || 0,
+            ...getPostViewMeta(viewHistory, left.id),
+        },
+        {
+            id: right.id,
+            isFriendPost: !!right.isFriendPost,
+            baseScore: Number(right.rawTime) || 0,
+            ...getPostViewMeta(viewHistory, right.id),
+        }
+    ));
 }
 
 
@@ -152,10 +244,10 @@ function HeroBanner() {
 
                 {/* ── Quick Categories ── */}
                 <div className="hero-quick-cats">
-                    {HERO_CATEGORIES.map(({ icon: Icon, label, color }) => (
+                    {HERO_CATEGORIES.map(({ icon, label, color }) => (
                         <button key={label} className="hero-quick-cat">
                             <span className="hero-quick-cat-icon" style={{ background: color + '20', color }}>
-                                <Icon size={20} strokeWidth={2} />
+                                {createElement(icon, { size: 20, strokeWidth: 2 })}
                             </span>
                             <span className="hero-quick-cat-label">{label}</span>
                         </button>
@@ -346,6 +438,28 @@ function ShareModal({ post, onClose }) {
                             <span className="share-option-label">{opt.label}</span>
                         </button>
                     ))}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function HomePageLoader() {
+    return (
+        <div className="home-page-loader" role="status" aria-live="polite">
+            <div className="home-page-loader-card">
+                <div className="home-page-loader-badge">OLODO</div>
+                <h2>Đang tải trang chủ cho bạn</h2>
+                <p>
+                    Hệ thống đang sắp xếp lại bài đăng và giảm ưu tiên những bài bạn đã xem để feed đỡ lặp hơn.
+                </p>
+                <div className="home-page-loader-bar" aria-hidden="true">
+                    <div className="home-page-loader-bar-fill" />
+                </div>
+                <div className="home-page-loader-skeleton">
+                    <span />
+                    <span />
+                    <span />
                 </div>
             </div>
         </div>
@@ -654,19 +768,47 @@ export default function Home() {
     const [feedPosts, setFeedPosts] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isLoadingMore, setIsLoadingMore] = useState(false);
+    const [isPageLoading, setIsPageLoading] = useState(true);
     const [processedIndex, setProcessedIndex] = useState(0);
     const [fallbackPage, setFallbackPage] = useState(1);
     const [totalFallbackItems, setTotalFallbackItems] = useState(0);
     const [isRecommendationsExhausted, setIsRecommendationsExhausted] = useState(false);
-    const [seenPostIds, setSeenPostIds] = useState(new Set());
     const lastLoadTimeRef = useRef(0);
+    const pageLoadStartedAtRef = useRef(Date.now());
+    const pageLoaderTimeoutRef = useRef(null);
+    const hasFinishedInitialPageLoadRef = useRef(false);
+    const postElementRefs = useRef(new Map());
+    const sessionSeenPostIdsRef = useRef(new Set());
     const isAuthenticated = !!token && !!userId;
+
+    const finishInitialPageLoading = useCallback(() => {
+        if (hasFinishedInitialPageLoadRef.current) return;
+
+        hasFinishedInitialPageLoadRef.current = true;
+        const elapsed = Date.now() - pageLoadStartedAtRef.current;
+        const remaining = Math.max(0, INITIAL_PAGE_LOADING_MIN_MS - elapsed);
+
+        if (pageLoaderTimeoutRef.current) {
+            window.clearTimeout(pageLoaderTimeoutRef.current);
+        }
+
+        pageLoaderTimeoutRef.current = window.setTimeout(() => {
+            setIsPageLoading(false);
+        }, remaining);
+    }, []);
 
     // ── Load token & userId ──
     useEffect(() => {
         const syncAuth = () => {
-            setToken(localStorage.getItem('token') || '');
-            setUserId(localStorage.getItem('userId') || '');
+            const nextToken = localStorage.getItem('token') || '';
+            const nextUserId = localStorage.getItem('userId') || '';
+
+            setToken(nextToken);
+            setUserId(nextUserId);
+
+            if (!nextToken || !nextUserId) {
+                finishInitialPageLoading();
+            }
         };
         syncAuth();
         window.addEventListener('storage', syncAuth);
@@ -675,6 +817,12 @@ export default function Home() {
             window.removeEventListener('storage', syncAuth);
             window.removeEventListener('focus', syncAuth);
         };
+    }, [finishInitialPageLoading]);
+
+    useEffect(() => () => {
+        if (pageLoaderTimeoutRef.current) {
+            window.clearTimeout(pageLoaderTimeoutRef.current);
+        }
     }, []);
 
     // ── Hydrate: gọi 4 API song song cho mỗi bài ──
@@ -782,6 +930,35 @@ export default function Home() {
             .map(r => r.value);
     }, [token, userId]);
 
+    const registerPostElement = useCallback((postId, node) => {
+        const normalizedId = String(postId);
+        if (!normalizedId) return;
+
+        if (node) {
+            postElementRefs.current.set(normalizedId, node);
+            return;
+        }
+
+        postElementRefs.current.delete(normalizedId);
+    }, []);
+
+    const markPostAsSeen = useCallback((postId) => {
+        if (!userId || !postId) return;
+
+        const normalizedId = String(postId);
+        if (sessionSeenPostIdsRef.current.has(normalizedId)) return;
+
+        sessionSeenPostIdsRef.current.add(normalizedId);
+
+        const history = readPostViewHistory(userId);
+        const currentEntry = history[normalizedId];
+        history[normalizedId] = {
+            count: Math.min((Number(currentEntry?.count) || 0) + 1, 50),
+            lastSeenAt: Date.now(),
+        };
+        writePostViewHistory(userId, history);
+    }, [userId]);
+
     // ── Fetch lần đầu ──
     // ── Load thêm từ API chung (Fallback) ──
     const loadFallbackPosts = useCallback(async (page) => {
@@ -835,9 +1012,11 @@ export default function Home() {
             });
 
             if (formattedPosts.length > 0) {
+                const viewHistory = readPostViewHistory(userId);
+                const rankedPosts = sortPostsByViewHistory(formattedPosts, viewHistory);
                 setFeedPosts(prev => {
                     const existingIds = new Set(prev.map(p => p.id));
-                    return [...prev, ...formattedPosts.filter(p => !existingIds.has(p.id))];
+                    return [...prev, ...rankedPosts.filter(p => !existingIds.has(p.id))];
                 });
                 setFallbackPage(v => v + 1);
             }
@@ -846,7 +1025,7 @@ export default function Home() {
         } finally {
             setIsLoadingMore(false);
         }
-    }, [token]);
+    }, [token, userId]);
 
     // ── Fetch lần đầu ──
     const fetchInitialData = useCallback(async () => {
@@ -854,23 +1033,33 @@ export default function Home() {
         setIsLoading(true);
         userInfoCache.clear();
         postDetailCache.clear();
-        setSeenPostIds(new Set());
+        sessionSeenPostIdsRef.current = new Set();
+        setFeedPosts([]);
+        setAllRecommendations([]);
+        setProcessedIndex(0);
+        setFallbackPage(1);
+        setTotalFallbackItems(0);
+        setIsRecommendationsExhausted(false);
         try {
             const res = await fetch(`${API_URLS.RECOMMENDATIONS}${userId}`, {
                 headers: { Authorization: `Bearer ${token}` },
             });
             if (!res.ok) throw new Error('Failed to fetch recommendations');
             const recommendations = await res.json();
-            setAllRecommendations(recommendations);
+            const viewHistory = readPostViewHistory(userId);
+            const rankedRecommendations = sortRecommendationsByViewHistory(
+                Array.isArray(recommendations) ? recommendations : [],
+                viewHistory
+            );
+            setAllRecommendations(rankedRecommendations);
             
-            if (recommendations.length > 0) {
-                const firstChunk = recommendations.slice(0, INITIAL_LOAD_COUNT);
+            if (rankedRecommendations.length > 0) {
+                const firstChunk = rankedRecommendations.slice(0, INITIAL_LOAD_COUNT);
                 const posts = await hydratePostChunk(firstChunk);
                 setFeedPosts(posts);
                 setProcessedIndex(INITIAL_LOAD_COUNT);
-                setSeenPostIds(new Set(posts.map(p => p.id)));
                 
-                if (recommendations.length <= INITIAL_LOAD_COUNT) {
+                if (rankedRecommendations.length <= INITIAL_LOAD_COUNT) {
                     setIsRecommendationsExhausted(true);
                 }
             } else {
@@ -883,8 +1072,9 @@ export default function Home() {
             await loadFallbackPosts(1);
         } finally {
             setIsLoading(false);
+            finishInitialPageLoading();
         }
-    }, [token, userId, hydratePostChunk, loadFallbackPosts]);
+    }, [token, userId, hydratePostChunk, loadFallbackPosts, finishInitialPageLoading]);
 
     // ── Load thêm khi scroll ──
     const handleLoadMore = useCallback(async () => {
@@ -976,6 +1166,19 @@ export default function Home() {
 
     // ── Effects ──
     useEffect(() => {
+        if (token && userId) return;
+
+        setIsLoading(false);
+        setFeedPosts([]);
+        setAllRecommendations([]);
+        setProcessedIndex(0);
+        setFallbackPage(1);
+        setTotalFallbackItems(0);
+        setIsRecommendationsExhausted(false);
+        sessionSeenPostIdsRef.current = new Set();
+    }, [token, userId]);
+
+    useEffect(() => {
         if (token && userId) fetchInitialData();
     }, [token, userId, fetchInitialData]);
 
@@ -992,6 +1195,33 @@ export default function Home() {
         }
         return base;
     }, [feedPosts, activeFilter, activeTab]);
+
+    useEffect(() => {
+        if (isLoading || filteredFeed.length === 0 || typeof window === 'undefined' || !('IntersectionObserver' in window)) {
+            return undefined;
+        }
+
+        const observer = new window.IntersectionObserver((entries) => {
+            entries.forEach((entry) => {
+                if (!entry.isIntersecting || entry.intersectionRatio < 0.6) return;
+
+                const postId = entry.target.getAttribute('data-post-id');
+                if (!postId) return;
+
+                markPostAsSeen(postId);
+                observer.unobserve(entry.target);
+            });
+        }, {
+            threshold: [0.6],
+        });
+
+        filteredFeed.forEach((post) => {
+            const element = postElementRefs.current.get(String(post.id));
+            if (element) observer.observe(element);
+        });
+
+        return () => observer.disconnect();
+    }, [filteredFeed, isLoading, markPostAsSeen]);
 
     useEffect(() => {
         const onScroll = () => {
@@ -1160,7 +1390,9 @@ export default function Home() {
     }, [token, userId]);
 
     return (
-        <div className="home-page">
+        <>
+            {isPageLoading && <HomePageLoader />}
+            <div className={`home-page ${isPageLoading ? 'home-page-booting' : ''}`}>
 
             {/* ─── HERO BANNER (Chợ Tốt style) ─── */}
             <HeroBanner />
@@ -1180,7 +1412,7 @@ export default function Home() {
 
                 {/* Nav */}
                 <nav className="sidebar-nav">
-                    {NAV_ITEMS.map(({ icon: Icon, label, key, path }) => {
+                    {NAV_ITEMS.map(({ icon, label, key, path }) => {
                         const isActive = key === 'home';
                         const badge = navBadges[key] || 0;
                         const isLocked = !isAuthenticated && lockedNavKeys.has(key);
@@ -1194,7 +1426,7 @@ export default function Home() {
                                 }}
                             >
                                 <span className="nav-icon-wrap">
-                                    <Icon size={19} strokeWidth={2} />
+                                    {createElement(icon, { size: 19, strokeWidth: 2 })}
                                     {badge > 0 && <span className="nav-badge">{badge}</span>}
                                 </span>
                                 <span className="nav-label">{label}</span>
@@ -1211,10 +1443,10 @@ export default function Home() {
                         <ChevronRight size={14} strokeWidth={2} className="block-chevron" />
                     </div>
                     <div className="cat-list">
-                        {CATEGORIES.map(({ icon: Icon, label, color }) => (
+                        {CATEGORIES.map(({ icon, label, color }) => (
                             <button key={label} className="cat-item">
                                 <span className="cat-icon" style={{ background: color + '15', color }}>
-                                    <Icon size={15} strokeWidth={2} />
+                                    {createElement(icon, { size: 15, strokeWidth: 2 })}
                                 </span>
                                 <span className="cat-label">{label}</span>
                             </button>
@@ -1228,10 +1460,10 @@ export default function Home() {
 
                 {/* Stats Bar */}
                 <div className="stats-bar">
-                    {STATS.map(({ icon: Icon, label, value, color }) => (
+                    {STATS.map(({ icon, label, value, color }) => (
                         <div key={label} className="stat-card">
                             <span className="stat-icon" style={{ background: color + '15', color }}>
-                                <Icon size={18} strokeWidth={2} />
+                                {createElement(icon, { size: 18, strokeWidth: 2 })}
                             </span>
                             <div className="stat-info">
                                 <span className="stat-value">{value}</span>
@@ -1332,7 +1564,11 @@ export default function Home() {
                     </div>
                 ) : (
                     filteredFeed.map((p, index) => (
-                        <div key={p.id}>
+                        <div
+                            key={p.id}
+                            ref={(node) => registerPostElement(p.id, node)}
+                            data-post-id={p.id}
+                        >
                             <PostCard
                                 post={p}
                                 onLike={handleLike}
@@ -1541,7 +1777,7 @@ export default function Home() {
                 </div>
 
             </aside>
-
-        </div>
+            </div>
+        </>
     );
 }

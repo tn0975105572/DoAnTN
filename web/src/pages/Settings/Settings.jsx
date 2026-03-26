@@ -322,22 +322,22 @@ export default function Settings() {
         }
     };
 
-    const handleAwardVideoPoints = async () => {
+    const handleAwardVideoPoints = async (points = 100) => {
         if (!currentUserId || !token) {
             alert('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
-            return;
+            return false;
         }
 
         if (!isVerified) {
             setActiveView('verification');
-            return;
+            return false;
         }
 
         const todayKey = `watched_video_${new Date().toDateString()}`;
         if (localStorage.getItem(todayKey)) {
             setHasWatchedToday(true);
             alert('Bạn đã xem video hôm nay rồi!');
-            return;
+            return false;
         }
 
         setIsAwardingPoints(true);
@@ -346,7 +346,7 @@ export default function Settings() {
                 `${API_BASE_URL}/lich_su_tich_diem/addPoints`,
                 {
                     userId: currentUserId,
-                    pointChange: 100,
+                    pointChange: points,
                     transactionType: 'tang_diem',
                     description: 'Xem video quảng cáo',
                     referenceId: null,
@@ -357,9 +357,11 @@ export default function Settings() {
             localStorage.setItem(todayKey, 'true');
             setHasWatchedToday(true);
             await Promise.all([loadLatestUser(), loadPointData()]);
-            alert('Bạn đã nhận được 100 điểm!');
+            alert(`Bạn đã nhận được ${points} điểm!`);
+            return true;
         } catch (error) {
             alert(error.response?.data?.message || 'Không thể cộng điểm từ video.');
+            return false;
         } finally {
             setIsAwardingPoints(false);
         }
