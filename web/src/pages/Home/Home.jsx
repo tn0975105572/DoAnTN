@@ -10,6 +10,7 @@ import {
     X, Copy, Check
 } from 'lucide-react';
 import './Home.css';
+import PostMediaGallery from '../../components/post/PostMediaGallery';
 
 const API_BASE = 'http://localhost:3000';
 const API_URLS = {
@@ -631,7 +632,7 @@ function LikeStats({ postId, liked, likeCount, comments }) {
     );
 }
 
-function PostCard({ post, onCommentClick, onShareClick, onMessageClick, onLike }) {
+function PostCard({ post, onCommentClick, onShareClick, onMessageClick, onLike, onOpenDetail }) {
     // Khi có onLike (API mode) → dùng giá trị từ props trực tiếp
     // Khi không có onLike (mock mode) 
     const [localLiked, setLocalLiked] = useState(false);
@@ -643,6 +644,9 @@ function PostCard({ post, onCommentClick, onShareClick, onMessageClick, onLike }
     const liked = onLike ? (post.liked ?? false) : localLiked;
     const likeCount = onLike ? (post.likes ?? 0) : localLikeCount;
     const statusColor = post.statusColor || post.categoryColor || '#7f001f';
+    const galleryImages = Array.isArray(post.imageUrls) && post.imageUrls.length
+        ? post.imageUrls
+        : [post.img];
 
     const handleLike = () => {
         if (onLike) {
@@ -651,6 +655,10 @@ function PostCard({ post, onCommentClick, onShareClick, onMessageClick, onLike }
             setLocalLiked(!localLiked);
             setLocalLikeCount(localLiked ? localLikeCount - 1 : localLikeCount + 1);
         }
+    };
+
+    const handleOpenDetail = () => {
+        onOpenDetail?.(post);
     };
 
     return (
@@ -696,7 +704,9 @@ function PostCard({ post, onCommentClick, onShareClick, onMessageClick, onLike }
 
             {/* Title & Price */}
             <div className="post-title-row">
-                <h3 className="post-title">{post.title}</h3>
+                <button type="button" className="post-title-link" onClick={handleOpenDetail}>
+                    <h3 className="post-title">{post.title}</h3>
+                </button>
                 <div className="post-price-badge">{post.price} ₫</div>
             </div>
 
@@ -711,12 +721,13 @@ function PostCard({ post, onCommentClick, onShareClick, onMessageClick, onLike }
             )}
 
             {/* Image */}
-            <div className="post-img-wrap">
-                <img src={post.img} alt={post.title} className="post-img" loading="lazy" />
-                <div className="post-img-overlay">
-                    <span className="img-overlay-price">{post.price} VNĐ</span>
-                </div>
-            </div>
+            <PostMediaGallery
+                images={galleryImages}
+                title={post.title}
+                badge={`${post.price} VNĐ`}
+                onOpen={handleOpenDetail}
+                className="post-media-gallery"
+            />
 
             {/* Stats */}
             <LikeStats postId={post.id} liked={liked} likeCount={likeCount} comments={post.comments} />
@@ -882,7 +893,7 @@ export default function Home() {
                 if (cachedUser) { authorName = cachedUser.name; authorAvatar = cachedUser.avatar; }
 
                 // URL ảnh — thêm localhost và normalizẽ IP
-                const imageUrls = postImages.slice(0, 5).map(img => {
+                const imageUrls = postImages.map(img => {
                     const link = img.LinkAnh;
                     const full = (link.startsWith('http://') || link.startsWith('https://'))
                         ? link
@@ -1572,6 +1583,7 @@ export default function Home() {
                             <PostCard
                                 post={p}
                                 onLike={handleLike}
+                                onOpenDetail={(postData) => navigate(`/post/${postData.id}`, { state: { post: postData } })}
                                 onCommentClick={(postData) => navigate(`/post/${postData.id}/comments`, { state: { post: postData } })}
                                 onShareClick={(postData) => setSharePost(postData)}
                                 onMessageClick={(postData) => {

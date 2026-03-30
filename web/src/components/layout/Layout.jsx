@@ -148,9 +148,9 @@ const Layout = () => {
                     <LogOut size={16} />
                   </button>
                 </div>
-                <button className="btn-dang-tin" onClick={() => navigate('/products')}>
+                <button className="btn-dang-tin" onClick={() => navigate('/create-post')}>
                   <ShoppingBag size={16} />
-                  <span>Đăng ký</span>
+                  <span>Đăng tin</span>
                 </button>
               </>
             ) : (

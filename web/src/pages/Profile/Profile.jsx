@@ -1,1013 +1,1414 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
-  ArrowLeft,
-  BadgeCheck,
-  BookOpen,
-  BarChart2,
-  Briefcase,
-  Calendar,
-  ChevronLeft,
-  ChevronRight,
-  Clock,
-  Copy,
-  Eye,
-  Heart,
-  LayoutDashboard,
-  MapPin,
-  MessageCircle,
-  Pencil,
-  Phone,
-  PlusCircle,
-  Send,
-  Settings,
-  Share2,
-  ShieldCheck,
-  Star,
-  Store,
-  Tag,
-  Timer,
-  Trash2,
-  TrendingUp,
-  UserPlus,
-  Zap,
+    ArrowLeft,
+    BadgeCheck,
+    Calendar,
+    Check,
+    Copy,
+    Crown,
+    ExternalLink,
+    GraduationCap,
+    Heart,
+    Loader2,
+    Mail,
+    MapPin,
+    MessageCircle,
+    Pencil,
+    PlusCircle,
+    RefreshCw,
+    Settings,
+    ShieldCheck,
+    Sparkles,
+    Star,
+    Store,
+    Trash2,
+    Trophy,
+    UserCheck,
+    UserMinus,
+    UserPlus,
+    Users,
+    X,
+    XCircle,
 } from 'lucide-react';
+import { API_BASE_URL } from '../../constants';
 import './Profile.css';
+import PostMediaGallery from '../../components/post/PostMediaGallery';
 
-const MOCK_LISTINGS = [
-  {
-    id: 'p1',
-    title: 'MacBook Pro 14" M3 — Còn BH 6 tháng',
-    price: '38.000.000 ₫',
-    location: 'Hà Nội',
-    time: '2 giờ trước',
-    img: 'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?q=80&w=1000',
-    images: [
-      'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?q=80&w=900',
-      'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?q=80&w=600',
-      'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?q=80&w=500',
-    ],
-    desc: 'MacBook Pro 14" chip M3, máy sinh viên dùng kỹ, còn bảo hành 6 tháng. Full hộp, sạc zin, pin khỏe, không xước cấn, sẵn sàng lên bàn học mới.',
-    likes: 142,
-    comments: 38,
-    tag: 'Điện tử',
-  },
-  {
-    id: 'p2',
-    title: 'iPad Air 5 + Apple Pencil (fullbox)',
-    price: '11.900.000 ₫',
-    location: 'TP.HCM',
-    time: 'Hôm qua',
-    img: 'https://images.unsplash.com/photo-1585790050230-5dd28404ccb9?q=80&w=1000',
-    images: [
-      'https://images.unsplash.com/photo-1585790050230-5dd28404ccb9?q=80&w=900',
-      'https://images.unsplash.com/photo-1618380987973-d06b0b37d2b6?q=80&w=600',
-      'https://images.unsplash.com/photo-1592750475338-74b7b21085ab?q=80&w=600',
-    ],
-    desc: 'Combo iPad Air 5 + Apple Pencil, rất hợp cho sinh viên ghi chú, vẽ, làm slide. Máy ít dùng, không trầy, kèm ốp và cường lực.',
-    likes: 68,
-    comments: 12,
-    tag: 'Học tập',
-  },
-  {
-    id: 'p3',
-    title: 'Xe đạp thể thao Giant ATX 830 — Như mới',
-    price: '5.200.000 ₫',
-    location: 'Đà Nẵng',
-    time: '3 ngày trước',
-    img: 'https://images.unsplash.com/photo-1485965120184-e220f721d03e?q=80&w=1000',
-    images: [
-      'https://images.unsplash.com/photo-1485965120184-e220f721d03e?q=80&w=900',
-      'https://images.unsplash.com/photo-1485963631004-f2e4844e3510?q=80&w=600',
-      'https://images.unsplash.com/photo-1485963631004-f2e4844e3510?q=80&w=500',
-    ],
-    desc: 'Xe đạp Giant ATX 830 chính hãng, đi học, đi chơi đều ổn. Đã bảo dưỡng định kỳ, thắng, phuộc, lốp hoạt động mượt, tặng kèm mũ bảo hiểm.',
-    likes: 41,
-    comments: 9,
-    tag: 'Xe cộ',
-  },
-];
+const DEFAULT_AVATAR = 'https://i.pravatar.cc/200?u=profile-user';
 
-const MOCK_REVIEWS = [
-  {
-    id: 'r1',
-    name: 'Phạm Minh Đức',
-    avatar: 'https://i.pravatar.cc/80?img=12',
-    rating: 5,
-    time: '1 tuần trước',
-    text: 'Giao dịch nhanh, đúng hẹn. Sản phẩm như mô tả, đóng gói kỹ. 10/10!',
-  },
-  {
-    id: 'r2',
-    name: 'Trần Thu Hà',
-    avatar: 'https://i.pravatar.cc/80?img=5',
-    rating: 4,
-    time: '2 tuần trước',
-    text: 'Bạn nhiệt tình, phản hồi nhanh. Có thương lượng nhẹ, nói chuyện dễ chịu.',
-  },
-  {
-    id: 'r3',
-    name: 'Lê Thị Lan',
-    avatar: 'https://i.pravatar.cc/80?img=47',
-    rating: 5,
-    time: '1 tháng trước',
-    text: 'Chủ shop uy tín, hỗ trợ ship và kiểm tra hàng trước khi nhận.',
-  },
-];
-
-const SKILLS = ['Đóng gói', 'Trả lời nhanh', 'Chụp ảnh sản phẩm', 'Thương lượng', 'Giao dịch an toàn', 'Sinh viên verified'];
-
-const BADGES = [
-  { icon: ShieldCheck, label: 'Đã xác thực', tone: 'success' },
-  { icon: Zap, label: 'Phản hồi nhanh', tone: 'gold' },
-  { icon: BadgeCheck, label: 'Tỉ lệ đúng hẹn 98%', tone: 'primary' },
-];
-
-const MOCK_LISTING_COMMENTS = {
-  p1: [
-    { id: 'c11', name: 'Phạm Minh Đức', time: '1 giờ trước', text: 'Máy còn bảo hành hãng không bạn? Có hoá đơn không ạ?', likes: 5 },
-    { id: 'c12', name: 'Trần Thu Hà', time: '45 phút trước', text: 'Bạn cho xin thêm ảnh góc cạnh + cycle pin nhé!', likes: 2 },
-    { id: 'c13', name: 'Lê Thị Lan', time: '30 phút trước', text: 'Mình ở Đà Nẵng, bạn hỗ trợ ship/ COD được không?', likes: 1 },
-  ],
-  p2: [
-    { id: 'c21', name: 'Nguyễn Thị Hương', time: '2 giờ trước', text: 'iPad còn đẹp không bạn? Màn có ám/ điểm chết không?', likes: 3 },
-    { id: 'c22', name: 'Vũ Hoàng Nam', time: 'Hôm qua', text: 'Pencil gen mấy vậy bạn? Giá fix thêm chút được không?', likes: 1 },
-    { id: 'c23', name: 'Phạm Minh Đức', time: 'Hôm qua', text: 'Có nhận giao trực tiếp tại trường không ạ?', likes: 0 },
-  ],
-  p3: [
-    { id: 'c31', name: 'Trần Văn Nam', time: '3 ngày trước', text: 'Khung size bao nhiêu vậy bạn? Chiều cao 1m75 đi ổn không?', likes: 2 },
-    { id: 'c32', name: 'Lê Thị Lan', time: '3 ngày trước', text: 'Xe đã thay lốp/ xích lần nào chưa ạ?', likes: 1 },
-    { id: 'c33', name: 'Nguyễn Thị Hương', time: '4 ngày trước', text: 'Bạn có bớt chút cho sinh viên không?', likes: 4 },
-  ],
+const BADGE_ICONS = {
+    shield: ShieldCheck,
+    crown: Crown,
+    sparkles: Sparkles,
+    store: Store,
+    users: Users,
+    heart: Heart,
+    user: BadgeCheck,
 };
 
-function Stars({ value }) {
-  return (
-    <span className="pf-stars" aria-label={`${value} sao`}>
-      {Array.from({ length: 5 }).map((_, i) => (
-        <Star key={i} size={14} strokeWidth={2} fill={i < value ? 'currentColor' : 'none'} />
-      ))}
-    </span>
-  );
-}
+const MANAGE_STATUSES = [
+    { value: 'dang_ban', label: 'Đang bán' },
+    { value: 'da_ban', label: 'Đã bán' },
+    { value: 'da_trao_doi', label: 'Đã trao đổi' },
+    { value: 'da_tang', label: 'Đã tặng' },
+];
 
-function Stat({ icon: Icon, label, value }) {
-  return (
-    <div className="pf-stat">
-      <span className="pf-stat-icon">
-        <Icon size={16} strokeWidth={2} />
-      </span>
-      <div className="pf-stat-meta">
-        <span className="pf-stat-value">{value}</span>
-        <span className="pf-stat-label">{label}</span>
-      </div>
-    </div>
-  );
-}
-
-function ListingCard({ listing, onViewComments, onSelect, featured }) {
-  return (
-    <article
-      className={`pf-listing${featured ? ' pf-listing--featured' : ''}`}
-      onClick={() => onSelect?.(listing)}
-      style={{ cursor: 'pointer' }}
-    >
-      <div className="pf-listing-media">
-        <img src={listing.img} alt={listing.title} loading="lazy" />
-        <div className="pf-listing-overlay" />
-        <span className="pf-listing-tag">{listing.tag}</span>
-        <span className="pf-listing-price-badge">{listing.price}</span>
-        {featured && <span className="pf-listing-featured-badge"><Zap size={12} strokeWidth={2.5} /> Nổi bật</span>}
-      </div>
-      <div className="pf-listing-body">
-        <h3 className="pf-listing-title">{listing.title}</h3>
-        {listing.desc && <p className="pf-listing-desc">{listing.desc}</p>}
-        <div className="pf-listing-info">
-          <span className="pf-listing-meta">
-            <MapPin size={13} strokeWidth={2} /> {listing.location}
-          </span>
-          <span className="pf-listing-meta">
-            <Timer size={13} strokeWidth={2} /> {listing.time}
-          </span>
-        </div>
-        <div className="pf-listing-foot">
-          <div className="pf-listing-stats">
-            <span className="pf-mini">
-              <Heart size={14} strokeWidth={2} /> {listing.likes}
-            </span>
-            <span className="pf-mini">
-              <MessageCircle size={14} strokeWidth={2} /> {listing.comments}
-            </span>
-          </div>
-          <button
-            type="button"
-            className="pf-mini-btn"
-            onClick={(e) => { e.stopPropagation(); onViewComments?.(listing); }}
-          >
-            Xem bình luận →
-          </button>
-        </div>
-      </div>
-    </article>
-  );
-}
-
-function ListingDetail({ listing, onBack, onOpenComments, sellerName, sellerAvatar }) {
-  const allImages = listing.images?.length ? listing.images : [listing.img];
-  const [activeImg, setActiveImg] = useState(0);
-  const [liked, setLiked] = useState(false);
-  const comments = MOCK_LISTING_COMMENTS[listing.id] || [];
-
-  const prevImg = () => setActiveImg((i) => (i > 0 ? i - 1 : allImages.length - 1));
-  const nextImg = () => setActiveImg((i) => (i < allImages.length - 1 ? i + 1 : 0));
-
-  const shareUrl = useMemo(
-    () => `${window.location.origin}/post/${listing.id}/comments`,
-    [listing.id],
-  );
-
-  const handleShare = async () => {
-    const payload = { title: listing.title, text: `${listing.title} • ${listing.price}`, url: shareUrl };
+const getBackendOrigin = () => {
     try {
-      if (navigator.share) {
-        await navigator.share(payload);
-        return;
-      }
+        return new URL(API_BASE_URL).origin;
     } catch {
-      // ignore share cancel/errors; fallback to clipboard
+        return 'http://localhost:3000';
     }
-    try {
-      await navigator.clipboard.writeText(shareUrl);
-    } catch {
-      // no-op
+};
+
+const formatNumber = (value) => new Intl.NumberFormat('vi-VN').format(Number(value || 0));
+
+const formatCurrency = (value) => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric) || numeric <= 0) {
+        return 'Liên hệ';
     }
-  };
 
-  return (
-    <div className="ld">
-      {/* Header */}
-      <div className="ld-header">
-        <button type="button" className="ld-back" onClick={onBack}>
-          <ArrowLeft size={18} strokeWidth={2.5} />
-          Quay lại danh sách
-        </button>
-        <div className="ld-header-actions">
-          <button type="button" className="ld-action-btn" onClick={() => setLiked(!liked)}>
-            <Heart size={16} strokeWidth={2} fill={liked ? 'currentColor' : 'none'} className={liked ? 'ld-liked' : ''} />
-          </button>
-          <button type="button" className="ld-action-btn" onClick={handleShare} title="Chia sẻ (copy link nếu không hỗ trợ share)">
-            <Share2 size={16} strokeWidth={2} />
-          </button>
+    return new Intl.NumberFormat('vi-VN', {
+        style: 'currency',
+        currency: 'VND',
+        maximumFractionDigits: 0,
+    }).format(numeric);
+};
+
+const formatDate = (value, withTime = false) => {
+    if (!value) return 'Chưa cập nhật';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return 'Chưa cập nhật';
+
+    return date.toLocaleString(
+        'vi-VN',
+        withTime
+            ? {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+            }
+            : {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+            },
+    );
+};
+
+const normalizeAssetUrl = (raw, backendOrigin) => {
+    if (!raw || typeof raw !== 'string') return '';
+
+    if (raw.startsWith('http://') || raw.startsWith('https://')) {
+        try {
+            const url = new URL(raw);
+            if (url.pathname.startsWith('/uploads/')) {
+                return `${backendOrigin}${url.pathname}`;
+            }
+            return raw;
+        } catch {
+            return raw;
+        }
+    }
+
+    const cleaned = raw.replace(/^\/+/, '');
+    if (!cleaned) return '';
+    if (cleaned.startsWith('uploads/')) {
+        return `${backendOrigin}/${cleaned}`;
+    }
+
+    return `${backendOrigin}/uploads/${cleaned}`;
+};
+
+const normalizeListing = (listing, backendOrigin) => {
+    const images = (listing?.images || [])
+        .map((item) => normalizeAssetUrl(item, backendOrigin))
+        .filter(Boolean);
+    const primaryImage = normalizeAssetUrl(listing?.primaryImage, backendOrigin) || images[0] || DEFAULT_AVATAR;
+
+    return {
+        ...listing,
+        images: images.length ? images : [primaryImage],
+        primaryImage,
+    };
+};
+
+const normalizeProfilePayload = (payload, backendOrigin) => {
+    const featured = (payload?.listings?.featured || []).map((listing) => normalizeListing(listing, backendOrigin));
+    const items = (payload?.listings?.items || []).map((listing) => normalizeListing(listing, backendOrigin));
+
+    return {
+        ...payload,
+        user: {
+            ...payload?.user,
+            avatar: normalizeAssetUrl(payload?.user?.avatar, backendOrigin) || DEFAULT_AVATAR,
+        },
+        friendsPreview: (payload?.friendsPreview || []).map((friend) => ({
+            ...friend,
+            avatar: normalizeAssetUrl(friend.avatar, backendOrigin) || `https://i.pravatar.cc/80?u=${encodeURIComponent(friend.id || 'friend')}`,
+        })),
+        listings: {
+            ...payload?.listings,
+            featured,
+            items,
+        },
+        reviews: {
+            ...payload?.reviews,
+            items: (payload?.reviews?.items || []).map((review) => ({
+                ...review,
+                author: {
+                    ...review.author,
+                    avatar: normalizeAssetUrl(review?.author?.avatar, backendOrigin) || `https://i.pravatar.cc/80?u=${encodeURIComponent(review?.author?.id || 'reviewer')}`,
+                },
+            })),
+        },
+    };
+};
+
+const createListingNavigationState = (listing, profileUser, formatDateValue) => ({
+    id: listing?.id || '',
+    authorId: listing?.userId || profileUser?.id || '',
+    author: profileUser?.name || 'Người dùng OLODO',
+    avatar: profileUser?.avatar || DEFAULT_AVATAR,
+    time: formatDateValue(listing?.createdAt, true),
+    location: listing?.location || '',
+    title: listing?.title || 'Bài đăng',
+    desc: listing?.description || '',
+    price: Number(listing?.price || 0),
+    img: listing?.primaryImage || listing?.images?.[0] || DEFAULT_AVATAR,
+    imageUrls: listing?.images || [],
+    likes: Number(listing?.likeCount || 0),
+    comments: Number(listing?.commentCount || 0),
+    category: listing?.categoryName || '',
+    postTypeName: listing?.postTypeName || '',
+    trang_thai: listing?.statusLabel || listing?.status || '',
+});
+
+function Stars({ value, interactive = false, onChange }) {
+    return (
+        <div className={`pr-stars${interactive ? ' interactive' : ''}`}>
+            {Array.from({ length: 5 }).map((_, index) => {
+                const score = index + 1;
+                const active = score <= Number(value || 0);
+
+                if (interactive) {
+                    return (
+                        <button
+                            key={score}
+                            type="button"
+                            className={`pr-star-btn${active ? ' active' : ''}`}
+                            onClick={() => onChange?.(score)}
+                            aria-label={`${score} sao`}
+                        >
+                            <Star size={16} strokeWidth={2} fill={active ? 'currentColor' : 'none'} />
+                        </button>
+                    );
+                }
+
+                return (
+                    <span key={score} className={active ? 'active' : ''}>
+                        <Star size={16} strokeWidth={2} fill={active ? 'currentColor' : 'none'} />
+                    </span>
+                );
+            })}
         </div>
-      </div>
+    );
+}
 
-      {/* Image Gallery */}
-      <div className="ld-gallery">
-        <div className="ld-gallery-main">
-          <img src={allImages[activeImg]} alt={listing.title} />
-          <div className="ld-gallery-overlay" />
-          <span className="ld-gallery-counter">{activeImg + 1} / {allImages.length}</span>
-          {allImages.length > 1 && (
-            <>
-              <button type="button" className="ld-gallery-nav ld-gallery-prev" onClick={prevImg}>
-                <ChevronLeft size={20} strokeWidth={2.5} />
-              </button>
-              <button type="button" className="ld-gallery-nav ld-gallery-next" onClick={nextImg}>
-                <ChevronRight size={20} strokeWidth={2.5} />
-              </button>
-            </>
-          )}
+function BadgePill({ badge }) {
+    const Icon = BADGE_ICONS[badge.icon] || BadgeCheck;
+
+    return (
+        <span className={`pr-badge tone-${badge.tone || 'neutral'}`} title={badge.description || badge.label}>
+            <Icon size={14} strokeWidth={2.2} />
+            {badge.label}
+        </span>
+    );
+}
+
+function EmptyState({ title, description, action }) {
+    return (
+        <div className="pr-empty">
+            <div className="pr-empty-icon">
+                <Sparkles size={24} strokeWidth={2} />
+            </div>
+            <h3>{title}</h3>
+            <p>{description}</p>
+            {action}
         </div>
-        {allImages.length > 1 && (
-          <div className="ld-gallery-thumbs">
-            {allImages.map((src, idx) => (
-              <button
-                key={src + idx}
-                type="button"
-                className={`ld-thumb${idx === activeImg ? ' ld-thumb--active' : ''}`}
-                onClick={() => setActiveImg(idx)}
-              >
-                <img src={src} alt={`${listing.title} ${idx + 1}`} />
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Content */}
-      <div className="ld-content">
-        <div className="ld-main">
-          {/* Title & Tag */}
-          <div className="ld-title-row">
-            <span className="ld-tag"><Tag size={12} strokeWidth={2.5} /> {listing.tag}</span>
-            <span className="ld-time"><Clock size={12} strokeWidth={2} /> {listing.time}</span>
-          </div>
-          <h2 className="ld-title">{listing.title}</h2>
-
-          {/* Price */}
-          <div className="ld-price-section">
-            <span className="ld-price">{listing.price}</span>
-            <span className="ld-price-note">Có thể thương lượng</span>
-          </div>
-
-          {/* Description */}
-          <div className="ld-section">
-            <h3 className="ld-section-title">Mô tả chi tiết</h3>
-            <p className="ld-desc">{listing.desc}</p>
-          </div>
-
-          {/* Info Grid */}
-          <div className="ld-info-grid">
-            <div className="ld-info-item">
-              <MapPin size={16} strokeWidth={2} />
-              <div>
-                <span className="ld-info-label">Khu vực</span>
-                <span className="ld-info-value">{listing.location}</span>
-              </div>
-            </div>
-            <div className="ld-info-item">
-              <Eye size={16} strokeWidth={2} />
-              <div>
-                <span className="ld-info-label">Lượt xem</span>
-                <span className="ld-info-value">{listing.likes + listing.comments + 200}</span>
-              </div>
-            </div>
-            <div className="ld-info-item">
-              <Heart size={16} strokeWidth={2} />
-              <div>
-                <span className="ld-info-label">Yêu thích</span>
-                <span className="ld-info-value">{listing.likes}</span>
-              </div>
-            </div>
-            <div className="ld-info-item">
-              <MessageCircle size={16} strokeWidth={2} />
-              <div>
-                <span className="ld-info-label">Bình luận</span>
-                <span className="ld-info-value">{listing.comments}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Safety */}
-          <div className="ld-safety">
-            <ShieldCheck size={16} strokeWidth={2} />
-            <span>Hẹn gặp nơi công cộng, kiểm tra hàng trước khi thanh toán. Ưu tiên COD.</span>
-          </div>
-
-          {/* Comments Preview */}
-          <div className="ld-section">
-            <div className="ld-section-head">
-              <h3 className="ld-section-title">
-                <MessageCircle size={16} strokeWidth={2} />
-                Bình luận nổi bật
-              </h3>
-              <button
-                type="button"
-                className="ld-link"
-                onClick={() => onOpenComments?.(listing)}
-              >
-                Xem tất cả →
-              </button>
-            </div>
-            {comments.length === 0 ? (
-              <div className="ld-empty">
-                Chưa có bình luận. Hãy đặt câu hỏi đầu tiên để chốt nhanh hơn.
-              </div>
-            ) : (
-              <div className="ld-comments">
-                {comments.slice(0, 3).map((c) => (
-                  <div key={c.id} className="ld-comment">
-                    <div className="ld-comment-avatar" aria-hidden>
-                      {c.name.charAt(0).toUpperCase()}
-                    </div>
-                    <div className="ld-comment-body">
-                      <div className="ld-comment-head">
-                        <span className="ld-comment-name">{c.name}</span>
-                        <span className="ld-comment-dot">•</span>
-                        <span className="ld-comment-time">{c.time}</span>
-                        {typeof c.likes === 'number' && (
-                          <span className="ld-comment-like">
-                            <Heart size={12} strokeWidth={2} /> {c.likes}
-                          </span>
-                        )}
-                      </div>
-                      <p className="ld-comment-text">{c.text}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-            <div className="ld-comments-cta">
-              <button type="button" className="ld-comments-btn ld-comments-btn-primary" onClick={() => onOpenComments?.(listing)}>
-                <MessageCircle size={16} strokeWidth={2} />
-                Viết bình luận / hỏi nhanh
-              </button>
-              <button type="button" className="ld-comments-btn ld-comments-btn-ghost" onClick={handleShare}>
-                <Share2 size={16} strokeWidth={2} />
-                Copy link
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Sidebar */}
-        <div className="ld-sidebar">
-          {/* Seller Card */}
-          <div className="ld-seller-card">
-            <div className="ld-seller-top">
-              <div className="ld-seller-avatar">
-                <span>{sellerAvatar}</span>
-              </div>
-              <div className="ld-seller-info">
-                <span className="ld-seller-name">{sellerName}</span>
-                <span className="ld-seller-badge">
-                  <BadgeCheck size={12} strokeWidth={2.5} /> Đã xác thực
-                </span>
-              </div>
-            </div>
-            <div className="ld-seller-stats">
-              <div className="ld-seller-stat">
-                <span className="ld-seller-stat-v">4.9</span>
-                <span className="ld-seller-stat-l">Đánh giá</span>
-              </div>
-              <div className="ld-seller-stat">
-                <span className="ld-seller-stat-v">98%</span>
-                <span className="ld-seller-stat-l">Đúng hẹn</span>
-              </div>
-              <div className="ld-seller-stat">
-                <span className="ld-seller-stat-v">~5p</span>
-                <span className="ld-seller-stat-l">Phản hồi</span>
-              </div>
-            </div>
-          </div>
-
-          {/* CTA Buttons */}
-          <div className="ld-cta">
-            <button type="button" className="ld-cta-btn ld-cta-primary">
-              <MessageCircle size={18} strokeWidth={2} />
-              Nhắn tin cho người bán
-            </button>
-            <button type="button" className="ld-cta-btn ld-cta-secondary">
-              <Phone size={18} strokeWidth={2} />
-              Gọi điện
-            </button>
-            <button type="button" className="ld-cta-btn ld-cta-ghost">
-              <Send size={18} strokeWidth={2} />
-              Gửi đề nghị mua
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Mobile sticky CTA */}
-      <div className="ld-sticky">
-        <div className="ld-sticky-left">
-          <div className="ld-sticky-price">{listing.price}</div>
-          <div className="ld-sticky-sub">{listing.location} · {listing.time}</div>
-        </div>
-        <div className="ld-sticky-actions">
-          <button type="button" className="ld-sticky-btn ld-sticky-btn-ghost" onClick={() => onOpenComments?.(listing)}>
-            <MessageCircle size={18} strokeWidth={2} />
-          </button>
-          <button type="button" className="ld-sticky-btn ld-sticky-btn-primary">
-            Nhắn tin
-          </button>
-        </div>
-      </div>
-    </div>
-  );
+    );
 }
 
 export default function Profile() {
-  const navigate = useNavigate();
-  const [tab, setTab] = useState('overview');
-  const [copied, setCopied] = useState(false);
-  const [currentUser, setCurrentUser] = useState(() => {
-    const savedUser = localStorage.getItem('user');
-    return savedUser ? JSON.parse(savedUser) : null;
-  });
-  const [selectedListing, setSelectedListing] = useState(null);
+    const navigate = useNavigate();
+    const location = useLocation();
+    const { userId: routeUserId } = useParams();
+    const [profile, setProfile] = useState(null);
+    const [tab, setTab] = useState('overview');
+    const [selectedListingId, setSelectedListingId] = useState('');
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
+    const [feedback, setFeedback] = useState(null);
+    const [reviewForm, setReviewForm] = useState({ rating: 5, comment: '' });
+    const [relationshipBusy, setRelationshipBusy] = useState(false);
+    const [reviewBusy, setReviewBusy] = useState(false);
+    const [listingBusyId, setListingBusyId] = useState('');
 
-  const displayUser = useMemo(() => {
-    if (currentUser) {
-      const name = currentUser.ho_ten || 'Người dùng';
-      return {
-        name,
-        headline: 'Chợ sinh viên — chốt nhanh, giao dịch đẹp.',
-        avatarText: name.charAt(0).toUpperCase(),
-        location: currentUser.dia_chi || 'Việt Nam',
-        school: currentUser.truong || 'Đại học (chưa cập nhật)',
-        join: '2026',
-        phone: currentUser.so_dien_thoai || 'Chưa cập nhật',
-      };
+    const viewerId = useMemo(() => localStorage.getItem('userId') || '', []);
+    const token = useMemo(() => localStorage.getItem('token') || '', []);
+    const backendOrigin = useMemo(() => getBackendOrigin(), []);
+    const stateUserId = location.state?.userId ? String(location.state.userId) : '';
+    const targetUserId = routeUserId || stateUserId || viewerId || '';
+
+    const apiFetch = useCallback(async (path, options = {}) => {
+        const headers = {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            ...(options.headers || {}),
+        };
+
+        const response = await fetch(`${API_BASE_URL}${path}`, {
+            ...options,
+            headers,
+        });
+
+        const data = await response.json().catch(() => null);
+        if (!response.ok) {
+            throw new Error(data?.message || data?.error || `HTTP ${response.status}`);
+        }
+
+        return data;
+    }, [token]);
+
+    const loadProfile = useCallback(async () => {
+        if (!targetUserId) {
+            setProfile(null);
+            setError('Bạn cần đăng nhập hoặc đi tới một hồ sơ cụ thể để xem dữ liệu.');
+            setLoading(false);
+            return;
+        }
+
+        setLoading(true);
+        setError('');
+
+        try {
+            const query = new URLSearchParams();
+            if (viewerId) {
+                query.set('viewerId', viewerId);
+            }
+
+            const response = await apiFetch(`/profile/${targetUserId}${query.toString() ? `?${query}` : ''}`);
+            const normalized = normalizeProfilePayload(response?.data || response, backendOrigin);
+
+            setProfile(normalized);
+            setReviewForm({
+                rating: normalized?.reviews?.viewerReview?.rating || 5,
+                comment: normalized?.reviews?.viewerReview?.comment || '',
+            });
+            setSelectedListingId((current) => {
+                const listings = normalized?.listings?.items || [];
+                if (!listings.length) return '';
+                if (current && listings.some((item) => String(item.id) === String(current))) {
+                    return current;
+                }
+                return listings[0].id;
+            });
+        } catch (requestError) {
+            console.error('Load profile failed', requestError);
+            setProfile(null);
+            setError(requestError.message || 'Không thể tải hồ sơ người dùng.');
+        } finally {
+            setLoading(false);
+        }
+    }, [apiFetch, backendOrigin, targetUserId, viewerId]);
+
+    useEffect(() => {
+        loadProfile();
+    }, [loadProfile]);
+
+    useEffect(() => {
+        setTab('overview');
+        setFeedback(null);
+    }, [targetUserId]);
+
+    useEffect(() => {
+        if (!feedback?.text) return undefined;
+        const timer = window.setTimeout(() => setFeedback(null), 3200);
+        return () => window.clearTimeout(timer);
+    }, [feedback]);
+
+    useEffect(() => {
+        if (!profile?.viewer?.isOwner && tab === 'manage') {
+            setTab('overview');
+        }
+    }, [profile?.viewer?.isOwner, tab]);
+
+    const listings = profile?.listings?.items || [];
+    const featuredListings = profile?.listings?.featured?.length ? profile.listings.featured : listings.slice(0, 3);
+    const selectedListing = useMemo(
+        () => listings.find((item) => String(item.id) === String(selectedListingId)) || listings[0] || null,
+        [listings, selectedListingId],
+    );
+    const shareUrl = useMemo(
+        () => (profile?.user?.id ? `${window.location.origin}/profile/${profile.user.id}` : window.location.href),
+        [profile?.user?.id],
+    );
+
+    const isOwner = Boolean(profile?.viewer?.isOwner);
+    const relationshipStatus = profile?.viewer?.relationshipStatus || 'guest';
+    const canReview = Boolean(profile?.viewer?.canReview);
+    const canMessage = Boolean(profile?.viewer?.canMessage);
+
+    const setMessage = (type, text) => setFeedback({ type, text });
+
+    const copyProfileLink = useCallback(async () => {
+        try {
+            await navigator.clipboard.writeText(shareUrl);
+            setMessage('success', 'Đã sao chép liên kết hồ sơ.');
+        } catch {
+            setMessage('error', 'Không thể sao chép liên kết hồ sơ.');
+        }
+    }, [shareUrl]);
+
+    const openListingDetail = useCallback((listing) => {
+        if (!listing?.id) return;
+
+        navigate(`/post/${listing.id}`, {
+            state: {
+                post: createListingNavigationState(listing, profile?.user, formatDate),
+            },
+        });
+    }, [navigate, profile?.user]);
+
+    const openListingComments = useCallback((listing) => {
+        if (!listing?.id) return;
+
+        navigate(`/post/${listing.id}/comments`, {
+            state: {
+                post: createListingNavigationState(listing, profile?.user, formatDate),
+            },
+        });
+    }, [navigate, profile?.user]);
+
+    const openProfileMessages = useCallback(() => {
+        if (!profile?.user?.id) return;
+        navigate('/messages', {
+            state: {
+                selectedUser: {
+                    id: profile.user.id,
+                    name: profile.user.name,
+                    avatar: profile.user.avatar,
+                },
+            },
+        });
+    }, [navigate, profile?.user]);
+
+    const runRelationshipAction = useCallback(async (path, method, body, successMessage) => {
+        if (!viewerId || !profile?.user?.id) {
+            navigate('/login');
+            return;
+        }
+
+        setRelationshipBusy(true);
+        try {
+            await apiFetch(path, {
+                method,
+                body: JSON.stringify(body),
+            });
+            setMessage('success', successMessage);
+            await loadProfile();
+        } catch (requestError) {
+            console.error('Relationship action failed', requestError);
+            setMessage('error', requestError.message || 'Không thể cập nhật quan hệ bạn bè.');
+        } finally {
+            setRelationshipBusy(false);
+        }
+    }, [apiFetch, loadProfile, navigate, profile?.user?.id, viewerId]);
+
+    const handleRelationshipPrimary = useCallback(() => {
+        if (!profile?.user?.id) return;
+
+        if (relationshipStatus === 'guest') {
+            navigate('/login');
+            return;
+        }
+
+        if (relationshipStatus === 'not_friends') {
+            runRelationshipAction(
+                '/quanhebanbe/request',
+                'POST',
+                { idNguoiGui: viewerId, idNguoiNhan: profile.user.id },
+                'Đã gửi lời mời kết bạn.',
+            );
+            return;
+        }
+
+        if (relationshipStatus === 'request_sent') {
+            runRelationshipAction(
+                '/quanhebanbe/cancel',
+                'DELETE',
+                { idNguoiGui: viewerId, idNguoiNhan: profile.user.id },
+                'Đã hủy lời mời kết bạn.',
+            );
+            return;
+        }
+
+        if (relationshipStatus === 'request_received') {
+            runRelationshipAction(
+                '/quanhebanbe/accept',
+                'PUT',
+                { idNguoiGui: profile.user.id, idNguoiNhan: viewerId },
+                'Đã chấp nhận lời mời kết bạn.',
+            );
+            return;
+        }
+
+        if (relationshipStatus === 'friends') {
+            const confirmed = window.confirm('Bạn muốn hủy kết bạn với người này?');
+            if (!confirmed) return;
+
+            runRelationshipAction(
+                '/quanhebanbe/unfriend',
+                'DELETE',
+                { idNguoiGui: viewerId, idNguoiNhan: profile.user.id },
+                'Đã hủy kết bạn.',
+            );
+        }
+    }, [navigate, profile?.user?.id, relationshipStatus, runRelationshipAction, viewerId]);
+
+    const handleDeclineRequest = useCallback(() => {
+        if (!profile?.user?.id || relationshipStatus !== 'request_received') return;
+
+        const confirmed = window.confirm('Bạn muốn từ chối lời mời kết bạn này?');
+        if (!confirmed) return;
+
+        runRelationshipAction(
+            '/quanhebanbe/unfriend',
+            'DELETE',
+            { idNguoiGui: profile.user.id, idNguoiNhan: viewerId },
+            'Đã từ chối lời mời kết bạn.',
+        );
+    }, [profile?.user?.id, relationshipStatus, runRelationshipAction, viewerId]);
+
+    const handleReviewSubmit = useCallback(async (event) => {
+        event.preventDefault();
+
+        if (!profile?.user?.id || !viewerId) {
+            navigate('/login');
+            return;
+        }
+
+        setReviewBusy(true);
+        try {
+            await apiFetch(`/profile/${profile.user.id}/review`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    viewerId,
+                    rating: reviewForm.rating,
+                    comment: reviewForm.comment.trim(),
+                }),
+            });
+            setMessage('success', 'Đánh giá đã được lưu.');
+            await loadProfile();
+        } catch (requestError) {
+            console.error('Submit review failed', requestError);
+            setMessage('error', requestError.message || 'Không thể gửi đánh giá.');
+        } finally {
+            setReviewBusy(false);
+        }
+    }, [apiFetch, loadProfile, navigate, profile?.user?.id, reviewForm.comment, reviewForm.rating, viewerId]);
+
+    const handleListingStatusChange = useCallback(async (listingId, nextStatus) => {
+        if (!listingId) return;
+
+        setListingBusyId(String(listingId));
+        try {
+            await apiFetch(`/baidang/update/${listingId}`, {
+                method: 'PUT',
+                body: JSON.stringify({
+                    trang_thai: nextStatus,
+                    thoi_gian_cap_nhat: new Date().toISOString(),
+                }),
+            });
+            setMessage('success', 'Đã cập nhật trạng thái bài đăng.');
+            await loadProfile();
+        } catch (requestError) {
+            console.error('Update listing status failed', requestError);
+            setMessage('error', requestError.message || 'Không thể cập nhật trạng thái bài đăng.');
+        } finally {
+            setListingBusyId('');
+        }
+    }, [apiFetch, loadProfile]);
+
+    const handleDeleteListing = useCallback(async (listingId) => {
+        if (!listingId) return;
+        const confirmed = window.confirm('Bạn chắc chắn muốn xóa bài đăng này?');
+        if (!confirmed) return;
+
+        setListingBusyId(String(listingId));
+        try {
+            await apiFetch(`/baidang/delete/${listingId}`, {
+                method: 'DELETE',
+            });
+            setMessage('success', 'Đã xóa bài đăng.');
+            await loadProfile();
+        } catch (requestError) {
+            console.error('Delete listing failed', requestError);
+            setMessage('error', requestError.message || 'Không thể xóa bài đăng.');
+        } finally {
+            setListingBusyId('');
+        }
+    }, [apiFetch, loadProfile]);
+
+    const tabs = [
+        { key: 'overview', label: 'Tổng quan' },
+        { key: 'listings', label: 'Bài đăng' },
+        { key: 'reviews', label: 'Đánh giá' },
+        { key: 'activity', label: 'Hoạt động' },
+        ...(isOwner ? [{ key: 'manage', label: 'Quản lý' }] : []),
+    ];
+
+    if (loading) {
+        return (
+            <div className="profile-redesign">
+                <div className="pr-shell">
+                    <div className="pr-state">
+                        <Loader2 size={28} className="spin" />
+                        <h2>Đang tải hồ sơ</h2>
+                        <p>Mình đang lấy dữ liệu hồ sơ, bài đăng, bạn bè và đánh giá.</p>
+                    </div>
+                </div>
+            </div>
+        );
     }
-    return {
-      name: 'Khách vãng lai',
-      headline: 'Đăng nhập để cá nhân hóa hồ sơ của bạn.',
-      avatarText: 'G',
-      location: '—',
-      school: '—',
-      join: '—',
-      phone: '—',
-    };
-  }, [currentUser]);
 
-  const profileUrl = useMemo(() => `${window.location.origin}/profile`, []);
-
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(profileUrl);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1600);
-    } catch {
-      setCopied(false);
+    if (error || !profile) {
+        return (
+            <div className="profile-redesign">
+                <div className="pr-shell">
+                    <div className="pr-state">
+                        <XCircle size={28} />
+                        <h2>Không mở được hồ sơ</h2>
+                        <p>{error || 'Hồ sơ hiện chưa sẵn sàng.'}</p>
+                        <div className="pr-inline-actions">
+                            {!viewerId && (
+                                <button type="button" className="pr-btn pr-btn-primary" onClick={() => navigate('/login')}>
+                                    Đăng nhập
+                                </button>
+                            )}
+                            <button type="button" className="pr-btn pr-btn-soft" onClick={() => navigate(-1)}>
+                                Quay lại
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
     }
-  };
 
-  return (
-    <div className="profile-page">
-      <section className="pf-hero">
-        <div className="pf-hero-bg" />
-        <div className="pf-container">
-          <div className="pf-hero-card">
-            <div className="pf-hero-top">
-              <div className="pf-avatar" aria-hidden>
-                <span>{displayUser.avatarText}</span>
-              </div>
+    return (
+        <div className="profile-redesign">
+            <div className="pr-shell">
+                <section className="pr-hero">
+                    <div className="pr-orbit pr-orbit-one" />
+                    <div className="pr-orbit pr-orbit-two" />
+                    <div className="pr-hero-card">
+                        <div className="pr-toolbar">
+                            <button type="button" className="pr-toolbar-btn" onClick={() => navigate(-1)}>
+                                <ArrowLeft size={16} />
+                                Quay lại
+                            </button>
+                            <button type="button" className="pr-toolbar-btn" onClick={copyProfileLink}>
+                                <Copy size={16} />
+                                Sao chép link
+                            </button>
+                        </div>
+                        <div className="pr-hero-main">
+                            <div className="pr-avatar-wrap">
+                                <div className="pr-avatar">
+                                    <img src={profile.user.avatar} alt={profile.user.name} />
+                                </div>
+                                {profile.user.isVerified && (
+                                    <span className="pr-verified-badge">
+                                        <ShieldCheck size={14} />
+                                        Đã xác thực
+                                    </span>
+                                )}
+                            </div>
 
-              <div className="pf-identity">
-                <div className="pf-name-row">
-                  <h1 className="pf-name">{displayUser.name}</h1>
-                  <span className="pf-verified" title="Hồ sơ xác thực">
-                    <BadgeCheck size={16} strokeWidth={2} />
-                    Verified
-                  </span>
-                </div>
-                <p className="pf-headline">{displayUser.headline}</p>
+                            <div className="pr-identity">
+                                <div className="pr-name-row">
+                                    <h1>{profile.user.name}</h1>
+                                    {profile.user.isVipActive && (
+                                        <span className="pr-vip-pill">
+                                            <Crown size={14} />
+                                            VIP
+                                        </span>
+                                    )}
+                                </div>
 
-                <div className="pf-meta-row">
-                  <span className="pf-meta">
-                    <MapPin size={14} strokeWidth={2} /> {displayUser.location}
-                  </span>
-                  <span className="pf-dot">•</span>
-                  <span className="pf-meta">
-                    <BookOpen size={14} strokeWidth={2} /> {displayUser.school}
-                  </span>
-                  <span className="pf-dot">•</span>
-                  <span className="pf-meta">
-                    <Calendar size={14} strokeWidth={2} /> Tham gia {displayUser.join}
-                  </span>
-                </div>
-              </div>
+                                <p className="pr-headline">
+                                    {profile.user.bio || 'Hồ sơ giao dịch cá nhân, nơi tổng hợp uy tín, hoạt động và các bài đăng đang vận hành.'}
+                                </p>
 
-              <div className="pf-actions">
-                <button type="button" className="pf-btn pf-btn-ghost" onClick={handleCopy}>
-                  <Copy size={16} strokeWidth={2} />
-                  {copied ? 'Đã chép link' : 'Copy link'}
-                </button>
-                <button type="button" className="pf-btn pf-btn-ghost">
-                  <Share2 size={16} strokeWidth={2} />
-                  Chia sẻ
-                </button>
-                <button
-                  type="button"
-                  className="pf-btn pf-btn-primary"
-                  onClick={() => navigate('/messages')}
-                  disabled={!currentUser}
-                  title={!currentUser ? 'Đăng nhập để nhắn tin' : undefined}
-                >
-                  <MessageCircle size={16} strokeWidth={2} />
-                  Nhắn tin
-                </button>
-                <button
-                  type="button"
-                  className="pf-btn pf-btn-soft"
-                  disabled={!currentUser}
-                  title={!currentUser ? 'Đăng nhập để theo dõi' : undefined}
-                >
-                  <UserPlus size={16} strokeWidth={2} />
-                  Theo dõi
-                </button>
-                {currentUser && (
-                  <button
-                    type="button"
-                    className="pf-btn pf-btn-manage"
-                    onClick={() => setTab('manage')}
-                    title="Trang quản lý của bạn"
-                  >
-                    <LayoutDashboard size={16} strokeWidth={2} />
-                    Quản lý
-                  </button>
-                )}
-              </div>
-            </div>
+                                <div className="pr-meta">
+                                    {profile.user.school && (
+                                        <span>
+                                            <GraduationCap size={15} />
+                                            {profile.user.school}
+                                        </span>
+                                    )}
+                                    {profile.user.location && (
+                                        <span>
+                                            <MapPin size={15} />
+                                            {profile.user.location}
+                                        </span>
+                                    )}
+                                    <span>
+                                        <Calendar size={15} />
+                                        Tham gia {formatDate(profile.user.joinedAt)}
+                                    </span>
+                                </div>
 
-            <div className="pf-badges">
-              {BADGES.map(({ icon: Icon, label, tone }) => (
-                <span key={label} className={`pf-badge tone-${tone}`}>
-                  <Icon size={14} strokeWidth={2} />
-                  {label}
-                </span>
-              ))}
-            </div>
+                                <div className="pr-badges-row">
+                                    {(profile.badges || []).map((badge) => (
+                                        <BadgePill key={badge.key} badge={badge} />
+                                    ))}
+                                </div>
 
-            <div className="pf-stats">
-              <Stat icon={Store} label="Đang bán" value="12" />
-              <Stat icon={Briefcase} label="Đã bán" value="46" />
-              <Stat icon={Star} label="Đánh giá" value="4.9/5" />
-              <Stat icon={Timer} label="Phản hồi" value="~ 5 phút" />
-            </div>
-          </div>
-        </div>
-      </section>
+                                {!isOwner && profile.viewer.mutualFriends > 0 && (
+                                    <div className="pr-mutual">
+                                        <Users size={15} />
+                                        {formatNumber(profile.viewer.mutualFriends)} bạn chung
+                                    </div>
+                                )}
+                            </div>
 
-      <div className="pf-container pf-body">
-        <div className="pf-tabs" role="tablist" aria-label="Hồ sơ">
-          <button className={`pf-tab ${tab === 'overview' ? 'active' : ''}`} onClick={() => setTab('overview')} role="tab">
-            Tổng quan
-          </button>
-          <button className={`pf-tab ${tab === 'listings' ? 'active' : ''}`} onClick={() => setTab('listings')} role="tab">
-            Đang bán
-          </button>
-          <button className={`pf-tab ${tab === 'reviews' ? 'active' : ''}`} onClick={() => setTab('reviews')} role="tab">
-            Đánh giá
-          </button>
-          <button className={`pf-tab ${tab === 'activity' ? 'active' : ''}`} onClick={() => setTab('activity')} role="tab">
-            Hoạt động
-          </button>
-        </div>
+                            <div className="pr-actions">
+                                {isOwner ? (
+                                    <>
+                                        <button type="button" className="pr-btn pr-btn-primary" onClick={() => navigate('/settings')}>
+                                            <Settings size={16} />
+                                            Cài đặt hồ sơ
+                                        </button>
+                                        <button type="button" className="pr-btn pr-btn-soft" onClick={() => navigate('/create-post')}>
+                                            <PlusCircle size={16} />
+                                            Đăng bài mới
+                                        </button>
+                                        <button type="button" className="pr-btn pr-btn-soft" onClick={() => navigate('/admin')}>
+                                            <Pencil size={16} />
+                                            Mở Admin
+                                        </button>
+                                        <button type="button" className="pr-btn pr-btn-ghost" onClick={loadProfile}>
+                                            <RefreshCw size={16} />
+                                            Làm mới
+                                        </button>
+                                    </>
+                                ) : (
+                                    <>
+                                        <button
+                                            type="button"
+                                            className="pr-btn pr-btn-primary"
+                                            onClick={handleRelationshipPrimary}
+                                            disabled={relationshipBusy || relationshipStatus === 'blocked'}
+                                        >
+                                            {relationshipBusy ? (
+                                                <Loader2 size={16} className="spin" />
+                                            ) : relationshipStatus === 'guest' || relationshipStatus === 'not_friends' ? (
+                                                <UserPlus size={16} />
+                                            ) : relationshipStatus === 'request_sent' ? (
+                                                <X size={16} />
+                                            ) : relationshipStatus === 'request_received' ? (
+                                                <UserCheck size={16} />
+                                            ) : (
+                                                <UserMinus size={16} />
+                                            )}
+                                            {relationshipStatus === 'guest'
+                                                ? 'Đăng nhập để kết bạn'
+                                                : relationshipStatus === 'not_friends'
+                                                    ? 'Gửi lời mời'
+                                                    : relationshipStatus === 'request_sent'
+                                                        ? 'Hủy lời mời'
+                                                        : relationshipStatus === 'request_received'
+                                                            ? 'Chấp nhận'
+                                                            : relationshipStatus === 'friends'
+                                                                ? 'Hủy kết bạn'
+                                                                : 'Đang bị chặn'}
+                                        </button>
 
-        {!currentUser && (
-          <div className="pf-login-cta">
-            <div className="pf-login-cta-left">
-              <h2>Đăng nhập để mở khóa hồ sơ “signature”</h2>
-              <p>
-                Bạn sẽ có trang cá nhân siêu chi tiết: thống kê giao dịch, danh sách đang bán, đánh giá, hoạt động và nhiều hơn.
-              </p>
-            </div>
-            <div className="pf-login-cta-actions">
-              <button className="pf-btn pf-btn-primary" onClick={() => navigate('/login')}>
-                Đăng nhập
-              </button>
-              <button className="pf-btn pf-btn-ghost" onClick={() => navigate('/register')}>
-                Tạo tài khoản
-              </button>
-            </div>
-          </div>
-        )}
+                                        {relationshipStatus === 'request_received' && (
+                                            <button
+                                                type="button"
+                                                className="pr-btn pr-btn-danger"
+                                                onClick={handleDeclineRequest}
+                                                disabled={relationshipBusy}
+                                            >
+                                                <XCircle size={16} />
+                                                Từ chối
+                                            </button>
+                                        )}
 
-        <div className="pf-grid">
-          <aside className="pf-col pf-col-left">
-            <div className="pf-card">
-              <div className="pf-card-title">Giới thiệu</div>
-              <p className="pf-about">
-                Mình ưu tiên giao dịch an toàn giữa sinh viên: minh bạch tình trạng, ảnh thật, hẹn đúng giờ. Có thể thương lượng nhẹ với người thiện chí.
-              </p>
-              <div className="pf-contact">
-                <span className="pf-contact-item">
-                  <Phone size={14} strokeWidth={2} />
-                  {displayUser.phone}
-                </span>
-                <span className="pf-contact-item">
-                  <Heart size={14} strokeWidth={2} />
-                  “Uy tín là thương hiệu”
-                </span>
-              </div>
-            </div>
+                                        <button
+                                            type="button"
+                                            className="pr-btn pr-btn-soft"
+                                            onClick={openProfileMessages}
+                                            disabled={!canMessage}
+                                        >
+                                            <MessageCircle size={16} />
+                                            Nhắn tin
+                                        </button>
+                                    </>
+                                )}
+                            </div>
+                        </div>
 
-            <div className="pf-card">
-              <div className="pf-card-title">Kỹ năng giao dịch</div>
-              <div className="pf-chips">
-                {SKILLS.map((s) => (
-                  <span key={s} className="pf-chip">
-                    {s}
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            <div className="pf-card pf-card-glow">
-              <div className="pf-card-title">Điểm nổi bật</div>
-              <div className="pf-highlights">
-                <div className="pf-highlight">
-                  <span className="pf-highlight-k">98%</span>
-                  <span className="pf-highlight-l">Đúng hẹn</span>
-                </div>
-                <div className="pf-highlight">
-                  <span className="pf-highlight-k">4.9</span>
-                  <span className="pf-highlight-l">Xếp hạng</span>
-                </div>
-                <div className="pf-highlight">
-                  <span className="pf-highlight-k">≤5p</span>
-                  <span className="pf-highlight-l">Phản hồi</span>
-                </div>
-              </div>
-              <div className="pf-divider" />
-              <div className="pf-safety">
-                <ShieldCheck size={16} strokeWidth={2} />
-                <span>Gợi ý: Hẹn gặp nơi công cộng, kiểm tra hàng trước khi thanh toán.</span>
-              </div>
-            </div>
-          </aside>
-
-          <section className="pf-col pf-col-right">
-            {tab === 'overview' && (
-              <>
-                {selectedListing ? (
-                  <ListingDetail
-                    listing={selectedListing}
-                    onBack={() => setSelectedListing(null)}
-                    onOpenComments={(listing) => navigate(`/post/${listing.id}/comments`, {
-                      state: {
-                        post: {
-                          id: listing.id,
-                          author: displayUser.name,
-                          avatar: 'https://i.pravatar.cc/150?img=11',
-                          time: listing.time,
-                          location: listing.location,
-                          title: listing.title,
-                          price: listing.price?.replaceAll('₫', '').trim(),
-                          img: listing.img,
-                        },
-                      },
-                    })}
-                    sellerName={displayUser.name}
-                    sellerAvatar={displayUser.avatarText}
-                  />
-                ) : (
-                  <div className="pf-card pf-card-featured-listings">
-                    <div className="pf-card-title">Đang bán nổi bật</div>
-                    <div className="pf-listings">
-                      {MOCK_LISTINGS.map((p, idx) => (
-                        <ListingCard
-                          key={p.id}
-                          listing={p}
-                          featured={idx === 0}
-                          onSelect={setSelectedListing}
-                          onViewComments={(listing) => navigate(`/post/${listing.id}/comments`, {
-                            state: {
-                              post: {
-                                id: listing.id,
-                                author: displayUser.name,
-                                avatar: 'https://i.pravatar.cc/150?img=11',
-                                time: listing.time,
-                                location: listing.location,
-                                title: listing.title,
-                                price: listing.price?.replaceAll('₫', '').trim(),
-                                img: listing.img,
-                              },
-                            },
-                          })}
-                        />
-                      ))}
+                        <div className="pr-stats-grid">
+                            <div className="pr-stat-card">
+                                <span className="pr-stat-icon">
+                                    <Store size={18} />
+                                </span>
+                                <strong>{formatNumber(profile.stats.active_listings)}</strong>
+                                <span>Đang bán</span>
+                            </div>
+                            <div className="pr-stat-card">
+                                <span className="pr-stat-icon">
+                                    <Trophy size={18} />
+                                </span>
+                                <strong>{formatNumber(profile.stats.sold_listings)}</strong>
+                                <span>Đã bán</span>
+                            </div>
+                            <div className="pr-stat-card">
+                                <span className="pr-stat-icon">
+                                    <Star size={18} />
+                                </span>
+                                <strong>{profile.stats.average_rating ? `${profile.stats.average_rating}/5` : 'Chưa có'}</strong>
+                                <span>{formatNumber(profile.stats.total_reviews)} đánh giá</span>
+                            </div>
+                            <div className="pr-stat-card">
+                                <span className="pr-stat-icon">
+                                    <Users size={18} />
+                                </span>
+                                <strong>{formatNumber(profile.stats.total_friends)}</strong>
+                                <span>{isOwner ? `${formatNumber(profile.stats.total_points)} điểm` : 'Bạn bè'}</span>
+                            </div>
+                        </div>
                     </div>
-                  </div>
+                </section>
+
+                <div className="pr-tabs">
+                    {tabs.map((item) => (
+                        <button
+                            key={item.key}
+                            type="button"
+                            className={`pr-tab${tab === item.key ? ' active' : ''}`}
+                            onClick={() => setTab(item.key)}
+                        >
+                            {item.label}
+                        </button>
+                    ))}
+                </div>
+
+                {feedback?.text && (
+                    <div className={`pr-feedback ${feedback.type || 'info'}`}>
+                        {feedback.text}
+                    </div>
                 )}
 
-                <div className="pf-card">
-                  <div className="pf-card-title">Đánh giá gần đây</div>
-                  <div className="pf-reviews-mini">
-                    {MOCK_REVIEWS.slice(0, 2).map((r) => (
-                      <div key={r.id} className="pf-review">
-                        <img src={r.avatar} alt={r.name} className="pf-review-avatar" />
-                        <div className="pf-review-body">
-                          <div className="pf-review-head">
-                            <span className="pf-review-name">{r.name}</span>
-                            <span className="pf-review-time">{r.time}</span>
-                          </div>
-                          <Stars value={r.rating} />
-                          <p className="pf-review-text">{r.text}</p>
+                <div className="pr-layout">
+                    <aside className="pr-sidebar">
+                        <div className="pr-card">
+                            <div className="pr-card-head">
+                                <h2>Thông tin hồ sơ</h2>
+                            </div>
+                            <div className="pr-info-list">
+                                {profile.user.email && (
+                                    <div className="pr-info-item">
+                                        <Mail size={15} />
+                                        <span>{profile.user.email}</span>
+                                    </div>
+                                )}
+                                {profile.user.phone && (
+                                    <div className="pr-info-item">
+                                        <MessageCircle size={15} />
+                                        <span>{profile.user.phone}</span>
+                                    </div>
+                                )}
+                                {profile.user.hometown && (
+                                    <div className="pr-info-item">
+                                        <MapPin size={15} />
+                                        <span>Quê quán: {profile.user.hometown}</span>
+                                    </div>
+                                )}
+                                {!profile.user.email && !profile.user.phone && !profile.user.hometown && (
+                                    <p className="pr-muted-copy">Người dùng chưa cập nhật thêm thông tin liên hệ.</p>
+                                )}
+                            </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                  <button type="button" className="pf-more" onClick={() => setTab('reviews')}>
-                    Xem tất cả đánh giá →
-                  </button>
-                </div>
-              </>
-            )}
 
-            {tab === 'listings' && (
-              selectedListing ? (
-                <ListingDetail
-                  listing={selectedListing}
-                  onBack={() => setSelectedListing(null)}
-                  onOpenComments={(listing) => navigate(`/post/${listing.id}/comments`, {
-                    state: {
-                      post: {
-                        id: listing.id,
-                        author: displayUser.name,
-                        avatar: 'https://i.pravatar.cc/150?img=11',
-                        time: listing.time,
-                        location: listing.location,
-                        title: listing.title,
-                        price: listing.price?.replaceAll('₫', '').trim(),
-                        img: listing.img,
-                      },
-                    },
-                  })}
-                  sellerName={displayUser.name}
-                  sellerAvatar={displayUser.avatarText}
-                />
-              ) : (
-                <div className="pf-card">
-                  <div className="pf-card-title">Danh sách đang bán</div>
-                  <div className="pf-listings">
-                    {MOCK_LISTINGS.map((p) => (
-                      <ListingCard
-                        key={p.id}
-                        listing={p}
-                        onSelect={setSelectedListing}
-                        onViewComments={(listing) => navigate(`/post/${listing.id}/comments`, {
-                          state: {
-                            post: {
-                              id: listing.id,
-                              author: displayUser.name,
-                              avatar: 'https://i.pravatar.cc/150?img=11',
-                              time: listing.time,
-                              location: listing.location,
-                              title: listing.title,
-                              price: listing.price?.replaceAll('₫', '').trim(),
-                              img: listing.img,
-                            },
-                          },
-                        })}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )
-            )}
-
-            {tab === 'reviews' && (
-              <div className="pf-card">
-                <div className="pf-card-title">Đánh giá</div>
-                <div className="pf-rating-head">
-                  <div className="pf-rating-left">
-                    <div className="pf-rating-score">4.9</div>
-                    <Stars value={5} />
-                    <div className="pf-rating-sub">Dựa trên {MOCK_REVIEWS.length} đánh giá</div>
-                  </div>
-                  <div className="pf-rating-bars">
-                    {[5, 4, 3, 2, 1].map((k) => (
-                      <div key={k} className="pf-bar-row">
-                        <span className="pf-bar-label">{k}</span>
-                        <div className="pf-bar">
-                          <div className="pf-bar-fill" style={{ width: `${k === 5 ? 78 : k === 4 ? 18 : 4}%` }} />
+                        <div className="pr-card pr-card-highlight">
+                            <div className="pr-card-head">
+                                <h2>Điểm nổi bật</h2>
+                            </div>
+                            <div className="pr-highlight-list">
+                                {(profile.highlights || []).map((item) => (
+                                    <div key={item.key} className="pr-highlight-item">
+                                        <strong>{item.value}</strong>
+                                        <span>{item.label}</span>
+                                        <small>{item.helper}</small>
+                                    </div>
+                                ))}
+                            </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
 
-                <div className="pf-reviews">
-                  {MOCK_REVIEWS.map((r) => (
-                    <div key={r.id} className="pf-review">
-                      <img src={r.avatar} alt={r.name} className="pf-review-avatar" />
-                      <div className="pf-review-body">
-                        <div className="pf-review-head">
-                          <span className="pf-review-name">{r.name}</span>
-                          <span className="pf-review-time">{r.time}</span>
+                        <div className="pr-card">
+                            <div className="pr-card-head pr-card-head-inline">
+                                <h2>Bạn bè nổi bật</h2>
+                                {isOwner && (
+                                    <button type="button" className="pr-text-link" onClick={() => navigate('/add-friends')}>
+                                        Xem thêm
+                                    </button>
+                                )}
+                            </div>
+                            <div className="pr-friends-list">
+                                {(profile.friendsPreview || []).length > 0 ? (
+                                    profile.friendsPreview.map((friend) => (
+                                        <button
+                                            key={friend.id}
+                                            type="button"
+                                            className="pr-friend-row"
+                                            onClick={() => navigate(`/profile/${friend.id}`)}
+                                        >
+                                            <img src={friend.avatar} alt={friend.name} />
+                                            <div>
+                                                <strong>{friend.name}</strong>
+                                                <span>{friend.school || friend.hometown || 'Bạn bè trong hệ thống'}</span>
+                                            </div>
+                                        </button>
+                                    ))
+                                ) : (
+                                    <p className="pr-muted-copy">Chưa có dữ liệu bạn bè hiển thị.</p>
+                                )}
+                            </div>
                         </div>
-                        <Stars value={r.rating} />
-                        <p className="pf-review-text">{r.text}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+                    </aside>
 
-            {tab === 'activity' && (
-              <div className="pf-card">
-                <div className="pf-card-title">Hoạt động</div>
-                <div className="pf-timeline">
-                  <div className="pf-time-item">
-                    <span className="pf-time-dot" />
-                    <div className="pf-time-body">
-                      <div className="pf-time-title">Đăng bài mới: “MacBook Pro 14&quot; M3”</div>
-                      <div className="pf-time-sub">2 giờ trước · {displayUser.location}</div>
-                    </div>
-                  </div>
-                  <div className="pf-time-item">
-                    <span className="pf-time-dot" />
-                    <div className="pf-time-body">
-                      <div className="pf-time-title">Cập nhật hồ sơ và xác thực sinh viên</div>
-                      <div className="pf-time-sub">1 tuần trước</div>
-                    </div>
-                  </div>
-                  <div className="pf-time-item">
-                    <span className="pf-time-dot" />
-                    <div className="pf-time-body">
-                      <div className="pf-time-title">Hoàn tất giao dịch #A1023</div>
-                      <div className="pf-time-sub">3 tuần trước · Đánh giá 5 sao</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
+                    <main className="pr-main">
+                        {tab === 'overview' && (
+                            <>
+                                {selectedListing ? (
+                                    <div className="pr-card pr-spotlight">
+                                        <div className="pr-card-head pr-card-head-inline">
+                                            <h2>Bài đăng trọng tâm</h2>
+                                            <button type="button" className="pr-text-link" onClick={() => setTab('listings')}>
+                                                Xem tất cả
+                                            </button>
+                                        </div>
+                                        <div className="pr-spotlight-grid">
+                                            <div className="pr-spotlight-media">
+                                                <PostMediaGallery
+                                                    images={selectedListing.images}
+                                                    title={selectedListing.title}
+                                                    badge={formatCurrency(selectedListing.price)}
+                                                    onOpen={() => openListingDetail(selectedListing)}
+                                                />
+                                            </div>
+                                            <div className="pr-spotlight-body">
+                                                <div className="pr-inline-badges">
+                                                    <span className="pr-status-pill">{selectedListing.statusLabel}</span>
+                                                    {selectedListing.categoryName && <span className="pr-soft-pill">{selectedListing.categoryName}</span>}
+                                                    {selectedListing.postTypeName && <span className="pr-soft-pill">{selectedListing.postTypeName}</span>}
+                                                </div>
+                                                <h2>{selectedListing.title}</h2>
+                                                <div className="pr-price">{formatCurrency(selectedListing.price)}</div>
+                                                <p>{selectedListing.description || 'Bài đăng chưa có mô tả chi tiết.'}</p>
+                                                <div className="pr-meta pr-meta-tight">
+                                                    {selectedListing.location && (
+                                                        <span>
+                                                            <MapPin size={15} />
+                                                            {selectedListing.location}
+                                                        </span>
+                                                    )}
+                                                    <span>
+                                                        <Heart size={15} />
+                                                        {formatNumber(selectedListing.likeCount)} lượt thích
+                                                    </span>
+                                                    <span>
+                                                        <MessageCircle size={15} />
+                                                        {formatNumber(selectedListing.commentCount)} bình luận
+                                                    </span>
+                                                </div>
+                                                <div className="pr-inline-actions">
+                                                    <button
+                                                        type="button"
+                                                        className="pr-btn pr-btn-primary"
+                                                        onClick={() => openListingDetail(selectedListing)}
+                                                    >
+                                                        <ExternalLink size={16} />
+                                                        Xem chi tiết
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="pr-btn pr-btn-soft"
+                                                        onClick={() => openListingComments(selectedListing)}
+                                                    >
+                                                        <MessageCircle size={16} />
+                                                        Mở bình luận
+                                                    </button>
+                                                    {isOwner && (
+                                                        <button type="button" className="pr-btn pr-btn-soft" onClick={() => navigate('/admin')}>
+                                                            <Pencil size={16} />
+                                                            Mở Admin
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <EmptyState
+                                        title="Chưa có bài đăng"
+                                        description="Khi người dùng có tin mới, phần tổng quan sẽ hiển thị trọng tâm tại đây."
+                                    />
+                                )}
 
-            {tab === 'manage' && currentUser && (
-              <div className="pf-manage">
-                {/* Stats Row */}
-                <div className="pf-manage-stats">
-                  <div className="pf-manage-stat-card">
-                    <span className="pf-manage-stat-icon" style={{ background: '#3b82f615', color: '#3b82f6' }}>
-                      <Store size={20} strokeWidth={2} />
-                    </span>
-                    <div>
-                      <div className="pf-manage-stat-val">12</div>
-                      <div className="pf-manage-stat-lbl">Đang bán</div>
-                    </div>
-                  </div>
-                  <div className="pf-manage-stat-card">
-                    <span className="pf-manage-stat-icon" style={{ background: '#10b98115', color: '#10b981' }}>
-                      <Briefcase size={20} strokeWidth={2} />
-                    </span>
-                    <div>
-                      <div className="pf-manage-stat-val">46</div>
-                      <div className="pf-manage-stat-lbl">Đã bán</div>
-                    </div>
-                  </div>
-                  <div className="pf-manage-stat-card">
-                    <span className="pf-manage-stat-icon" style={{ background: '#f59e0b15', color: '#f59e0b' }}>
-                      <TrendingUp size={20} strokeWidth={2} />
-                    </span>
-                    <div>
-                      <div className="pf-manage-stat-val">4.9</div>
-                      <div className="pf-manage-stat-lbl">Đánh giá</div>
-                    </div>
-                  </div>
-                  <div className="pf-manage-stat-card">
-                    <span className="pf-manage-stat-icon" style={{ background: '#8b5cf615', color: '#8b5cf6' }}>
-                      <BarChart2 size={20} strokeWidth={2} />
-                    </span>
-                    <div>
-                      <div className="pf-manage-stat-val">1.2k</div>
-                      <div className="pf-manage-stat-lbl">Lượt xem</div>
-                    </div>
-                  </div>
-                </div>
+                                <div className="pr-card">
+                                    <div className="pr-card-head pr-card-head-inline">
+                                        <h2>Bài đăng nổi bật</h2>
+                                        <button type="button" className="pr-text-link" onClick={() => setTab('listings')}>
+                                            Sang tab bài đăng
+                                        </button>
+                                    </div>
+                                    {featuredListings.length > 0 ? (
+                                        <div className="pr-listing-grid">
+                                            {featuredListings.map((listing) => (
+                                                <button
+                                                    key={listing.id}
+                                                    type="button"
+                                                    className={`pr-listing-card${String(selectedListing?.id) === String(listing.id) ? ' active' : ''}`}
+                                                    onClick={() => setSelectedListingId(listing.id)}
+                                                >
+                                                    <div className="pr-listing-card-media">
+                                                        <PostMediaGallery
+                                                            images={listing.images}
+                                                            title={listing.title}
+                                                            interactive={false}
+                                                        />
+                                                    </div>
+                                                    <div className="pr-listing-copy">
+                                                        <strong>{listing.title}</strong>
+                                                        <span>{formatCurrency(listing.price)}</span>
+                                                        <small>{listing.location || listing.statusLabel}</small>
+                                                    </div>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <p className="pr-muted-copy">Chưa có bài đăng nổi bật.</p>
+                                    )}
+                                </div>
 
-                {/* Quick Actions */}
-                <div className="pf-card">
-                  <div className="pf-card-title">Thao tác nhanh</div>
-                  <div className="pf-manage-actions">
-                    <button className="pf-manage-action-btn" style={{ '--clr': '#7f001f' }}>
-                      <PlusCircle size={22} strokeWidth={2} />
-                      <span>Đăng tin mới</span>
-                    </button>
-                    <button className="pf-manage-action-btn" style={{ '--clr': '#3b82f6' }}>
-                      <Pencil size={22} strokeWidth={2} />
-                      <span>Sửa hồ sơ</span>
-                    </button>
-                    <button className="pf-manage-action-btn" style={{ '--clr': '#10b981' }}>
-                      <BarChart2 size={22} strokeWidth={2} />
-                      <span>Thống kê</span>
-                    </button>
-                    <button className="pf-manage-action-btn" onClick={() => navigate('/settings')} style={{ '--clr': '#8b5cf6' }}>
-                      <Settings size={22} strokeWidth={2} />
-                      <span>Cài đặt</span>
-                    </button>
-                  </div>
-                </div>
+                                <div className="pr-split-grid">
+                                    <div className="pr-card">
+                                        <div className="pr-card-head pr-card-head-inline">
+                                            <h2>Đánh giá mới nhất</h2>
+                                            <button type="button" className="pr-text-link" onClick={() => setTab('reviews')}>
+                                                Xem toàn bộ
+                                            </button>
+                                        </div>
+                                        {(profile.reviews.items || []).length > 0 ? (
+                                            <div className="pr-review-list">
+                                                {profile.reviews.items.slice(0, 3).map((review) => (
+                                                    <article key={review.id} className="pr-review-item">
+                                                        <img src={review.author.avatar} alt={review.author.name} />
+                                                        <div>
+                                                            <div className="pr-review-head">
+                                                                <strong>{review.author.name}</strong>
+                                                                <span>{formatDate(review.createdAt)}</span>
+                                                            </div>
+                                                            <Stars value={review.rating} />
+                                                            <p>{review.comment || 'Không có bình luận chi tiết.'}</p>
+                                                        </div>
+                                                    </article>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <p className="pr-muted-copy">Hồ sơ này chưa nhận đánh giá nào.</p>
+                                        )}
+                                    </div>
 
-                {/* My Listings Management */}
-                <div className="pf-card">
-                  <div className="pf-card-title">Đang bán — cần xử lý</div>
-                  <div className="pf-manage-listing-list">
-                    {MOCK_LISTINGS.map((item) => (
-                      <div key={item.id} className="pf-manage-listing-row">
-                        <img src={item.img} alt={item.title} className="pf-manage-listing-thumb" />
-                        <div className="pf-manage-listing-info">
-                          <div className="pf-manage-listing-title">{item.title}</div>
-                          <div className="pf-manage-listing-meta">
-                            <span>{item.price}</span>
-                            <span>·</span>
-                            <Eye size={13} strokeWidth={2} /> {item.likes + item.comments + 200}
-                            <span>·</span>
-                            <MessageCircle size={13} strokeWidth={2} /> {item.comments}
-                          </div>
-                        </div>
-                        <div className="pf-manage-listing-btns">
-                          <button className="pf-manage-edit-btn" title="Sửa tin">
-                            <Pencil size={15} strokeWidth={2} />
-                          </button>
-                          <button className="pf-manage-del-btn" title="Xóa tin">
-                            <Trash2 size={15} strokeWidth={2} />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                                    <div className="pr-card">
+                                        <div className="pr-card-head pr-card-head-inline">
+                                            <h2>Hoạt động gần đây</h2>
+                                            <button type="button" className="pr-text-link" onClick={() => setTab('activity')}>
+                                                Xem timeline
+                                            </button>
+                                        </div>
+                                        {(profile.activity || []).length > 0 ? (
+                                            <div className="pr-timeline">
+                                                {profile.activity.slice(0, 4).map((item) => (
+                                                    <div key={item.id} className="pr-timeline-item">
+                                                        <span className="pr-dot" />
+                                                        <div>
+                                                            <strong>{item.title}</strong>
+                                                            <p>{item.description}</p>
+                                                            <small>{formatDate(item.createdAt, true)}</small>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <p className="pr-muted-copy">Chưa có hoạt động nào để hiển thị.</p>
+                                        )}
+                                    </div>
+                                </div>
+                            </>
+                        )}
+
+                        {tab === 'listings' && (
+                            <div className="pr-card">
+                                <div className="pr-card-head pr-card-head-inline">
+                                    <h2>Danh sách bài đăng</h2>
+                                    <span className="pr-muted-copy">{formatNumber(profile.listings.total)} bài</span>
+                                </div>
+                                {listings.length > 0 ? (
+                                    <>
+                                        {selectedListing && (
+                                            <div className="pr-listing-detail">
+                                                <div className="pr-listing-detail-media">
+                                                    <PostMediaGallery
+                                                        images={selectedListing.images}
+                                                        title={selectedListing.title}
+                                                        badge={formatCurrency(selectedListing.price)}
+                                                        onOpen={() => openListingDetail(selectedListing)}
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <div className="pr-inline-badges">
+                                                        <span className="pr-status-pill">{selectedListing.statusLabel}</span>
+                                                        {selectedListing.categoryName && <span className="pr-soft-pill">{selectedListing.categoryName}</span>}
+                                                    </div>
+                                                    <h3>{selectedListing.title}</h3>
+                                                    <div className="pr-price">{formatCurrency(selectedListing.price)}</div>
+                                                    <p>{selectedListing.description || 'Bài đăng chưa có mô tả chi tiết.'}</p>
+                                                    <div className="pr-meta pr-meta-tight">
+                                                        {selectedListing.location && (
+                                                            <span>
+                                                                <MapPin size={15} />
+                                                                {selectedListing.location}
+                                                            </span>
+                                                        )}
+                                                        <span>
+                                                            <Heart size={15} />
+                                                            {formatNumber(selectedListing.likeCount)} thích
+                                                        </span>
+                                                        <span>
+                                                            <MessageCircle size={15} />
+                                                            {formatNumber(selectedListing.commentCount)} bình luận
+                                                        </span>
+                                                    </div>
+                                                    <div className="pr-inline-actions">
+                                                        <button
+                                                            type="button"
+                                                            className="pr-btn pr-btn-primary"
+                                                            onClick={() => openListingDetail(selectedListing)}
+                                                        >
+                                                            <ExternalLink size={16} />
+                                                            Xem chi tiết
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            className="pr-btn pr-btn-soft"
+                                                            onClick={() => openListingComments(selectedListing)}
+                                                        >
+                                                            <MessageCircle size={16} />
+                                                            Mở thảo luận
+                                                        </button>
+                                                        {isOwner && (
+                                                            <button type="button" className="pr-btn pr-btn-soft" onClick={() => navigate('/admin')}>
+                                                                <Pencil size={16} />
+                                                                Mở Admin
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        <div className="pr-listing-grid pr-listing-grid-full">
+                                            {listings.map((listing) => (
+                                                <button
+                                                    key={listing.id}
+                                                    type="button"
+                                                    className={`pr-listing-card${String(selectedListing?.id) === String(listing.id) ? ' active' : ''}`}
+                                                    onClick={() => setSelectedListingId(listing.id)}
+                                                >
+                                                    <div className="pr-listing-card-media">
+                                                        <PostMediaGallery
+                                                            images={listing.images}
+                                                            title={listing.title}
+                                                            interactive={false}
+                                                        />
+                                                    </div>
+                                                    <div className="pr-listing-copy">
+                                                        <strong>{listing.title}</strong>
+                                                        <span>{formatCurrency(listing.price)}</span>
+                                                        <small>{listing.location || listing.statusLabel}</small>
+                                                    </div>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </>
+                                ) : (
+                                    <EmptyState
+                                        title="Chưa có bài đăng nào"
+                                        description="Người dùng này chưa có bài đăng công khai trong hệ thống."
+                                    />
+                                )}
+                            </div>
+                        )}
+
+                        {tab === 'reviews' && (
+                            <div className="pr-card">
+                                <div className="pr-card-head">
+                                    <h2>Đánh giá người dùng</h2>
+                                    <p className="pr-section-sub">
+                                        Nghiệp vụ đánh giá chỉ cho phép giữa hai người đã là bạn bè, và cho phép cập nhật lại nội dung đã gửi.
+                                    </p>
+                                </div>
+
+                                <div className="pr-review-summary">
+                                    <div className="pr-review-score">
+                                        <strong>{profile.reviews.summary.averageRating ? profile.reviews.summary.averageRating.toFixed(1) : '0.0'}</strong>
+                                        <Stars value={Math.round(profile.reviews.summary.averageRating || 0)} />
+                                        <span>{formatNumber(profile.reviews.summary.totalReviews)} đánh giá</span>
+                                    </div>
+
+                                    <div className="pr-distribution">
+                                        {[5, 4, 3, 2, 1].map((score) => {
+                                            const count = profile.reviews.summary.distribution?.[score] || 0;
+                                            const percent = profile.reviews.summary.totalReviews
+                                                ? (count / profile.reviews.summary.totalReviews) * 100
+                                                : 0;
+
+                                            return (
+                                                <div key={score} className="pr-distribution-row">
+                                                    <span>{score} sao</span>
+                                                    <div className="pr-distribution-bar">
+                                                        <div style={{ width: `${percent}%` }} />
+                                                    </div>
+                                                    <strong>{formatNumber(count)}</strong>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+
+                                {isOwner ? (
+                                    <div className="pr-note-box">
+                                        <ShieldCheck size={16} />
+                                        Đây là hồ sơ của bạn. Bạn sẽ thấy tổng hợp đánh giá từ người khác tại đây.
+                                    </div>
+                                ) : canReview ? (
+                                    <form className="pr-review-form" onSubmit={handleReviewSubmit}>
+                                        <div className="pr-card-head pr-card-head-inline">
+                                            <h3>{profile.reviews.viewerReview ? 'Cập nhật đánh giá của bạn' : 'Viết đánh giá'}</h3>
+                                            <span className="pr-muted-copy">Bạn bè mới có quyền gửi đánh giá.</span>
+                                        </div>
+                                        <Stars
+                                            value={reviewForm.rating}
+                                            interactive
+                                            onChange={(rating) => setReviewForm((current) => ({ ...current, rating }))}
+                                        />
+                                        <textarea
+                                            value={reviewForm.comment}
+                                            onChange={(event) => setReviewForm((current) => ({ ...current, comment: event.target.value }))}
+                                            placeholder="Mô tả trải nghiệm giao dịch, độ uy tín, tốc độ phản hồi..."
+                                            rows={4}
+                                        />
+                                        <div className="pr-inline-actions">
+                                            <button type="submit" className="pr-btn pr-btn-primary" disabled={reviewBusy}>
+                                                {reviewBusy ? <Loader2 size={16} className="spin" /> : <Check size={16} />}
+                                                {profile.reviews.viewerReview ? 'Cập nhật đánh giá' : 'Gửi đánh giá'}
+                                            </button>
+                                        </div>
+                                    </form>
+                                ) : (
+                                    <div className="pr-note-box">
+                                        <Users size={16} />
+                                        {viewerId
+                                            ? 'Bạn cần trở thành bạn bè với người này để gửi đánh giá.'
+                                            : 'Đăng nhập để tham gia kết bạn và để lại đánh giá sau giao dịch.'}
+                                    </div>
+                                )}
+
+                                {(profile.reviews.items || []).length > 0 ? (
+                                    <div className="pr-review-list pr-review-list-full">
+                                        {profile.reviews.items.map((review) => (
+                                            <article key={review.id} className="pr-review-item">
+                                                <img src={review.author.avatar} alt={review.author.name} />
+                                                <div>
+                                                    <div className="pr-review-head">
+                                                        <strong>{review.author.name}</strong>
+                                                        <span>{formatDate(review.createdAt, true)}</span>
+                                                    </div>
+                                                    <Stars value={review.rating} />
+                                                    <p>{review.comment || 'Không có bình luận chi tiết.'}</p>
+                                                </div>
+                                            </article>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <EmptyState
+                                        title="Chưa có đánh giá"
+                                        description="Khi có giao dịch hoặc tương tác đủ điều kiện, đánh giá sẽ xuất hiện tại đây."
+                                    />
+                                )}
+                            </div>
+                        )}
+
+                        {tab === 'activity' && (
+                            <div className="pr-card">
+                                <div className="pr-card-head">
+                                    <h2>Timeline hoạt động</h2>
+                                    <p className="pr-section-sub">
+                                        Timeline tổng hợp từ đăng bài, bình luận nhận được, đánh giá, thay đổi điểm và kết nối bạn bè.
+                                    </p>
+                                </div>
+
+                                {(profile.activity || []).length > 0 ? (
+                                    <div className="pr-timeline pr-timeline-full">
+                                        {profile.activity.map((item) => (
+                                            <div key={item.id} className="pr-timeline-item">
+                                                <span className="pr-dot" />
+                                                <div>
+                                                    <strong>{item.title}</strong>
+                                                    <p>{item.description}</p>
+                                                    <small>{formatDate(item.createdAt, true)}</small>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <EmptyState
+                                        title="Chưa có hoạt động"
+                                        description="Phần này sẽ đầy lên khi người dùng phát sinh bài đăng, bạn bè, đánh giá hoặc thay đổi điểm."
+                                    />
+                                )}
+                            </div>
+                        )}
+
+                        {tab === 'manage' && isOwner && (
+                            <>
+                                <div className="pr-card">
+                                    <div className="pr-card-head">
+                                        <h2>Điều hành hồ sơ</h2>
+                                        <p className="pr-section-sub">
+                                            Tab này dành cho chủ hồ sơ để vận hành bài đăng, cập nhật trạng thái kinh doanh và đi nhanh tới các khu vực quản trị liên quan.
+                                        </p>
+                                    </div>
+
+                                    <div className="pr-manage-actions">
+                                        <button type="button" className="pr-manage-action" onClick={() => navigate('/admin')}>
+                                            <Pencil size={18} />
+                                            <span>Admin Studio</span>
+                                        </button>
+                                        <button type="button" className="pr-manage-action" onClick={() => navigate('/create-post')}>
+                                            <PlusCircle size={18} />
+                                            <span>Đăng bài mới</span>
+                                        </button>
+                                        <button type="button" className="pr-manage-action" onClick={() => navigate('/settings')}>
+                                            <Settings size={18} />
+                                            <span>Cài đặt tài khoản</span>
+                                        </button>
+                                        <button type="button" className="pr-manage-action" onClick={() => navigate('/add-friends')}>
+                                            <Users size={18} />
+                                            <span>Quản lý bạn bè</span>
+                                        </button>
+                                        <button type="button" className="pr-manage-action" onClick={() => navigate('/messages')}>
+                                            <MessageCircle size={18} />
+                                            <span>Đi tới tin nhắn</span>
+                                        </button>
+                                        <button type="button" className="pr-manage-action" onClick={loadProfile}>
+                                            <RefreshCw size={18} />
+                                            <span>Tải lại dữ liệu</span>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="pr-card">
+                                    <div className="pr-card-head pr-card-head-inline">
+                                        <h2>Quản lý bài đăng cá nhân</h2>
+                                        <span className="pr-muted-copy">{formatNumber(listings.length)} bài đăng</span>
+                                    </div>
+
+                                    {listings.length > 0 ? (
+                                        <div className="pr-manage-list">
+                                            {listings.map((listing) => (
+                                                <div key={listing.id} className="pr-manage-row">
+                                                    <div className="pr-manage-media">
+                                                        <PostMediaGallery
+                                                            images={listing.images}
+                                                            title={listing.title}
+                                                            interactive={false}
+                                                        />
+                                                    </div>
+                                                    <div className="pr-manage-copy">
+                                                        <strong>{listing.title}</strong>
+                                                        <span>{formatCurrency(listing.price)}</span>
+                                                        <small>
+                                                            {listing.location || 'Không rõ vị trí'} · {formatNumber(listing.commentCount)} bình luận · {formatNumber(listing.likeCount)} thích
+                                                        </small>
+                                                    </div>
+                                                    <div className="pr-manage-controls">
+                                                        <select
+                                                            value={listing.status}
+                                                            onChange={(event) => handleListingStatusChange(listing.id, event.target.value)}
+                                                            disabled={listingBusyId === String(listing.id)}
+                                                        >
+                                                            {MANAGE_STATUSES.map((option) => (
+                                                                <option key={option.value} value={option.value}>
+                                                                    {option.label}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                        <button
+                                                            type="button"
+                                                            className="pr-btn pr-btn-soft"
+                                                            onClick={() => openListingComments(listing)}
+                                                            disabled={listingBusyId === String(listing.id)}
+                                                        >
+                                                            <MessageCircle size={16} />
+                                                            Bình luận
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            className="pr-icon-danger"
+                                                            onClick={() => handleDeleteListing(listing.id)}
+                                                            disabled={listingBusyId === String(listing.id)}
+                                                            title="Xóa bài đăng"
+                                                        >
+                                                            {listingBusyId === String(listing.id) ? <Loader2 size={16} className="spin" /> : <Trash2 size={16} />}
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <EmptyState
+                                            title="Chưa có bài đăng để quản lý"
+                                            description="Khi bạn có bài đăng, khu vực điều hành sẽ cho phép cập nhật trạng thái và xóa trực tiếp."
+                                        />
+                                    )}
+                                </div>
+                            </>
+                        )}
+                    </main>
                 </div>
-              </div>
-            )}
-          </section>
+            </div>
         </div>
-      </div>
-    </div>
-  );
+    );
 }
-

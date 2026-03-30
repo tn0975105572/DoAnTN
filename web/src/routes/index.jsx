@@ -13,6 +13,9 @@ import Notifications from '../pages/Notifications/Notifications';
 import Settings from '../pages/Settings/Settings';
 import PostComments from '../pages/PostComments/PostComments';
 import Profile from '../pages/Profile/Profile';
+import CreatePost from '../pages/CreatePost/CreatePost';
+import PostDetail from '../pages/PostDetail/PostDetail';
+import AdminBankDash from '../pages/Admin/AdminBankDash';
 
 const router = createBrowserRouter([
     {
@@ -68,6 +71,22 @@ const router = createBrowserRouter([
                 element: <Profile />,
             },
             {
+                path: 'profile/:userId',
+                element: <Profile />,
+            },
+            {
+                path: 'create-post',
+                element: <CreatePost />,
+            },
+            {
+                path: 'admin',
+                element: <AdminBankDash />,
+            },
+            {
+                path: 'post/:postId',
+                element: <PostDetail />,
+            },
+            {
                 path: 'post/:postId/comments',
                 element: <PostComments />,
             },
@@ -76,4 +95,3 @@ const router = createBrowserRouter([
 ]);
 
 export default router;
-

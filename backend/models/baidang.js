@@ -15,7 +15,7 @@ baidang.getAllWithDetails = async () => {
       COUNT(DISTINCT ba.ID) as SoLuongAnh,
       COUNT(DISTINCT lb_like.ID_BaiDang) as SoLuongLike,
       COUNT(DISTINCT bc.ID_BinhLuan) as SoLuongBinhLuan,
-      GROUP_CONCAT(ba.LinkAnh ORDER BY ba.ID ASC SEPARATOR '|') as DanhSachAnh
+      GROUP_CONCAT(DISTINCT ba.LinkAnh SEPARATOR '|') as DanhSachAnh
     FROM baidang b
     LEFT JOIN nguoidung n ON b.ID_NguoiDung = n.ID_NguoiDung
     LEFT JOIN loaibaidang lb ON b.ID_LoaiBaiDang = lb.ID_LoaiBaiDang
@@ -66,7 +66,7 @@ baidang.getAllWithDetailsPaginated = async (limit, offset, status = 'all', searc
       COUNT(DISTINCT ba.ID) as SoLuongAnh,
       COUNT(DISTINCT lb_like.ID_BaiDang) as SoLuongLike,
       COUNT(DISTINCT bc.ID_BinhLuan) as SoLuongBinhLuan,
-      GROUP_CONCAT(ba.LinkAnh ORDER BY ba.ID ASC SEPARATOR '|') as DanhSachAnh
+      GROUP_CONCAT(DISTINCT ba.LinkAnh SEPARATOR '|') as DanhSachAnh
     FROM baidang b
     LEFT JOIN nguoidung n ON b.ID_NguoiDung = n.ID_NguoiDung
     LEFT JOIN loaibaidang lb ON b.ID_LoaiBaiDang = lb.ID_LoaiBaiDang
@@ -111,7 +111,7 @@ baidang.getByIdWithDetails = async (id) => {
       dm.ten as TenDanhMuc,
       COUNT(DISTINCT lb_like.ID_BaiDang) as SoLuongLike,
       COUNT(DISTINCT bc.ID_BinhLuan) as SoLuongBinhLuan,
-      GROUP_CONCAT(ba.LinkAnh ORDER BY ba.ID ASC SEPARATOR '|') as DanhSachAnh
+      GROUP_CONCAT(DISTINCT ba.LinkAnh SEPARATOR '|') as DanhSachAnh
     FROM baidang b
     LEFT JOIN nguoidung n ON b.ID_NguoiDung = n.ID_NguoiDung
     LEFT JOIN loaibaidang lb ON b.ID_LoaiBaiDang = lb.ID_LoaiBaiDang
@@ -269,7 +269,7 @@ baidang.getByUserId = async (userId) => {
       COUNT(DISTINCT ba.ID) as SoLuongAnh,
       COUNT(DISTINCT lb_like.ID_BaiDang) as SoLuongLike,
       COUNT(DISTINCT bc.ID_BinhLuan) as SoLuongBinhLuan,
-      GROUP_CONCAT(ba.LinkAnh ORDER BY ba.ID ASC SEPARATOR '|') as DanhSachAnh
+      GROUP_CONCAT(DISTINCT ba.LinkAnh SEPARATOR '|') as DanhSachAnh
     FROM baidang b
     LEFT JOIN nguoidung n ON b.ID_NguoiDung = n.ID_NguoiDung
     LEFT JOIN loaibaidang lb ON b.ID_LoaiBaiDang = lb.ID_LoaiBaiDang

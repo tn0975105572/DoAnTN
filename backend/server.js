@@ -7,7 +7,7 @@ const fs = require("fs");
 const http = require('http');
 const { Server } = require("socket.io");
 const cron = require('node-cron');
-const { exec } = require('child_process');
+const { execFile, spawnSync } = require('child_process');
 const mysql = require('mysql2/promise');
 
 const routes = require("./routes");
@@ -113,31 +113,236 @@ app.use((req, res, next) => {
   next();
 });
 
-// Cron job chạy Python script mỗi 5 phút
+const recommendationScriptPath = path.join(__dirname, 'recommend.py');
+const hasPythonRecommendationDeps = (() => {
+  try {
+    const check = spawnSync('python', ['-c', 'import pandas, numpy, sklearn, sqlalchemy, mysql.connector'], {
+      stdio: 'ignore',
+    });
+    return check.status === 0 && !check.error;
+  } catch {
+    return false;
+  }
+})();
+
+let recommendationEngine = hasPythonRecommendationDeps ? 'python' : 'node-fallback';
 let isRecommendationRunning = false;
-cron.schedule('*/5 * * * *', () => {
+
+async function runNodeRecommendationFallback() {
+  const connection = await pool.getConnection();
+  try {
+    const [posts] = await connection.query(`
+      SELECT
+        b.ID_BaiDang,
+        b.ID_NguoiDung,
+        COALESCE(dm.ten, '') AS category_name,
+        b.thoi_gian_tao,
+        COALESCE(like_stats.like_count, 0) AS like_count,
+        COALESCE(comment_stats.comment_count, 0) AS comment_count
+      FROM baidang b
+      LEFT JOIN danhmuc dm ON b.ID_DanhMuc = dm.ID_DanhMuc
+      LEFT JOIN (
+        SELECT ID_BaiDang, COUNT(*) AS like_count
+        FROM likebaidang
+        GROUP BY ID_BaiDang
+      ) like_stats ON b.ID_BaiDang = like_stats.ID_BaiDang
+      LEFT JOIN (
+        SELECT ID_BaiDang, COUNT(*) AS comment_count
+        FROM binhluanbaidang
+        GROUP BY ID_BaiDang
+      ) comment_stats ON b.ID_BaiDang = comment_stats.ID_BaiDang
+      WHERE b.trang_thai = 'dang_ban'
+    `);
+
+    const [users] = await connection.query('SELECT ID_NguoiDung FROM nguoidung');
+    const [interactionRows] = await connection.query(`
+      SELECT interaction.ID_NguoiDung, COALESCE(dm.ten, '') AS category_name, COUNT(*) AS interaction_count
+      FROM (
+        SELECT ID_NguoiDung, ID_BaiDang FROM likebaidang
+        UNION ALL
+        SELECT ID_NguoiDung, ID_BaiDang FROM binhluanbaidang
+      ) interaction
+      INNER JOIN baidang b ON interaction.ID_BaiDang = b.ID_BaiDang
+      LEFT JOIN danhmuc dm ON b.ID_DanhMuc = dm.ID_DanhMuc
+      GROUP BY interaction.ID_NguoiDung, COALESCE(dm.ten, '')
+    `);
+
+    const interestMap = new Map();
+    interactionRows.forEach((row) => {
+      const userId = String(row.ID_NguoiDung || '');
+      const category = String(row.category_name || '');
+      const count = Number(row.interaction_count || 0);
+      if (!userId || !category || count <= 0) return;
+
+      if (!interestMap.has(userId)) {
+        interestMap.set(userId, new Map());
+      }
+
+      const categoryMap = interestMap.get(userId);
+      categoryMap.set(category, (categoryMap.get(category) || 0) + count);
+    });
+
+    const now = Date.now();
+    const rowsToInsert = [];
+
+    users.forEach((userRow) => {
+      const userId = String(userRow.ID_NguoiDung || '');
+      if (!userId) return;
+
+      const categoryMap = interestMap.get(userId) || new Map();
+      const topCategories = [...categoryMap.entries()]
+        .sort((left, right) => right[1] - left[1])
+        .slice(0, 3);
+
+      const scoredPosts = posts
+        .filter((post) => String(post.ID_NguoiDung || '') !== userId)
+        .map((post) => {
+          const createdAt = new Date(post.thoi_gian_tao).getTime();
+          const ageDays = Number.isFinite(createdAt)
+            ? Math.max(0, (now - createdAt) / 86400000)
+            : 999;
+          const popularityScore = Number(post.like_count || 0) * 4 + Number(post.comment_count || 0) * 2;
+          const recencyScore = Math.max(0, 42 - ageDays * 2);
+          const categoryIndex = topCategories.findIndex(([category]) => category === post.category_name);
+          const categoryScore = categoryIndex >= 0 ? Math.max(0, 24 - categoryIndex * 6) + Number(categoryMap.get(post.category_name) || 0) : 0;
+
+          return {
+            postId: post.ID_BaiDang,
+            score: popularityScore + recencyScore + categoryScore,
+          };
+        })
+        .sort((left, right) => right.score - left.score)
+        .slice(0, 15);
+
+      scoredPosts.forEach((item) => {
+        rowsToInsert.push([userId, item.postId, item.score]);
+      });
+    });
+
+    await connection.beginTransaction();
+    await connection.query('DELETE FROM goiy_baidang');
+
+    if (rowsToInsert.length > 0) {
+      const chunkSize = 1000;
+      for (let index = 0; index < rowsToInsert.length; index += chunkSize) {
+        const chunk = rowsToInsert.slice(index, index + chunkSize);
+        await connection.query(
+          'INSERT INTO goiy_baidang (ID_NguoiDung, ID_BaiDang, Score) VALUES ?',
+          [chunk]
+        );
+      }
+    }
+
+    await connection.commit();
+    return {
+      engine: 'node-fallback',
+      users: users.length,
+      recommendations: rowsToInsert.length,
+    };
+  } catch (error) {
+    try {
+      await connection.rollback();
+    } catch {
+      // Ignore rollback errors.
+    }
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+function runPythonRecommendationJob() {
+  return new Promise((resolve, reject) => {
+    execFile('python', [recommendationScriptPath], { cwd: __dirname, maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
+      if (error) {
+        const combinedError = new Error(error.message || 'Python recommendation job failed');
+        combinedError.stdout = stdout;
+        combinedError.stderr = stderr;
+        reject(combinedError);
+        return;
+      }
+
+      if (stderr && stderr.trim()) {
+        const combinedError = new Error(stderr.trim());
+        combinedError.stdout = stdout;
+        combinedError.stderr = stderr;
+        reject(combinedError);
+        return;
+      }
+
+      resolve({ engine: 'python', stdout });
+    });
+  });
+}
+
+async function runRecommendationRefresh() {
   if (isRecommendationRunning) {
     console.log('⏳ Script gợi ý đang chạy, bỏ qua cron job');
     return;
   }
+
   isRecommendationRunning = true;
   console.log('🚀 Bắt đầu script gợi ý');
-  exec('python recommend.py', (error, stdout, stderr) => {
+
+  try {
+    if (recommendationEngine === 'python') {
+      const result = await runPythonRecommendationJob();
+      console.log('✅ Script gợi ý hoàn thành bằng Python');
+      io.emit('recommendation_status', {
+        status: 'success',
+        message: 'Gợi ý đã được cập nhật',
+        engine: result.engine,
+      });
+      return;
+    }
+
+    const result = await runNodeRecommendationFallback();
+    console.log(`✅ Script gợi ý hoàn thành bằng Node fallback: ${result.recommendations} bản ghi`);
+    io.emit('recommendation_status', {
+      status: 'success',
+      message: 'Gợi ý đã được cập nhật',
+      engine: result.engine,
+    });
+  } catch (error) {
+    if (recommendationEngine === 'python') {
+      console.error(`❌ Lỗi khi chạy script gợi ý Python: ${error.message}`);
+      console.log('⚠️ Chuyển sang Node fallback để tránh lỗi lặp lại');
+      recommendationEngine = 'node-fallback';
+
+      try {
+        const fallbackResult = await runNodeRecommendationFallback();
+        console.log(`✅ Script gợi ý hoàn thành bằng Node fallback: ${fallbackResult.recommendations} bản ghi`);
+        io.emit('recommendation_status', {
+          status: 'warning',
+          message: 'Gợi ý đã được cập nhật bằng fallback',
+          engine: fallbackResult.engine,
+        });
+        return;
+      } catch (fallbackError) {
+        console.error(`❌ Fallback gợi ý cũng thất bại: ${fallbackError.message}`);
+        io.emit('recommendation_status', { status: 'error', message: fallbackError.message, engine: 'node-fallback' });
+      }
+    } else {
+      console.error(`❌ Lỗi khi chạy Node fallback gợi ý: ${error.message}`);
+      io.emit('recommendation_status', { status: 'error', message: error.message, engine: 'node-fallback' });
+    }
+  } finally {
     isRecommendationRunning = false;
-    if (error) {
-      console.error(`❌ Lỗi khi chạy script gợi ý: ${error.message}`);
-      io.emit('recommendation_status', { status: 'error', message: error.message });
-      return;
-    }
-    if (stderr) {
-      console.error(`❌ Stderr: ${stderr}`);
-      io.emit('recommendation_status', { status: 'error', message: stderr });
-      return;
-    }
-    console.log(`✅ Script gợi ý hoàn thành: ${stdout}`);
-    io.emit('recommendation_status', { status: 'success', message: 'Gợi ý đã được cập nhật' });
-  });
+  }
+}
+
+// Cron job cập nhật gợi ý mỗi 5 phút, tự rơi về fallback nếu Python deps thiếu
+cron.schedule('*/5 * * * *', () => {
+  void runRecommendationRefresh();
 });
+
+if (!hasPythonRecommendationDeps) {
+  console.log('⚠️ Python recommendation dependencies chưa sẵn sàng, dùng Node fallback');
+}
+
+setTimeout(() => {
+  void runRecommendationRefresh();
+}, 1500);
 
 // API kiểm tra trạng thái gợi ý
 app.get('/api/recommendation-status', async (req, res) => {
@@ -147,7 +352,8 @@ app.get('/api/recommendation-status', async (req, res) => {
     );
     res.json({
       isRunning: isRecommendationRunning,
-      hasRecords: rows[0].record_count > 0
+      hasRecords: rows[0].record_count > 0,
+      engine: recommendationEngine,
     });
   } catch (err) {
     console.error(err);

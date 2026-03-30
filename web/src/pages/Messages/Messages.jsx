@@ -5,6 +5,7 @@ import {
     MessageCircle, User, Bell, Shield, X, Mail, Users, UserCheck, UserX, FileText, Trash2
 } from 'lucide-react';
 import io from 'socket.io-client';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { API_BASE_URL } from '../../constants';
 import './Messages.css';
 
@@ -12,6 +13,8 @@ const avatarFallback = (seed) => `https://i.pravatar.cc/150?u=${encodeURICompone
 
 /* ════════ MAIN PAGE ════════ */
 export default function Messages() {
+    const navigate = useNavigate();
+    const location = useLocation();
     const [selectedChat, setSelectedChat] = useState(null);
     const [conversations, setConversations] = useState([]);
     const [searchQuery, setSearchQuery] = useState('');
@@ -40,6 +43,7 @@ export default function Messages() {
     const messagesEndRef = useRef(null);
     const socketRef = useRef(null);
     const listSearchInputRef = useRef(null);
+    const pendingSelectedUserRef = useRef(location.state?.selectedUser || null);
 
     const tabs = [
         { key: 'all', label: 'Tất cả' },
@@ -181,6 +185,35 @@ export default function Messages() {
     useEffect(() => {
         loadConversations();
     }, [loadConversations]);
+
+    useEffect(() => {
+        const pending = pendingSelectedUserRef.current;
+        if (!pending || loadingConvs || !myUserId) return;
+
+        const existing = conversations.find(
+            (conv) => conv.type === 'private' && String(conv.id) === String(pending.id),
+        );
+
+        const nextConv = existing || {
+            id: pending.id,
+            type: 'private',
+            name: pending.name || 'Người dùng',
+            avatar: pending.avatar || avatarFallback(pending.id),
+            lastMsg: '',
+            lastAt: null,
+            unread: 0,
+            online: false,
+        };
+
+        if (!selectedChat || String(selectedChat.id) !== String(nextConv.id)) {
+            handleSelectChat(nextConv);
+        }
+
+        pendingSelectedUserRef.current = null;
+        if (location.state?.selectedUser) {
+            navigate(location.pathname, { replace: true, state: {} });
+        }
+    }, [conversations, handleSelectChat, loadingConvs, location.pathname, location.state, myUserId, navigate, selectedChat]);
 
     // socket connect
     useEffect(() => {
@@ -735,7 +768,11 @@ export default function Messages() {
                             </div>
 
                             <div className="msg-info-quick-actions">
-                                <button className="msg-info-quick-btn">
+                                <button
+                                    className="msg-info-quick-btn"
+                                    onClick={() => selectedChat.type === 'private' && navigate(`/profile/${selectedChat.id}`)}
+                                    disabled={selectedChat.type !== 'private'}
+                                >
                                     <span className="msg-info-quick-icon"><User size={16} /></span>
                                     <span className="msg-info-quick-label">Trang cá nhân</span>
                                 </button>

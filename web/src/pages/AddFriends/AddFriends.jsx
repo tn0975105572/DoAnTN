@@ -497,9 +497,7 @@ export default function AddFriends() {
     }, [searchQuery, activeTab]);
 
     const handleViewProfile = (userId) => {
-        // Web hiện chưa có route "profile/:id" như mobile, nên tạm điều hướng sang trang profile hiện tại
-        // Nếu sau này bạn có route chi tiết user, mình sẽ nối vào đúng route đó.
-        navigate('/profile', { state: { userId } });
+        navigate(`/profile/${userId}`);
     };
 
     return (

@@ -24,6 +24,7 @@ const tichdiemRoutes = require('./tichdiem');
 const lich_su_tich_diemRoutes = require('./lich_su_tich_diem');
 const xacthuc = require('./xacthuc');
 const quanHeBanBeRoutes = require('./quanHeBanBe');
+const profileRoutes = require('./profile');
 const zalopayRoutes = require('./zalopay'); // Add ZaloPay route
 
 routes.use('/baidang', baidangRoutes);
@@ -50,5 +51,6 @@ routes.use('/tichdiem', tichdiemRoutes);
 routes.use('/lich_su_tich_diem', lich_su_tich_diemRoutes);
 routes.use('/xacthuc', xacthuc);
 routes.use('/quanHeBanBe', quanHeBanBeRoutes);
+routes.use('/profile', profileRoutes);
 routes.use('/zalopay', zalopayRoutes); // Use ZaloPay route
 module.exports = routes;
