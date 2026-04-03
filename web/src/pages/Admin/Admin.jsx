@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 import { API_BASE_URL } from '../../constants';
 import PostMediaGallery from '../../components/post/PostMediaGallery';
-import './AdminBankDash.css';
+import './Admin.css';
 
 const DEFAULT_AVATAR = 'https://i.pravatar.cc/200?u=admin-user';
 
@@ -192,6 +192,32 @@ const estimateTraffic = (listing) => {
     const liveBoost = listing.status === 'dang_ban' ? 24 : 8;
 
     return likes * 18 + comments * 32 + liveBoost;
+};
+
+const buildPostNavigationState = (listing, user) => {
+    if (!listing) return null;
+
+    return {
+        id: listing.id,
+        authorId: listing.userId || user?.id || '',
+        author: user?.name || user?.fullName || 'Người dùng OLODO',
+        avatar: user?.avatar || DEFAULT_AVATAR,
+        title: listing.title || 'Bài đăng',
+        desc: listing.description || '',
+        description: listing.description || '',
+        price: listing.price || 0,
+        img: listing.primaryImage || listing.images?.[0] || DEFAULT_AVATAR,
+        imageUrls: listing.images || [],
+        location: listing.location || '',
+        createdAt: listing.createdAt || '',
+        time: formatDate(listing.createdAt, true),
+        category: listing.categoryName || '',
+        postTypeName: listing.postTypeName || '',
+        status: listing.status || '',
+        trang_thai: listing.status || '',
+        likes: Number(listing.likeCount || 0),
+        comments: Number(listing.commentCount || 0),
+    };
 };
 
 const buildQuickReplies = (selectedListing) => {
@@ -503,6 +529,24 @@ export default function Admin() {
         return suggestions;
     }, [analytics.activeListings, analytics.totalComments, conversations, listings.length]);
 
+    const openPostDetail = useCallback((listing) => {
+        if (!listing?.id) return;
+        navigate(`/post/${listing.id}`, {
+            state: {
+                post: buildPostNavigationState(listing, profile?.user),
+            },
+        });
+    }, [navigate, profile?.user]);
+
+    const openPostComments = useCallback((listing) => {
+        if (!listing?.id) return;
+        navigate(`/post/${listing.id}/comments`, {
+            state: {
+                post: buildPostNavigationState(listing, profile?.user),
+            },
+        });
+    }, [navigate, profile?.user]);
+
     const handleStatusChange = useCallback(async (listingId, nextStatus) => {
         if (!listingId) return;
         setListingBusyId(String(listingId));
@@ -722,7 +766,7 @@ export default function Admin() {
                                     <p>Bạn có thể chọn bất kỳ bài nào bên dưới để xem nhanh hiệu suất và đi tới các thao tác chính.</p>
                                 </div>
                                 {selectedListing && (
-                                    <button type="button" className="admin-text-link" onClick={() => navigate(`/post/${selectedListing.id}`)}>
+                                    <button type="button" className="admin-text-link" onClick={() => openPostDetail(selectedListing)}>
                                         Mở chi tiết
                                     </button>
                                 )}
@@ -735,7 +779,8 @@ export default function Admin() {
                                             images={selectedListing.images}
                                             title={selectedListing.title}
                                             badge={formatCurrency(selectedListing.price)}
-                                            interactive={false}
+                                            interactive
+                                            onOpen={() => openPostDetail(selectedListing)}
                                         />
                                     </div>
 
@@ -756,11 +801,11 @@ export default function Admin() {
                                         </div>
 
                                         <div className="admin-inline-actions">
-                                            <button type="button" className="admin-btn admin-btn-primary" onClick={() => navigate(`/post/${selectedListing.id}`)}>
+                                            <button type="button" className="admin-btn admin-btn-primary" onClick={() => openPostDetail(selectedListing)}>
                                                 <ExternalLink size={16} />
                                                 Xem bài đăng
                                             </button>
-                                            <button type="button" className="admin-btn admin-btn-soft" onClick={() => navigate(`/post/${selectedListing.id}/comments`)}>
+                                            <button type="button" className="admin-btn admin-btn-soft" onClick={() => openPostComments(selectedListing)}>
                                                 <MessageCircle size={16} />
                                                 Mở bình luận
                                             </button>
@@ -897,11 +942,11 @@ export default function Admin() {
                                                         <option key={status.value} value={status.value}>{status.label}</option>
                                                     ))}
                                                 </select>
-                                                <button type="button" className="admin-btn admin-btn-soft" onClick={() => navigate(`/post/${listing.id}`)}>
+                                                <button type="button" className="admin-btn admin-btn-soft" onClick={() => openPostDetail(listing)}>
                                                     <ExternalLink size={16} />
                                                     Xem
                                                 </button>
-                                                <button type="button" className="admin-btn admin-btn-soft" onClick={() => navigate(`/post/${listing.id}/comments`)}>
+                                                <button type="button" className="admin-btn admin-btn-soft" onClick={() => openPostComments(listing)}>
                                                     <MessageCircle size={16} />
                                                     Chat
                                                 </button>

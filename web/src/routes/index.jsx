@@ -1,3 +1,4 @@
+import { Suspense, lazy } from 'react';
 import { createBrowserRouter } from 'react-router-dom';
 import Layout from '../components/layout/Layout';
 import Home from '../pages/Home/Home';
@@ -15,7 +16,8 @@ import PostComments from '../pages/PostComments/PostComments';
 import Profile from '../pages/Profile/Profile';
 import CreatePost from '../pages/CreatePost/CreatePost';
 import PostDetail from '../pages/PostDetail/PostDetail';
-import AdminBankDash from '../pages/Admin/AdminBankDash';
+
+const AdminBankDash = lazy(() => import('../pages/Admin/AdminBankDash'));
 
 const router = createBrowserRouter([
     {
@@ -80,7 +82,11 @@ const router = createBrowserRouter([
             },
             {
                 path: 'admin',
-                element: <AdminBankDash />,
+                element: (
+                    <Suspense fallback={null}>
+                        <AdminBankDash />
+                    </Suspense>
+                ),
             },
             {
                 path: 'post/:postId',

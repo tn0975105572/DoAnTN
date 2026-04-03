@@ -11,6 +11,7 @@ import {
     RefreshCw,
     Search,
     Sparkles,
+    Star,
     Store,
     Trash2,
     TrendingUp,
@@ -18,6 +19,20 @@ import {
     ExternalLink,
     Settings,
 } from 'lucide-react';
+import {
+    Area,
+    AreaChart,
+    Bar,
+    BarChart,
+    CartesianGrid,
+    Cell,
+    Pie,
+    PieChart,
+    ResponsiveContainer,
+    Tooltip,
+    XAxis,
+    YAxis,
+} from 'recharts';
 import { API_BASE_URL } from '../../constants';
 import PostMediaGallery from '../../components/post/PostMediaGallery';
 import './AdminBankDash.css';
@@ -47,6 +62,84 @@ const STATUS_TONES = {
     cho_duyet: 'muted',
 };
 
+const ADMIN_SECTIONS = [
+    {
+        id: 'overview',
+        label: 'Tổng quan',
+        helper: 'Chỉ số chính và bài đăng nổi bật',
+        title: 'Tổng quan quản lý bài đăng',
+        description: 'Giữ layout cũ nhưng chia theo từng khu rõ ràng để bạn nhìn nhanh toàn bộ tình hình mà không bị rối.',
+        kicker: 'Bảng điều khiển',
+        icon: LayoutDashboard,
+    },
+    {
+        id: 'manage',
+        label: 'Bài đăng',
+        helper: 'Lọc, đổi trạng thái và mở bài',
+        title: 'Quản lý bài đăng',
+        description: 'Khu thao tác chính để bạn cập nhật trạng thái, mở chi tiết và xử lý bình luận của từng bài.',
+        kicker: 'Điều hành nội dung',
+        icon: Store,
+    },
+    {
+        id: 'analytics',
+        label: 'Hiệu suất',
+        helper: 'So sánh tương tác và tình trạng bán',
+        title: 'Phân tích hiệu suất',
+        description: 'Giúp bạn nhìn rõ bài nào đang hút tương tác, bài nào cần tối ưu lại tiêu đề, ảnh hoặc trạng thái.',
+        kicker: 'Phân tích',
+        icon: BarChart3,
+    },
+    {
+        id: 'points',
+        label: 'Điểm thưởng',
+        helper: 'Số dư, lịch sử dùng và biến động',
+        title: 'Dashboard quản lý điểm',
+        description: 'Theo dõi số dư hiện tại, lịch sử dùng điểm và xu hướng cộng trừ để biết điểm đang được dùng thế nào.',
+        kicker: 'Điểm và giao dịch',
+        icon: Star,
+    },
+    {
+        id: 'activity',
+        label: 'Hoạt động',
+        helper: 'Bình luận mới và cập nhật gần đây',
+        title: 'Nhật ký hoạt động',
+        description: 'Tập trung vào các chuyển động mới nhất để bạn biết việc nào cần phản hồi trước trong ngày.',
+        kicker: 'Theo dõi cập nhật',
+        icon: Sparkles,
+    },
+];
+
+const ACTIVITY_LABELS = {
+    post_created: 'Tin mới',
+    comment_received: 'Bình luận',
+    review_received: 'Đánh giá',
+    points_changed: 'Điểm',
+    friend_connected: 'Kết nối',
+};
+
+const ACTIVITY_TONES = {
+    post_created: 'brand',
+    comment_received: 'success',
+    review_received: 'gold',
+    points_changed: 'danger',
+    friend_connected: 'muted',
+};
+
+const CHART_PALETTE = {
+    brand: '#60a5fa',
+    brandSoft: '#93c5fd',
+    success: '#22d3ee',
+    successSoft: '#67e8f9',
+    gold: '#fbbf24',
+    goldSoft: '#fde68a',
+    danger: '#fb7185',
+    slate: '#cbd5e1',
+    grid: 'rgba(148, 163, 184, 0.18)',
+    activeDotStroke: '#140f16',
+    pie: ['#60a5fa', '#22d3ee', '#fbbf24', '#f97316', '#a78bfa', '#34d399'],
+};
+
 const getBackendOrigin = () => {
     try {
         return new URL(API_BASE_URL).origin;
@@ -63,11 +156,44 @@ const formatCurrency = (value) => {
     return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(numeric);
 };
 
-const formatDate = (value) => {
+const formatDate = (value, withTime = false) => {
     if (!value) return 'Chưa cập nhật';
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return 'Chưa cập nhật';
-    return date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    return date.toLocaleString(
+        'vi-VN',
+        withTime
+            ? {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+            }
+            : {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+            },
+    );
+};
+
+const formatRelativeTime = (value) => {
+    if (!value) return 'Vừa xong';
+
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return 'Vừa xong';
+
+    const diffMs = Date.now() - date.getTime();
+    const diffMin = Math.floor(diffMs / 60000);
+    const diffHour = Math.floor(diffMs / 3600000);
+    const diffDay = Math.floor(diffMs / 86400000);
+
+    if (diffMin < 1) return 'Vừa xong';
+    if (diffMin < 60) return `${diffMin} phút trước`;
+    if (diffHour < 24) return `${diffHour} giờ trước`;
+    if (diffDay < 7) return `${diffDay} ngày trước`;
+    return formatDate(date, true);
 };
 
 const normalizeAssetUrl = (raw, origin) => {
@@ -103,6 +229,7 @@ const normalizeProfilePayload = (payload, origin) => ({
     ...payload,
     user: {
         ...payload?.user,
+        fullName: payload?.user?.fullName || payload?.user?.name || '',
         avatar: normalizeAssetUrl(payload?.user?.avatar, origin) || DEFAULT_AVATAR,
     },
     listings: {
@@ -121,6 +248,193 @@ const estimateTraffic = (listing) => {
     return likes * 18 + comments * 32 + (listing.status === 'dang_ban' ? 24 : 8);
 };
 
+const buildPostNavigationState = (listing, user) => {
+    if (!listing) return null;
+
+    return {
+        id: listing.id,
+        authorId: listing.userId || user?.id || '',
+        author: user?.name || user?.fullName || 'Người dùng OLODO',
+        avatar: user?.avatar || DEFAULT_AVATAR,
+        title: listing.title || 'Bài đăng',
+        desc: listing.description || '',
+        description: listing.description || '',
+        price: listing.price || 0,
+        img: listing.primaryImage || listing.images?.[0] || DEFAULT_AVATAR,
+        imageUrls: listing.images || [],
+        location: listing.location || '',
+        createdAt: listing.createdAt || '',
+        time: formatDate(listing.createdAt),
+        category: listing.categoryName || '',
+        postTypeName: listing.postTypeName || '',
+        status: listing.status || '',
+        trang_thai: listing.status || '',
+        likes: Number(listing.likeCount || 0),
+        comments: Number(listing.commentCount || 0),
+    };
+};
+
+const getMonthKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+
+const buildRecentMonthSeries = (items, dateSelector, valueSelector = () => 1, monthCount = 6) => {
+    const now = new Date();
+    const months = [];
+
+    for (let offset = monthCount - 1; offset >= 0; offset -= 1) {
+        const date = new Date(now.getFullYear(), now.getMonth() - offset, 1);
+        months.push({
+            key: getMonthKey(date),
+            date,
+            label: `T${date.getMonth() + 1}/${String(date.getFullYear()).slice(-2)}`,
+            value: 0,
+            count: 0,
+        });
+    }
+
+    const monthIndexMap = new Map(months.map((item, index) => [item.key, index]));
+
+    items.forEach((item) => {
+        const rawDate = dateSelector(item);
+        if (!rawDate) return;
+
+        const date = rawDate instanceof Date ? rawDate : new Date(rawDate);
+        if (Number.isNaN(date.getTime())) return;
+
+        const key = getMonthKey(new Date(date.getFullYear(), date.getMonth(), 1));
+        const seriesIndex = monthIndexMap.get(key);
+        if (seriesIndex === undefined) return;
+
+        const amount = Number(valueSelector(item) || 0);
+        months[seriesIndex].value += Number.isFinite(amount) ? amount : 0;
+        months[seriesIndex].count += 1;
+    });
+
+    return months.map((item) => ({
+        ...item,
+        value: Math.round(item.value * 100) / 100,
+    }));
+};
+
+const getPostingWindowLabel = (items) => {
+    const windows = {
+        'Sáng (06h-11h)': 0,
+        'Chiều (12h-17h)': 0,
+        'Tối (18h-23h)': 0,
+        'Khuya (00h-05h)': 0,
+    };
+
+    items.forEach((item) => {
+        if (!item?.createdAt) return;
+        const date = new Date(item.createdAt);
+        if (Number.isNaN(date.getTime())) return;
+
+        const hour = date.getHours();
+        if (hour >= 6 && hour < 12) windows['Sáng (06h-11h)'] += 1;
+        else if (hour >= 12 && hour < 18) windows['Chiều (12h-17h)'] += 1;
+        else if (hour >= 18) windows['Tối (18h-23h)'] += 1;
+        else windows['Khuya (00h-05h)'] += 1;
+    });
+
+    const [label, total] = Object.entries(windows).sort((left, right) => right[1] - left[1])[0] || ['Chưa có dữ liệu', 0];
+    return {
+        label,
+        total,
+    };
+};
+
+const getPointTier = (points) => {
+    if (points >= 1000) return 'Kim cương';
+    if (points >= 500) return 'Vàng';
+    if (points >= 200) return 'Bạc';
+    return 'Khởi động';
+};
+
+const getPostingWindowSeries = (items) => {
+    const windows = [
+        { label: 'Sáng', range: '06h-11h', value: 0 },
+        { label: 'Chiều', range: '12h-17h', value: 0 },
+        { label: 'Tối', range: '18h-23h', value: 0 },
+        { label: 'Khuya', range: '00h-05h', value: 0 },
+    ];
+
+    items.forEach((item) => {
+        if (!item?.createdAt) return;
+        const date = new Date(item.createdAt);
+        if (Number.isNaN(date.getTime())) return;
+
+        const hour = date.getHours();
+        if (hour >= 6 && hour < 12) windows[0].value += 1;
+        else if (hour >= 12 && hour < 18) windows[1].value += 1;
+        else if (hour >= 18) windows[2].value += 1;
+        else windows[3].value += 1;
+    });
+
+    return windows;
+};
+
+const normalizePointHistoryItem = (item) => {
+    const pointsChanged = Number(item?.diem_thay_doi || item?.thay_doi_diem || 0);
+
+    return {
+        id: item?.ID_LichSu || `${item?.thoi_gian_tao || ''}-${item?.mo_ta || ''}`,
+        createdAt: item?.thoi_gian_tao || item?.thoi_gian || '',
+        pointsChanged,
+        pointsBefore: Number(item?.diem_truoc || 0),
+        pointsAfter: Number(item?.diem_sau || 0),
+        transactionType: item?.loai_giao_dich || '',
+        description: item?.mo_ta || '',
+        kind: pointsChanged < 0 ? 'use' : 'earn',
+    };
+};
+
+const normalizePointUsageItem = (item) => {
+    const before = Number(item?.diem_truoc_khi_su_dung || 0);
+    const after = Number(item?.diem_sau_khi_su_dung || 0);
+    const delta = after - before;
+
+    return {
+        id: item?.ID_NguoiDungTichDiem || `${item?.thoi_gian_su_dung || ''}-${item?.ten_hang_muc || ''}`,
+        createdAt: item?.thoi_gian_su_dung || '',
+        title: item?.ten_hang_muc || 'Sử dụng điểm',
+        description: item?.mo_ta || item?.loai_giao_dich || 'Giao dịch điểm',
+        transactionType: item?.loai_giao_dich || '',
+        usedPoints: Math.abs(delta),
+        pointsBefore: before,
+        pointsAfter: after,
+        rewardType: item?.loai || '',
+    };
+};
+
+const buildUsageCategorySeries = (usageItems) => {
+    const usageMap = new Map();
+
+    usageItems.forEach((item) => {
+        const label = item?.title || item?.description || item?.transactionType || 'Khác';
+        usageMap.set(label, (usageMap.get(label) || 0) + Number(item?.usedPoints || 0));
+    });
+
+    return [...usageMap.entries()]
+        .map(([name, value]) => ({ name, value }))
+        .sort((left, right) => right.value - left.value)
+        .slice(0, 5);
+};
+
+function AdminChartTooltip({ active, payload, label, labelPrefix = '' }) {
+    if (!active || !payload?.length) return null;
+
+    return (
+        <div className="admin-chart-tooltip">
+            {label ? <strong>{labelPrefix ? `${labelPrefix} ${label}` : label}</strong> : null}
+            {payload.map((entry) => (
+                <div key={`${entry.dataKey}-${entry.name}`} className="admin-chart-tooltip-row">
+                    <span>{entry.name}</span>
+                    <strong>{formatNumber(entry.value)}</strong>
+                </div>
+            ))}
+        </div>
+    );
+}
+
 function MetricCard({ icon: Icon, label, value, helper, tone = 'brand', delay = 0 }) {
     return (
         <article className={`bankdash-metric tone-${tone}`} style={{ '--delay': `${delay}ms` }}>
@@ -134,13 +448,17 @@ function MetricCard({ icon: Icon, label, value, helper, tone = 'brand', delay = 
     );
 }
 
-function SidebarStat({ label, value, helper, tone = 'brand' }) {
+function SidebarNavItem({ icon: Icon, label, helper, active, onClick }) {
     return (
-        <div className={`admin-sidebar-stat tone-${tone}`}>
-            <strong>{value}</strong>
-            <span>{label}</span>
-            <small>{helper}</small>
-        </div>
+        <button type="button" className={`bankdash-nav-item${active ? ' active' : ''}`} onClick={onClick}>
+            <span className="bankdash-nav-icon">
+                <Icon size={18} />
+            </span>
+            <span className="bankdash-nav-copy">
+                <strong>{label}</strong>
+                <small>{helper}</small>
+            </span>
+        </button>
     );
 }
 
@@ -149,6 +467,11 @@ export default function AdminBankDash() {
     const viewerId = useMemo(() => localStorage.getItem('userId') || '', []);
     const token = useMemo(() => localStorage.getItem('token') || '', []);
     const origin = useMemo(() => getBackendOrigin(), []);
+    const chartPalette = useMemo(() => CHART_PALETTE, []);
+    const chartTickStyle = useMemo(
+        () => ({ fill: chartPalette.slate, fontSize: 12, fontWeight: 700 }),
+        [chartPalette.slate],
+    );
 
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
@@ -159,6 +482,10 @@ export default function AdminBankDash() {
     const [listingSearch, setListingSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState('all');
     const [sortMode, setSortMode] = useState('engagement');
+    const [activeSection, setActiveSection] = useState('overview');
+    const [pointHistory, setPointHistory] = useState([]);
+    const [pointUsageHistory, setPointUsageHistory] = useState([]);
+    const [pointsError, setPointsError] = useState('');
 
     const apiFetch = useCallback(async (path, options = {}) => {
         const headers = {
@@ -183,9 +510,18 @@ export default function AdminBankDash() {
         setError('');
 
         try {
-            const query = new URLSearchParams({ viewerId });
-            const profileResponse = await apiFetch(`/profile/${viewerId}?${query.toString()}`);
-            const normalizedProfile = normalizeProfilePayload(profileResponse?.data || profileResponse, origin);
+            const query = new URLSearchParams({ viewerId, listingLimit: '60' });
+            const [profileResult, pointHistoryResult, pointUsageResult] = await Promise.allSettled([
+                apiFetch(`/profile/${viewerId}?${query.toString()}`),
+                apiFetch(`/lich_su_tich_diem/getByUserId/${viewerId}?limit=120`),
+                apiFetch(`/nguoidungtichdiem/getByUserId/${viewerId}`),
+            ]);
+
+            if (profileResult.status !== 'fulfilled') {
+                throw profileResult.reason;
+            }
+
+            const normalizedProfile = normalizeProfilePayload(profileResult.value?.data || profileResult.value, origin);
             setProfile(normalizedProfile);
             setSelectedListingId((current) => {
                 const listings = normalizedProfile?.listings?.items || [];
@@ -193,6 +529,28 @@ export default function AdminBankDash() {
                 if (current && listings.some((item) => String(item.id) === String(current))) return current;
                 return listings[0].id;
             });
+
+            if (pointHistoryResult.status === 'fulfilled') {
+                const nextHistory = Array.isArray(pointHistoryResult.value) ? pointHistoryResult.value.map(normalizePointHistoryItem) : [];
+                setPointHistory(nextHistory);
+            } else {
+                console.error('Load point history failed', pointHistoryResult.reason);
+                setPointHistory([]);
+            }
+
+            if (pointUsageResult.status === 'fulfilled') {
+                const nextUsage = Array.isArray(pointUsageResult.value) ? pointUsageResult.value.map(normalizePointUsageItem) : [];
+                setPointUsageHistory(nextUsage);
+            } else {
+                console.error('Load point usage history failed', pointUsageResult.reason);
+                setPointUsageHistory([]);
+            }
+
+            setPointsError(
+                pointHistoryResult.status !== 'fulfilled' && pointUsageResult.status !== 'fulfilled'
+                    ? 'Không thể tải lịch sử điểm ở thời điểm hiện tại.'
+                    : '',
+            );
         } catch (requestError) {
             console.error('Load admin dashboard failed', requestError);
             setError(requestError.message || 'Không thể tải trang Admin.');
@@ -212,6 +570,8 @@ export default function AdminBankDash() {
     }, [feedback]);
 
     const listings = profile?.listings?.items || [];
+    const activities = profile?.activity || [];
+    const profileDisplayName = profile?.user?.name || profile?.user?.fullName || 'Quản trị viên';
     const selectedListing = useMemo(
         () => listings.find((listing) => String(listing.id) === String(selectedListingId)) || listings[0] || null,
         [listings, selectedListingId],
@@ -249,10 +609,122 @@ export default function AdminBankDash() {
     const opportunities = useMemo(() => {
         const items = [];
         if (analytics.activeListings < 3) items.push('Bạn đang có ít bài đăng đang bán. Hãy đẩy thêm tin mới để tăng độ phủ.');
-        if (analytics.totalComments < Math.max(3, listings.length * 2)) items.push('Tỷ lệ bình luận còn thấp. Bổ sung ảnh cận cảnh và tiêu đề rõ hơn.');
-        if (!items.length) items.push('Hiệu suất hiện tại khá ổn. Có thể thử đẩy thêm bài mới để mở rộng tiếp cận.');
+        if (analytics.totalComments < Math.max(3, listings.length * 2)) items.push('Tỷ lệ bình luận còn thấp. Hãy bổ sung ảnh cận cảnh và tiêu đề rõ hơn.');
+        if (analytics.topListings.some((item) => Number(item.commentCount || 0) > Number(item.likeCount || 0))) {
+            items.push('Một vài bài đăng đang có khách hỏi nhiều hơn lượt thích. Bạn nên vào bình luận để phản hồi sớm.');
+        }
+        if (!items.length) items.push('Hiệu suất hiện tại khá ổn. Bạn có thể thử đẩy thêm bài mới để mở rộng tiếp cận.');
         return items;
-    }, [analytics.activeListings, analytics.totalComments, listings.length]);
+    }, [analytics.activeListings, analytics.totalComments, analytics.topListings, listings.length]);
+
+    const activityMetrics = useMemo(() => ({
+        total: activities.length,
+        comments: activities.filter((item) => item.type === 'comment_received').length,
+        reviews: activities.filter((item) => item.type === 'review_received').length,
+        friends: activities.filter((item) => item.type === 'friend_connected').length,
+    }), [activities]);
+
+    const postTimingAnalytics = useMemo(() => {
+        const monthlySeries = buildRecentMonthSeries(listings, (item) => item.createdAt, () => 1, 6);
+        const postingWindowSeries = getPostingWindowSeries(listings);
+        const totalPosts = monthlySeries.reduce((sum, item) => sum + item.value, 0);
+        const busiestMonth = [...monthlySeries].sort((left, right) => right.value - left.value)[0] || null;
+        const recentPost = [...listings]
+            .filter((item) => item?.createdAt)
+            .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())[0] || null;
+        const postingWindow = getPostingWindowLabel(listings);
+
+        return {
+            monthlySeries,
+            postingWindowSeries,
+            totalPosts,
+            busiestMonth,
+            recentPost,
+            postingWindow,
+            averagePosts: monthlySeries.length ? (totalPosts / monthlySeries.length) : 0,
+        };
+    }, [listings]);
+
+    const pointsAnalytics = useMemo(() => {
+        const currentPoints = Number(profile?.user?.points || 0);
+        const earnedTotal = pointHistory.reduce((sum, item) => sum + Math.max(0, item.pointsChanged), 0);
+        const fallbackUsedHistory = pointHistory
+            .filter((item) => item.pointsChanged < 0)
+            .map((item) => ({
+                id: item.id,
+                createdAt: item.createdAt,
+                title: item.description || 'Sử dụng điểm',
+                description: item.transactionType || 'Giao dịch điểm',
+                usedPoints: Math.abs(item.pointsChanged),
+                pointsBefore: item.pointsBefore,
+                pointsAfter: item.pointsAfter,
+            }));
+        const usageSource = pointUsageHistory.length ? pointUsageHistory : fallbackUsedHistory;
+        const usedTotal = usageSource.reduce((sum, item) => sum + Number(item.usedPoints || 0), 0);
+        const usageTimeline = buildRecentMonthSeries(usageSource, (item) => item.createdAt, (item) => Number(item.usedPoints || 0), 6);
+        const usageCategorySeries = buildUsageCategorySeries(usageSource);
+        const lastPointChange = [...pointHistory]
+            .filter((item) => item.createdAt)
+            .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())[0] || null;
+        const recentUsage = [...usageSource]
+            .filter((item) => Number(item.usedPoints || 0) > 0)
+            .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
+            .slice(0, 4);
+
+        return {
+            currentPoints,
+            earnedTotal,
+            usedTotal,
+            usageCount: usageSource.length,
+            tier: getPointTier(currentPoints),
+            usageTimeline,
+            usageCategorySeries,
+            lastPointChange,
+            recentUsage,
+            averageUsedPerMonth: usageTimeline.length ? (usedTotal / usageTimeline.length) : 0,
+        };
+    }, [pointHistory, pointUsageHistory, profile?.user?.points]);
+
+    const activeSectionMeta = useMemo(
+        () => ADMIN_SECTIONS.find((section) => section.id === activeSection) || ADMIN_SECTIONS[0],
+        [activeSection],
+    );
+
+    const openPostDetail = useCallback((listing) => {
+        if (!listing?.id) return;
+        navigate(`/post/${listing.id}`, {
+            state: {
+                post: buildPostNavigationState(listing, profile?.user),
+            },
+        });
+    }, [navigate, profile?.user]);
+
+    const openPostComments = useCallback((listing) => {
+        if (!listing?.id) return;
+        navigate(`/post/${listing.id}/comments`, {
+            state: {
+                post: buildPostNavigationState(listing, profile?.user),
+            },
+        });
+    }, [navigate, profile?.user]);
+
+    const openActivityTarget = useCallback((activity) => {
+        const postId = activity?.meta?.postId;
+        if (postId) {
+            const relatedListing = listings.find((item) => String(item.id) === String(postId)) || { id: postId };
+            if (activity.type === 'comment_received') {
+                openPostComments(relatedListing);
+                return;
+            }
+            openPostDetail(relatedListing);
+            return;
+        }
+
+        const targetUserId = activity?.meta?.partnerId || activity?.meta?.reviewerId || activity?.meta?.commenterId;
+        if (targetUserId) {
+            navigate(`/profile/${targetUserId}`);
+        }
+    }, [listings, navigate, openPostComments, openPostDetail]);
 
     const handleStatusChange = useCallback(async (listingId, nextStatus) => {
         if (!listingId) return;
@@ -287,6 +759,431 @@ export default function AdminBankDash() {
             setListingBusyId('');
         }
     }, [apiFetch, loadDashboard]);
+
+    const renderPrimaryMetrics = () => (
+        <section className="admin-metrics-grid">
+            <MetricCard icon={LayoutDashboard} label="Bài đang bán" value={formatNumber(analytics.activeListings)} helper={`${formatNumber(listings.length)} bài đang được theo dõi`} tone="brand" delay={0} />
+            <MetricCard icon={Heart} label="Tổng quan tâm" value={formatNumber(analytics.totalLikes + analytics.totalComments)} helper={`${formatNumber(analytics.totalLikes)} thích - ${formatNumber(analytics.totalComments)} bình luận`} tone="success" delay={80} />
+            <MetricCard icon={TrendingUp} label="Tiếp cận ước tính" value={formatNumber(analytics.estimatedTraffic)} helper="Tính từ tương tác và trạng thái bài đăng" tone="gold" delay={160} />
+            <MetricCard icon={MessageCircle} label="Bài nổi bật" value={formatNumber(analytics.topListings.length)} helper="Mở nhanh để xem chi tiết hoặc bình luận" tone="danger" delay={240} />
+        </section>
+    );
+
+    const renderOpportunitiesCard = () => (
+        <section className="admin-card">
+            <div className="admin-card-head">
+                <div>
+                    <span className="admin-section-tag">Gợi ý</span>
+                    <h2>Cơ hội tối ưu hôm nay</h2>
+                    <p>Những gợi ý ngắn để bạn xử lý nhanh các điểm có thể làm tăng tỷ lệ chốt đơn.</p>
+                </div>
+            </div>
+
+            <div className="admin-opportunity-list">
+                {opportunities.map((item) => (
+                    <div key={item} className="admin-opportunity-item">
+                        <Sparkles size={15} />
+                        <span>{item}</span>
+                    </div>
+                ))}
+            </div>
+
+            <div className="admin-side-actions">
+                <button type="button" className="admin-btn admin-btn-soft" onClick={() => navigate('/settings')}>
+                    <Settings size={16} />
+                    Cài đặt tài khoản
+                </button>
+                <button type="button" className="admin-btn admin-btn-primary" onClick={() => navigate('/create-post')}>
+                    <ArrowRight size={16} />
+                    Tạo thêm bài mới
+                </button>
+            </div>
+        </section>
+    );
+
+    const renderSelectedListingCard = (mode = 'summary') => (
+        <section className="admin-card">
+            <div className="admin-card-head">
+                <div>
+                    <span className="admin-section-tag">{mode === 'focus' ? 'Bài nổi bật' : 'Đang chọn'}</span>
+                    <h2>{mode === 'focus' ? 'Bài đăng trọng tâm' : 'Bài đăng đang chọn'}</h2>
+                    <p>{mode === 'focus' ? 'Khung xem nhanh một bài nổi bật để kiểm tra hình ảnh, trạng thái và hiệu suất trước khi thao tác.' : 'Một khung gọn để bạn không mất dấu bài đăng đang được xử lý.'}</p>
+                </div>
+                {selectedListing && (
+                    <button type="button" className="admin-text-link" onClick={() => openPostDetail(selectedListing)}>
+                        Mở chi tiết
+                    </button>
+                )}
+            </div>
+
+            {selectedListing ? (
+                <div className={`admin-focus-card${mode === 'focus' ? ' expanded' : ''}`}>
+                    <button type="button" className="admin-focus-media" onClick={() => openPostDetail(selectedListing)}>
+                        <PostMediaGallery
+                            images={selectedListing.images}
+                            title={selectedListing.title}
+                            badge={formatCurrency(selectedListing.price)}
+                            interactive={false}
+                        />
+                    </button>
+
+                    <div className="admin-focus-body">
+                        <div className="admin-inline-badges">
+                            <span className={`admin-pill tone-${selectedListing.statusTone}`}>{selectedListing.statusLabel}</span>
+                            {selectedListing.categoryName && <span className="admin-pill tone-ghost">{selectedListing.categoryName}</span>}
+                            {selectedListing.postTypeName && <span className="admin-pill tone-ghost">{selectedListing.postTypeName}</span>}
+                        </div>
+
+                        <h3>{selectedListing.title}</h3>
+                        <div className="admin-price">{formatCurrency(selectedListing.price)}</div>
+                        <p>{selectedListing.description || 'Bài đăng này chưa có mô tả chi tiết.'}</p>
+
+                        <div className="admin-focus-stats">
+                            <div>
+                                <span>Đã đăng</span>
+                                <strong>{formatDate(selectedListing.createdAt)}</strong>
+                            </div>
+                            <div>
+                                <span>Vị trí</span>
+                                <strong>{selectedListing.location || 'Chưa có vị trí'}</strong>
+                            </div>
+                            <div>
+                                <span>Tồn kho</span>
+                                <strong>{formatNumber(selectedListing.stockQuantity || 0)}</strong>
+                            </div>
+                            <div>
+                                <span>Tiếp cận</span>
+                                <strong>{formatNumber(estimateTraffic(selectedListing))}</strong>
+                            </div>
+                        </div>
+
+                        <div className="admin-stat-inline">
+                            <span><Heart size={14} /> {formatNumber(selectedListing.likeCount)} thích</span>
+                            <span><MessageCircle size={14} /> {formatNumber(selectedListing.commentCount)} bình luận</span>
+                            <span><BarChart3 size={14} /> {formatNumber(getEngagementScore(selectedListing))} điểm</span>
+                        </div>
+
+                        <div className="admin-inline-actions">
+                            <button type="button" className="admin-btn admin-btn-primary" onClick={() => openPostDetail(selectedListing)}>
+                                <ExternalLink size={16} />
+                                Xem bài đăng
+                            </button>
+                            <button type="button" className="admin-btn admin-btn-soft" onClick={() => openPostComments(selectedListing)}>
+                                <MessageCircle size={16} />
+                                Mở bình luận
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            ) : (
+                <div className="admin-empty-note">Bạn chưa có bài đăng nào để quản lý. Hãy tạo bài đầu tiên để bắt đầu dashboard.</div>
+            )}
+        </section>
+    );
+
+    const renderManageBoard = () => (
+        <section className="admin-card admin-board-card">
+            <div className="admin-card-head">
+                <div>
+                    <span className="admin-section-tag">Quản lý</span>
+                    <h2>Bảng quản lý bài đăng</h2>
+                    <p>Lọc nhanh, đổi trạng thái và mở bài đăng ngay trong một bố cục gọn hơn.</p>
+                </div>
+                <div className="admin-section-chip">{formatNumber(filteredListings.length)} bài</div>
+            </div>
+
+            <div className="admin-toolbar">
+                <input type="text" value={listingSearch} onChange={(event) => setListingSearch(event.target.value)} placeholder="Tìm theo tiêu đề, danh mục hoặc vị trí" />
+                <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+                    <option value="all">Tất cả trạng thái</option>
+                    {MANAGE_STATUSES.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
+                </select>
+                <select value={sortMode} onChange={(event) => setSortMode(event.target.value)}>
+                    <option value="engagement">Ưu tiên tương tác</option>
+                    <option value="traffic">Ưu tiên tiếp cận</option>
+                    <option value="latest">Mới nhất</option>
+                </select>
+            </div>
+
+            <div className="admin-post-list">
+                {filteredListings.length > 0 ? (
+                    filteredListings.map((listing, index) => (
+                        <article key={listing.id} className="admin-post-row" style={{ '--delay': `${index * 50}ms` }}>
+                            <button type="button" className="admin-post-thumb" onClick={() => setSelectedListingId(listing.id)}>
+                                <PostMediaGallery images={listing.images} title={listing.title} interactive={false} maxVisible={3} />
+                            </button>
+                            <div className="admin-post-copy">
+                                <div className="admin-inline-badges">
+                                    <span className={`admin-pill tone-${listing.statusTone}`}>{listing.statusLabel}</span>
+                                    {listing.categoryName && <span className="admin-pill tone-ghost">{listing.categoryName}</span>}
+                                </div>
+                                <strong>{listing.title}</strong>
+                                <span>{formatCurrency(listing.price)}</span>
+                                <small>{listing.location || 'Chưa có vị trí'} - {formatNumber(listing.likeCount)} thích - {formatNumber(listing.commentCount)} bình luận</small>
+                            </div>
+                            <div className="admin-post-stats">
+                                <div><label>Tương tác</label><strong>{formatNumber(getEngagementScore(listing))}</strong></div>
+                                <div><label>Tiếp cận</label><strong>{formatNumber(estimateTraffic(listing))}</strong></div>
+                            </div>
+                            <div className="admin-post-controls">
+                                <select value={listing.status} onChange={(event) => handleStatusChange(listing.id, event.target.value)} disabled={listingBusyId === String(listing.id)}>
+                                    {MANAGE_STATUSES.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
+                                </select>
+                                <button type="button" className="admin-btn admin-btn-soft" onClick={() => openPostDetail(listing)}>
+                                    <ExternalLink size={16} />
+                                    Xem
+                                </button>
+                                <button type="button" className="admin-btn admin-btn-soft" onClick={() => openPostComments(listing)}>
+                                    <MessageCircle size={16} />
+                                    Bình luận
+                                </button>
+                                <button type="button" className="admin-icon-danger" onClick={() => handleDeleteListing(listing.id)} disabled={listingBusyId === String(listing.id)}>
+                                    {listingBusyId === String(listing.id) ? <Loader2 size={16} className="spin" /> : <Trash2 size={16} />}
+                                </button>
+                            </div>
+                        </article>
+                    ))
+                ) : (
+                    <div className="admin-empty-note">Không có bài đăng nào khớp với bộ lọc hiện tại.</div>
+                )}
+            </div>
+        </section>
+    );
+
+    const renderPostingTimelineCard = () => (
+        <section className="admin-card admin-chart-card">
+            <div className="admin-card-head">
+                <div>
+                    <span className="admin-section-tag">Biểu đồ đăng bài</span>
+                    <h2>Thời gian đăng bài</h2>
+                    <p>Theo dõi nhịp đăng bài trong 6 tháng gần nhất để biết thời điểm nào bạn đang hoạt động đều nhất.</p>
+                </div>
+                <div className="admin-section-chip">6 tháng gần nhất</div>
+            </div>
+
+            <div className="admin-chart-summary">
+                <div>
+                    <span>Tổng kỳ này</span>
+                    <strong>{formatNumber(postTimingAnalytics.totalPosts)} bài</strong>
+                </div>
+                <div>
+                    <span>Đăng nhiều nhất</span>
+                    <strong>{postTimingAnalytics.busiestMonth ? `${postTimingAnalytics.busiestMonth.label} · ${formatNumber(postTimingAnalytics.busiestMonth.value)} bài` : 'Chưa có dữ liệu'}</strong>
+                </div>
+            </div>
+
+            {postTimingAnalytics.totalPosts > 0 ? (
+                <div className="admin-chart-library-shell">
+                    <div className="admin-chart-surface large">
+                        <div className="admin-chart-surface-head">
+                            <strong>Số bài theo tháng</strong>
+                            <span>Xu hướng đăng bài</span>
+                        </div>
+                        <ResponsiveContainer width="100%" height={260}>
+                            <AreaChart data={postTimingAnalytics.monthlySeries} margin={{ top: 12, right: 8, left: 0, bottom: 0 }}>
+                                <defs>
+                                    <linearGradient id="post-chart-area" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="0%" stopColor={chartPalette.brand} stopOpacity={0.28} />
+                                        <stop offset="100%" stopColor={chartPalette.brand} stopOpacity={0.04} />
+                                    </linearGradient>
+                                </defs>
+                                <CartesianGrid stroke={chartPalette.grid} strokeDasharray="4 4" vertical={false} />
+                                <XAxis dataKey="label" axisLine={false} tickLine={false} tick={chartTickStyle} />
+                                <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={chartTickStyle} />
+                                <Tooltip content={<AdminChartTooltip labelPrefix="Tháng" />} />
+                                <Area type="monotone" dataKey="value" name="Bài đăng" stroke={chartPalette.brand} strokeWidth={3} fill="url(#post-chart-area)" activeDot={{ r: 5, fill: chartPalette.brand, stroke: chartPalette.activeDotStroke, strokeWidth: 2 }} />
+                            </AreaChart>
+                        </ResponsiveContainer>
+                    </div>
+
+                    <div className="admin-chart-surface compact">
+                        <div className="admin-chart-surface-head">
+                            <strong>Khung giờ đăng bài</strong>
+                            <span>Thời điểm hoạt động</span>
+                        </div>
+                        <ResponsiveContainer width="100%" height={260}>
+                            <BarChart data={postTimingAnalytics.postingWindowSeries} margin={{ top: 12, right: 8, left: 0, bottom: 0 }}>
+                                <CartesianGrid stroke={chartPalette.grid} strokeDasharray="4 4" vertical={false} />
+                                <XAxis dataKey="label" axisLine={false} tickLine={false} tick={chartTickStyle} />
+                                <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={chartTickStyle} />
+                                <Tooltip content={<AdminChartTooltip />} />
+                                <Bar dataKey="value" name="Số bài" radius={[10, 10, 0, 0]} fill={chartPalette.success}>
+                                    {postTimingAnalytics.postingWindowSeries.map((entry, index) => (
+                                        <Cell key={`${entry.label}-${index}`} fill={index % 2 === 0 ? chartPalette.brand : chartPalette.success} />
+                                    ))}
+                                </Bar>
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+            ) : (
+                <div className="admin-empty-note compact">Chưa có dữ liệu đăng bài để dựng biểu đồ.</div>
+            )}
+
+            <div className="admin-chart-facts">
+                <div className="admin-chart-fact">
+                    <span>Nhịp đăng trung bình</span>
+                    <strong>{postTimingAnalytics.averagePosts.toFixed(1)} bài/tháng</strong>
+                </div>
+                <div className="admin-chart-fact">
+                    <span>Khung giờ thường đăng</span>
+                    <strong>{postTimingAnalytics.postingWindow.label}</strong>
+                </div>
+                <div className="admin-chart-fact">
+                    <span>Bài đăng gần nhất</span>
+                    <strong>{postTimingAnalytics.recentPost ? formatDate(postTimingAnalytics.recentPost.createdAt, true) : 'Chưa có bài đăng'}</strong>
+                </div>
+            </div>
+        </section>
+    );
+
+    const renderPointsDashboard = () => (
+        <>
+            <section className="admin-metrics-grid">
+                <MetricCard icon={Sparkles} label="Điểm hiện tại" value={formatNumber(pointsAnalytics.currentPoints)} helper={`Hạng ${pointsAnalytics.tier}`} tone="brand" delay={0} />
+                <MetricCard icon={TrendingUp} label="Đã tích lũy" value={formatNumber(pointsAnalytics.earnedTotal)} helper="Tổng điểm cộng từ lịch sử" tone="success" delay={80} />
+                <MetricCard icon={BarChart3} label="Đã sử dụng" value={formatNumber(pointsAnalytics.usedTotal)} helper="Tổng điểm đã đổi và tiêu" tone="gold" delay={160} />
+                <MetricCard icon={LayoutDashboard} label="Lượt sử dụng" value={formatNumber(pointsAnalytics.usageCount)} helper="Giao dịch dùng điểm đã ghi nhận" tone="danger" delay={240} />
+            </section>
+
+            <div className="admin-main-grid">
+                <section className="admin-card admin-chart-card">
+                    <div className="admin-card-head">
+                        <div>
+                            <span className="admin-section-tag">Biểu đồ điểm</span>
+                            <h2>Lịch sử sử dụng điểm</h2>
+                            <p>Xem lượng điểm đã dùng theo tháng để biết giai đoạn nào tài khoản đang tiêu điểm nhiều nhất.</p>
+                        </div>
+                        <div className="admin-section-chip">6 tháng gần nhất</div>
+                    </div>
+
+                    {pointsError && <div className="admin-empty-note compact">{pointsError}</div>}
+
+                    <div className="admin-chart-summary">
+                        <div>
+                            <span>Tổng đã dùng</span>
+                            <strong>{formatNumber(pointsAnalytics.usedTotal)} điểm</strong>
+                        </div>
+                        <div>
+                            <span>Trung bình / tháng</span>
+                            <strong>{pointsAnalytics.averageUsedPerMonth.toFixed(1)} điểm</strong>
+                        </div>
+                    </div>
+
+                    {(pointsAnalytics.usedTotal > 0 || pointsAnalytics.usageCategorySeries.length > 0) ? (
+                        <div className="admin-chart-library-shell">
+                            <div className="admin-chart-surface large">
+                                <div className="admin-chart-surface-head">
+                                    <strong>Lịch sử dùng điểm</strong>
+                                    <span>Điểm đã sử dụng theo tháng</span>
+                                </div>
+                                <ResponsiveContainer width="100%" height={260}>
+                                    <BarChart data={pointsAnalytics.usageTimeline} margin={{ top: 12, right: 8, left: 0, bottom: 0 }}>
+                                        <CartesianGrid stroke={chartPalette.grid} strokeDasharray="4 4" vertical={false} />
+                                        <XAxis dataKey="label" axisLine={false} tickLine={false} tick={chartTickStyle} />
+                                        <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={chartTickStyle} />
+                                        <Tooltip content={<AdminChartTooltip labelPrefix="Tháng" />} />
+                                        <Bar dataKey="value" name="Điểm đã dùng" radius={[10, 10, 0, 0]} fill={chartPalette.brand} />
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            </div>
+
+                            <div className="admin-chart-surface compact">
+                                <div className="admin-chart-surface-head">
+                                    <strong>Phân bổ sử dụng</strong>
+                                    <span>Hạng mục dùng điểm</span>
+                                </div>
+                                {pointsAnalytics.usageCategorySeries.length > 0 ? (
+                                    <ResponsiveContainer width="100%" height={260}>
+                                        <PieChart>
+                                            <Pie
+                                                data={pointsAnalytics.usageCategorySeries}
+                                                dataKey="value"
+                                                nameKey="name"
+                                                innerRadius={56}
+                                                outerRadius={90}
+                                                paddingAngle={3}
+                                                stroke="rgba(255,255,255,0.8)"
+                                                strokeWidth={2}
+                                            >
+                                                {pointsAnalytics.usageCategorySeries.map((entry, index) => (
+                                                    <Cell key={`${entry.name}-${index}`} fill={chartPalette.pie[index % chartPalette.pie.length]} />
+                                                ))}
+                                            </Pie>
+                                            <Tooltip content={<AdminChartTooltip />} />
+                                        </PieChart>
+                                    </ResponsiveContainer>
+                                ) : (
+                                    <div className="admin-empty-note compact">Chưa có hạng mục dùng điểm để hiển thị.</div>
+                                )}
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="admin-empty-note compact">Chưa có giao dịch dùng điểm để dựng biểu đồ.</div>
+                    )}
+
+                    <div className="admin-chart-facts">
+                        <div className="admin-chart-fact">
+                            <span>Số dư hiện tại</span>
+                            <strong>{formatNumber(pointsAnalytics.currentPoints)} điểm</strong>
+                        </div>
+                        <div className="admin-chart-fact">
+                            <span>Lần cập nhật gần nhất</span>
+                            <strong>{pointsAnalytics.lastPointChange ? formatDate(pointsAnalytics.lastPointChange.createdAt, true) : 'Chưa có giao dịch'}</strong>
+                        </div>
+                        <div className="admin-chart-fact">
+                            <span>Hạng điểm</span>
+                            <strong>{pointsAnalytics.tier}</strong>
+                        </div>
+                    </div>
+                </section>
+
+                <aside className="admin-side-column">
+                    <section className="admin-card">
+                        <div className="admin-card-head">
+                            <div>
+                                <span className="admin-section-tag">Tổng quan điểm</span>
+                                <h2>Dashboard điểm hiện tại</h2>
+                                <p>Các chỉ số chính và những giao dịch dùng điểm gần nhất để bạn theo dõi nhanh.</p>
+                            </div>
+                        </div>
+
+                        <div className="admin-points-balance-card">
+                            <span>Số dư khả dụng</span>
+                            <strong>{formatNumber(pointsAnalytics.currentPoints)} điểm</strong>
+                            <small>{pointsAnalytics.lastPointChange ? `Cập nhật gần nhất ${formatRelativeTime(pointsAnalytics.lastPointChange.createdAt)}` : 'Chưa có biến động điểm gần đây'}</small>
+                        </div>
+
+                        <div className="admin-points-usage-list">
+                            {pointsAnalytics.recentUsage.length > 0 ? (
+                                pointsAnalytics.recentUsage.map((item) => (
+                                    <div key={item.id} className="admin-points-usage-item">
+                                        <div>
+                                            <strong>{item.title || 'Sử dụng điểm'}</strong>
+                                            <span>{item.description || item.transactionType || 'Giao dịch điểm'}</span>
+                                        </div>
+                                        <div className="admin-points-usage-meta">
+                                            <strong>-{formatNumber(item.usedPoints)} điểm</strong>
+                                            <small>{formatDate(item.createdAt, true)}</small>
+                                        </div>
+                                    </div>
+                                ))
+                            ) : (
+                                <div className="admin-empty-note compact">Chưa có giao dịch sử dụng điểm nào để hiển thị.</div>
+                            )}
+                        </div>
+
+                        <div className="admin-side-actions">
+                            <button type="button" className="admin-btn admin-btn-soft" onClick={() => navigate('/settings')}>
+                                <Settings size={16} />
+                                Mở cài đặt điểm
+                            </button>
+                        </div>
+                    </section>
+                </aside>
+            </div>
+        </>
+    );
 
     if (loading && !profile) {
         return (
@@ -327,14 +1224,14 @@ export default function AdminBankDash() {
                         <div className="admin-brand-mark"><Store size={22} /></div>
                         <div className="admin-brand-copy">
                             <strong>OLODO Admin</strong>
-                            <span>Post management studio</span>
+                            <span>Trung tâm quản lý bài đăng</span>
                         </div>
                     </div>
 
                     <div className="admin-sidebar-card admin-profile-card">
-                        <img src={profile?.user?.avatar || DEFAULT_AVATAR} alt={profile?.user?.fullName || 'Quản trị viên'} />
+                        <img src={profile?.user?.avatar || DEFAULT_AVATAR} alt={profileDisplayName} />
                         <div>
-                            <strong>{profile?.user?.fullName || 'Quản trị viên'}</strong>
+                            <strong>{profileDisplayName}</strong>
                             <span>{profile?.user?.email || 'Trung tâm điều hành bài đăng'}</span>
                         </div>
                         <button type="button" className="admin-btn admin-btn-soft" onClick={() => navigate('/profile')}>
@@ -343,10 +1240,20 @@ export default function AdminBankDash() {
                         </button>
                     </div>
 
-                    <div className="admin-sidebar-stack">
-                        <SidebarStat label="Bài đăng" value={formatNumber(listings.length)} helper="đang theo dõi" tone="brand" />
-                        <SidebarStat label="Quan tâm" value={formatNumber(analytics.totalLikes + analytics.totalComments)} helper="lượt thích và bình luận" tone="success" />
-                        <SidebarStat label="Tiếp cận" value={formatNumber(analytics.estimatedTraffic)} helper="ước tính từ tương tác" tone="gold" />
+                    <div className="admin-sidebar-card admin-sidebar-nav">
+                        <div className="admin-sidebar-card-title">Khu vực làm việc</div>
+                        <div className="admin-nav-list">
+                            {ADMIN_SECTIONS.map((section) => (
+                                <SidebarNavItem
+                                    key={section.id}
+                                    icon={section.icon}
+                                    label={section.label}
+                                    helper={section.helper}
+                                    active={activeSection === section.id}
+                                    onClick={() => setActiveSection(section.id)}
+                                />
+                            ))}
+                        </div>
                     </div>
 
                     <div className="admin-sidebar-footer">
@@ -368,22 +1275,28 @@ export default function AdminBankDash() {
                 <main className="admin-workspace">
                     <header className="admin-topbar admin-card">
                         <div className="admin-topbar-copy">
-                            <span className="admin-kicker">BankDash inspired</span>
-                            <h1>Quản lý bài đăng</h1>
-                            <p>Giao diện tập trung vào bài đăng, giữ khoảng trắng thoáng và chia khối rõ ràng để đỡ rối mắt.</p>
+                            <span className="admin-kicker">{activeSectionMeta.kicker}</span>
+                            <h1>{activeSectionMeta.title}</h1>
+                            <p>{activeSectionMeta.description}</p>
                         </div>
 
                         <div className="admin-topbar-actions">
-                            <label className="admin-search" htmlFor="admin-search-input">
-                                <Search size={16} />
-                                <input
-                                    id="admin-search-input"
-                                    type="text"
-                                    value={listingSearch}
-                                    onChange={(event) => setListingSearch(event.target.value)}
-                                    placeholder="Tìm bài đăng, danh mục hoặc vị trí"
-                                />
-                            </label>
+                            {activeSection === 'manage' ? (
+                                <label className="admin-search" htmlFor="admin-search-input">
+                                    <Search size={16} />
+                                    <input
+                                        id="admin-search-input"
+                                        type="text"
+                                        value={listingSearch}
+                                        onChange={(event) => setListingSearch(event.target.value)}
+                                        placeholder="Tìm bài đăng, danh mục hoặc vị trí"
+                                    />
+                                </label>
+                            ) : (
+                                <div className="admin-topbar-badge">
+                                    Chuyển khu vực ở thanh bên để làm việc gọn và tập trung hơn.
+                                </div>
+                            )}
                             <button type="button" className="admin-btn admin-btn-primary" onClick={() => navigate('/create-post')}>
                                 <PlusCircle size={16} />
                                 Đăng bài mới
@@ -393,221 +1306,208 @@ export default function AdminBankDash() {
 
                     {feedback?.text && <div className={`admin-feedback ${feedback.type || 'info'}`}>{feedback.text}</div>}
 
-                    <section className="admin-metrics-grid">
-                        <MetricCard icon={LayoutDashboard} label="Bài đăng đang bán" value={formatNumber(analytics.activeListings)} helper={`${formatNumber(listings.length)} bài đang được theo dõi`} tone="brand" delay={0} />
-                        <MetricCard icon={Heart} label="Tổng quan tâm" value={formatNumber(analytics.totalLikes + analytics.totalComments)} helper={`${formatNumber(analytics.totalLikes)} thích · ${formatNumber(analytics.totalComments)} bình luận`} tone="success" delay={80} />
-                        <MetricCard icon={TrendingUp} label="Tiếp cận ước tính" value={formatNumber(analytics.estimatedTraffic)} helper="Tính từ tương tác và hoạt động bán hàng" tone="gold" delay={160} />
-                        <MetricCard icon={MessageCircle} label="Bài nổi bật" value={formatNumber(analytics.topListings.length)} helper="dựa trên tương tác gần đây" tone="danger" delay={240} />
-                    </section>
+                    {['overview', 'manage', 'analytics'].includes(activeSection) && renderPrimaryMetrics()}
 
-                    <div className="admin-main-grid">
-                        <section className="admin-card admin-featured-card">
-                            <div className="admin-card-head">
-                                <div>
-                                    <span className="admin-section-tag">Featured post</span>
-                                    <h2>Bài đăng trọng tâm</h2>
-                                    <p>Khung xem nhanh một bài nổi bật để kiểm tra hình ảnh, trạng thái và hiệu suất trước khi thao tác.</p>
-                                </div>
-                                {selectedListing && (
-                                    <button type="button" className="admin-text-link" onClick={() => navigate(`/post/${selectedListing.id}`)}>
-                                        Mở chi tiết
-                                    </button>
-                                )}
-                            </div>
+                    {activeSection === 'overview' && (
+                        <div className="admin-main-grid">
+                            {renderSelectedListingCard('focus')}
 
-                            {selectedListing ? (
-                                <div className="admin-featured-layout">
-                                    <div className="admin-featured-media">
-                                        <PostMediaGallery
-                                            images={selectedListing.images}
-                                            title={selectedListing.title}
-                                            badge={formatCurrency(selectedListing.price)}
-                                            interactive
-                                            onOpen={() => navigate(`/post/${selectedListing.id}`)}
-                                        />
-                                    </div>
-                                    <div className="admin-featured-body">
-                                        <div className="admin-inline-badges">
-                                            <span className={`admin-pill tone-${selectedListing.statusTone}`}>{selectedListing.statusLabel}</span>
-                                            {selectedListing.categoryName && <span className="admin-pill tone-ghost">{selectedListing.categoryName}</span>}
-                                            {selectedListing.postTypeName && <span className="admin-pill tone-ghost">{selectedListing.postTypeName}</span>}
-                                        </div>
-                                        <h3>{selectedListing.title}</h3>
-                                        <div className="admin-price">{formatCurrency(selectedListing.price)}</div>
-                                        <p>{selectedListing.description || 'Bài đăng này chưa có mô tả chi tiết.'}</p>
-                                        <div className="admin-meta-grid">
-                                            <div><span>Đã đăng</span><strong>{formatDate(selectedListing.createdAt)}</strong></div>
-                                            <div><span>Vị trí</span><strong>{selectedListing.location || 'Chưa có vị trí'}</strong></div>
-                                            <div><span>Tiếp cận</span><strong>{formatNumber(estimateTraffic(selectedListing))}</strong></div>
-                                            <div><span>Tương tác</span><strong>{formatNumber(getEngagementScore(selectedListing))}</strong></div>
-                                        </div>
-                                        <div className="admin-stat-inline">
-                                            <span><Heart size={14} /> {formatNumber(selectedListing.likeCount)} thích</span>
-                                            <span><MessageCircle size={14} /> {formatNumber(selectedListing.commentCount)} bình luận</span>
-                                            <span><BarChart3 size={14} /> {formatNumber(estimateTraffic(selectedListing))} tiếp cận ước tính</span>
-                                        </div>
-                                        <div className="admin-inline-actions">
-                                            <button type="button" className="admin-btn admin-btn-primary" onClick={() => navigate(`/post/${selectedListing.id}`)}>
-                                                <ExternalLink size={16} />
-                                                Xem bài đăng
-                                            </button>
-                                            <button type="button" className="admin-btn admin-btn-soft" onClick={() => navigate(`/post/${selectedListing.id}/comments`)}>
-                                                <MessageCircle size={16} />
-                                                Mở bình luận
-                                            </button>
+                            <aside className="admin-side-column">
+                                <section className="admin-card">
+                                    <div className="admin-card-head">
+                                        <div>
+                                            <span className="admin-section-tag">Tổng hợp nhanh</span>
+                                            <h2>Phân tích nhanh</h2>
+                                            <p>Trạng thái bài đăng và nhóm bài hiệu suất cao được đặt riêng để khu chính vẫn thoáng và dễ nhìn.</p>
                                         </div>
                                     </div>
-                                </div>
-                            ) : (
-                                <div className="admin-empty-note">Bạn chưa có bài đăng nào để quản lý. Hãy tạo bài đầu tiên để bắt đầu dashboard.</div>
-                            )}
-                        </section>
 
-                        <aside className="admin-side-column">
-                            <section className="admin-card">
-                                <div className="admin-card-head">
-                                    <div>
-                                        <span className="admin-section-tag">Insights</span>
-                                        <h2>Phân tích nhanh</h2>
-                                        <p>Trạng thái bài đăng và danh sách hiệu suất cao nhất được đặt riêng để không làm rối khu vực chính.</p>
-                                    </div>
-                                </div>
-
-                                <div className="admin-status-list">
-                                    {analytics.statusRows.map((row) => (
-                                        <div key={row.value} className="admin-status-row">
-                                            <div className="admin-status-copy">
-                                                <strong>{row.label}</strong>
-                                                <span>{formatNumber(row.count)} bài</span>
-                                            </div>
-                                            <div className="admin-status-bar">
-                                                <div className={`tone-${row.tone}`} style={{ width: `${row.percent}%` }} />
-                                            </div>
-                                            <small>{row.percent}%</small>
-                                        </div>
-                                    ))}
-                                </div>
-
-                                <div className="admin-top-list">
-                                    <div className="admin-section-caption">
-                                        <Sparkles size={14} />
-                                        Top bài có hiệu suất cao
-                                    </div>
-                                    {analytics.topListings.length > 0 ? (
-                                        analytics.topListings.map((listing) => (
-                                            <button
-                                                key={listing.id}
-                                                type="button"
-                                                className={`admin-top-item${String(selectedListing?.id) === String(listing.id) ? ' active' : ''}`}
-                                                onClick={() => setSelectedListingId(listing.id)}
-                                            >
-                                                <span>{listing.title}</span>
-                                                <strong>{formatNumber(getEngagementScore(listing))} điểm</strong>
-                                            </button>
-                                        ))
-                                    ) : (
-                                        <div className="admin-empty-note compact">Top hiệu suất sẽ xuất hiện khi bạn có thêm dữ liệu tương tác.</div>
-                                    )}
-                                </div>
-                            </section>
-
-                            <section className="admin-card">
-                                <div className="admin-card-head">
-                                    <div>
-                                        <span className="admin-section-tag">Opportunities</span>
-                                        <h2>Cơ hội tối ưu hôm nay</h2>
-                                        <p>Những gợi ý ngắn để bạn xử lý nhanh các điểm có thể làm tăng tỷ lệ chốt đơn.</p>
-                                    </div>
-                                </div>
-
-                                <div className="admin-opportunity-list">
-                                    {opportunities.map((item) => (
-                                        <div key={item} className="admin-opportunity-item">
-                                            <Sparkles size={15} />
-                                            <span>{item}</span>
-                                        </div>
-                                    ))}
-                                </div>
-
-                                <div className="admin-side-actions">
-                                    <button type="button" className="admin-btn admin-btn-soft" onClick={() => navigate('/settings')}>
-                                        <Settings size={16} />
-                                        Cài đặt tài khoản
-                                    </button>
-                                    <button type="button" className="admin-btn admin-btn-primary" onClick={() => navigate('/create-post')}>
-                                        <ArrowRight size={16} />
-                                        Tạo thêm bài mới
-                                    </button>
-                                </div>
-                            </section>
-                        </aside>
-                        <section className="admin-card admin-board-card">
-                            <div className="admin-card-head">
-                                <div>
-                                    <span className="admin-section-tag">Board</span>
-                                    <h2>Bảng quản lý bài đăng</h2>
-                                    <p>Lọc nhanh, đổi trạng thái và mở bài đăng ngay trong một bố cục gọn hơn.</p>
-                                </div>
-                                <div className="admin-section-chip">{formatNumber(filteredListings.length)} bài</div>
-                            </div>
-
-                            <div className="admin-toolbar">
-                                <input type="text" value={listingSearch} onChange={(event) => setListingSearch(event.target.value)} placeholder="Tìm theo tiêu đề, danh mục hoặc vị trí" />
-                                <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-                                    <option value="all">Tất cả trạng thái</option>
-                                    {MANAGE_STATUSES.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
-                                </select>
-                                <select value={sortMode} onChange={(event) => setSortMode(event.target.value)}>
-                                    <option value="engagement">Ưu tiên tương tác</option>
-                                    <option value="traffic">Ưu tiên tiếp cận</option>
-                                    <option value="latest">Mới nhất</option>
-                                </select>
-                            </div>
-
-                            <div className="admin-post-list">
-                                {filteredListings.length > 0 ? (
-                                    filteredListings.map((listing, index) => (
-                                        <article key={listing.id} className="admin-post-row" style={{ '--delay': `${index * 50}ms` }}>
-                                            <button type="button" className="admin-post-thumb" onClick={() => setSelectedListingId(listing.id)}>
-                                                <PostMediaGallery images={listing.images} title={listing.title} interactive={false} maxVisible={3} />
-                                            </button>
-                                            <div className="admin-post-copy">
-                                                <div className="admin-inline-badges">
-                                                    <span className={`admin-pill tone-${listing.statusTone}`}>{listing.statusLabel}</span>
-                                                    {listing.categoryName && <span className="admin-pill tone-ghost">{listing.categoryName}</span>}
+                                    <div className="admin-status-list">
+                                        {analytics.statusRows.map((row) => (
+                                            <div key={row.value} className="admin-status-row">
+                                                <div className="admin-status-copy">
+                                                    <strong>{row.label}</strong>
+                                                    <span>{formatNumber(row.count)} bài</span>
                                                 </div>
-                                                <strong>{listing.title}</strong>
-                                                <span>{formatCurrency(listing.price)}</span>
-                                                <small>{listing.location || 'Chưa có vị trí'} · {formatNumber(listing.likeCount)} thích · {formatNumber(listing.commentCount)} bình luận</small>
+                                                <div className="admin-status-bar">
+                                                    <div className={`tone-${row.tone}`} style={{ width: `${row.percent}%` }} />
+                                                </div>
+                                                <small>{row.percent}%</small>
                                             </div>
-                                            <div className="admin-post-stats">
-                                                <div><label>Tương tác</label><strong>{formatNumber(getEngagementScore(listing))}</strong></div>
-                                                <div><label>Tiếp cận</label><strong>{formatNumber(estimateTraffic(listing))}</strong></div>
+                                        ))}
+                                    </div>
+
+                                    <div className="admin-top-list">
+                                        <div className="admin-section-caption">
+                                            <Sparkles size={14} />
+                                            Top bài có hiệu suất cao
+                                        </div>
+                                        {analytics.topListings.length > 0 ? (
+                                            analytics.topListings.map((listing) => (
+                                                <button
+                                                    key={listing.id}
+                                                    type="button"
+                                                    className={`admin-top-item${String(selectedListing?.id) === String(listing.id) ? ' active' : ''}`}
+                                                    onClick={() => setSelectedListingId(listing.id)}
+                                                >
+                                                    <span>{listing.title}</span>
+                                                    <strong>{formatNumber(getEngagementScore(listing))} điểm</strong>
+                                                </button>
+                                            ))
+                                        ) : (
+                                            <div className="admin-empty-note compact">Top hiệu suất sẽ xuất hiện khi bạn có thêm dữ liệu tương tác.</div>
+                                        )}
+                                    </div>
+                                </section>
+
+                                {renderOpportunitiesCard()}
+                            </aside>
+                        </div>
+                    )}
+
+                    {activeSection === 'manage' && renderManageBoard()}
+
+                    {activeSection === 'analytics' && (
+                        <div className="admin-main-grid">
+                            {renderPostingTimelineCard()}
+
+                            <aside className="admin-side-column">
+                                <section className="admin-card">
+                                    <div className="admin-card-head">
+                                        <div>
+                                            <span className="admin-section-tag">Đọc nhanh</span>
+                                            <h2>Trạng thái và top tương tác</h2>
+                                            <p>Giữ lại các chỉ dấu quan trọng để bạn vừa xem biểu đồ vừa nắm được bài nào đang nổi bật nhất.</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="admin-status-list">
+                                        {analytics.statusRows.map((row) => (
+                                            <div key={row.value} className="admin-status-row">
+                                                <div className="admin-status-copy">
+                                                    <strong>{row.label}</strong>
+                                                    <span>{formatNumber(row.count)} bài</span>
+                                                </div>
+                                                <div className="admin-status-bar">
+                                                    <div className={`tone-${row.tone}`} style={{ width: `${row.percent}%` }} />
+                                                </div>
+                                                <small>{row.percent}%</small>
                                             </div>
-                                            <div className="admin-post-controls">
-                                                <select value={listing.status} onChange={(event) => handleStatusChange(listing.id, event.target.value)} disabled={listingBusyId === String(listing.id)}>
-                                                    {MANAGE_STATUSES.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
-                                                </select>
-                                                <button type="button" className="admin-btn admin-btn-soft" onClick={() => navigate(`/post/${listing.id}`)}>
-                                                    <ExternalLink size={16} />
-                                                    Xem
+                                        ))}
+                                    </div>
+
+                                    <div className="admin-top-list">
+                                        <div className="admin-section-caption">
+                                            <Sparkles size={14} />
+                                            Top bài có hiệu suất cao
+                                        </div>
+                                        {analytics.topListings.length > 0 ? (
+                                            analytics.topListings.map((listing) => (
+                                                <button
+                                                    key={listing.id}
+                                                    type="button"
+                                                    className={`admin-top-item${String(selectedListing?.id) === String(listing.id) ? ' active' : ''}`}
+                                                    onClick={() => setSelectedListingId(listing.id)}
+                                                >
+                                                    <span>{listing.title}</span>
+                                                    <strong>{formatNumber(getEngagementScore(listing))} điểm</strong>
                                                 </button>
-                                                <button type="button" className="admin-btn admin-btn-soft" onClick={() => navigate(`/post/${listing.id}/comments`)}>
-                                                    <MessageCircle size={16} />
-                                                    Bình luận
-                                                </button>
-                                                <button type="button" className="admin-icon-danger" onClick={() => handleDeleteListing(listing.id)} disabled={listingBusyId === String(listing.id)}>
-                                                    {listingBusyId === String(listing.id) ? <Loader2 size={16} className="spin" /> : <Trash2 size={16} />}
-                                                </button>
+                                            ))
+                                        ) : (
+                                            <div className="admin-empty-note compact">Chưa có dữ liệu top bài để so sánh.</div>
+                                        )}
+                                    </div>
+                                </section>
+
+                                {renderSelectedListingCard('summary')}
+                            </aside>
+                        </div>
+                    )}
+
+                    {activeSection === 'points' && renderPointsDashboard()}
+
+                    {activeSection === 'activity' && (
+                        <>
+                            <section className="admin-metrics-grid">
+                                <MetricCard icon={Sparkles} label="Tổng hoạt động" value={formatNumber(activityMetrics.total)} helper="được tổng hợp từ bài đăng và cộng đồng" tone="brand" delay={0} />
+                                <MetricCard icon={MessageCircle} label="Bình luận mới" value={formatNumber(activityMetrics.comments)} helper="cần ưu tiên phản hồi sớm" tone="success" delay={80} />
+                                <MetricCard icon={Heart} label="Đánh giá mới" value={formatNumber(activityMetrics.reviews)} helper="theo dõi uy tín tài khoản" tone="gold" delay={160} />
+                                <MetricCard icon={UserRound} label="Kết nối mới" value={formatNumber(activityMetrics.friends)} helper="mở rộng mạng lưới giao dịch" tone="danger" delay={240} />
+                            </section>
+
+                            <div className="admin-main-grid">
+                                <section className="admin-card">
+                                    <div className="admin-card-head">
+                                        <div>
+                                            <span className="admin-section-tag">Dòng hoạt động</span>
+                                            <h2>Hoạt động mới nhất</h2>
+                                            <p>Các cập nhật được tách thành một panel riêng để bạn xử lý từng việc mà không làm rối màn quản lý bài đăng.</p>
+                                        </div>
+                                        <div className="admin-section-chip">{formatNumber(activities.length)} mục</div>
+                                    </div>
+
+                                    {activities.length > 0 ? (
+                                        <div className="admin-activity-list">
+                                            {activities.map((item, index) => (
+                                                <article key={item.id} className="admin-activity-item" style={{ '--delay': `${index * 40}ms` }}>
+                                                    <div className="admin-activity-head">
+                                                        <span className={`admin-pill tone-${ACTIVITY_TONES[item.type] || 'ghost'}`}>{ACTIVITY_LABELS[item.type] || item.title}</span>
+                                                        <small>{formatRelativeTime(item.createdAt)}</small>
+                                                    </div>
+                                                    <strong>{item.title}</strong>
+                                                    <p>{item.description}</p>
+                                                    {item.meta?.preview && (
+                                                        <div className="admin-activity-preview">
+                                                            {item.meta.preview}
+                                                        </div>
+                                                    )}
+                                                    <div className="admin-activity-footer">
+                                                        <span>{formatDate(item.createdAt, true)}</span>
+                                                        {(item.meta?.postId || item.meta?.partnerId || item.meta?.reviewerId || item.meta?.commenterId) && (
+                                                            <button type="button" className="admin-btn admin-btn-soft" onClick={() => openActivityTarget(item)}>
+                                                                Mở liên quan
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </article>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="admin-empty-note">Chưa có nhật ký hoạt động nào để hiển thị.</div>
+                                    )}
+                                </section>
+
+                                <aside className="admin-side-column">
+                                    <section className="admin-card">
+                                        <div className="admin-card-head">
+                                            <div>
+                                                <span className="admin-section-tag">Ưu tiên xử lý</span>
+                                                <h2>Việc cần ưu tiên</h2>
+                                                <p>Những đầu việc nên xử lý đầu tiên để giữ nhịp bán hàng và tương tác.</p>
                                             </div>
-                                        </article>
-                                    ))
-                                ) : (
-                                    <div className="admin-empty-note">Không có bài đăng nào khớp với bộ lọc hiện tại.</div>
-                                )}
+                                        </div>
+
+                                        <div className="admin-opportunity-list">
+                                            <div className="admin-opportunity-item">
+                                                <MessageCircle size={15} />
+                                                <span>Bạn đang có {formatNumber(activityMetrics.comments)} bình luận mới. Nếu có khách hỏi giá, nên trả lời trong ngày.</span>
+                                            </div>
+                                            <div className="admin-opportunity-item">
+                                                <Heart size={15} />
+                                                <span>{formatNumber(activityMetrics.reviews)} đánh giá mới đang ảnh hưởng trực tiếp đến độ uy tín của gian hàng.</span>
+                                            </div>
+                                            <div className="admin-opportunity-item">
+                                                <RefreshCw size={15} />
+                                                <span>Khi xử lý xong một đợt phản hồi, bạn có thể bấm Làm mới để cập nhật feed ngay.</span>
+                                            </div>
+                                        </div>
+                                    </section>
+
+                                    {renderSelectedListingCard('summary')}
+                                </aside>
                             </div>
-                        </section>
-                    </div>
+                        </>
+                    )}
                 </main>
             </div>
         </div>

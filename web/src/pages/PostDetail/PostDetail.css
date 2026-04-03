@@ -2,9 +2,9 @@
   min-height: calc(100vh - 72px);
   padding: 12px 12px 40px;
   background:
-    radial-gradient(circle at top left, rgba(127, 0, 31, 0.09), transparent 34%),
+    radial-gradient(circle at top left, rgba(201, 162, 39, 0.12), transparent 34%),
     radial-gradient(circle at bottom right, rgba(201, 162, 39, 0.14), transparent 28%),
-    #fbf7ef;
+    #fffcef;
 }
 
 .pd-shell {
@@ -235,7 +235,7 @@
   border: 1px solid rgba(231, 229, 228, 0.9);
   border-radius: 18px;
   overflow: hidden;
-  background: rgba(255, 248, 241, 0.88);
+  background: rgba(255, 252, 239, 0.88);
   cursor: pointer;
   transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
 }
@@ -307,7 +307,7 @@
 .pd-empty-note {
   padding: 16px;
   border-radius: 22px;
-  background: rgba(255, 248, 241, 0.82);
+  background: rgba(255, 252, 239, 0.86);
   border: 1px dashed rgba(214, 211, 209, 0.96);
 }
 
@@ -321,7 +321,7 @@
   padding: 0 12px;
   border-radius: 999px;
   border: 1px solid rgba(231, 229, 228, 0.92);
-  background: rgba(255, 248, 241, 0.82);
+  background: rgba(255, 252, 239, 0.84);
   color: #7f001f;
   font-size: 12px;
   font-weight: 800;
@@ -330,7 +330,7 @@
 }
 
 .pd-chip-primary {
-  background: linear-gradient(135deg, rgba(127, 0, 31, 0.12), rgba(201, 162, 39, 0.14));
+  background: linear-gradient(135deg, rgba(201, 162, 39, 0.14), rgba(255, 252, 239, 0.94));
 }
 
 .pd-price {
@@ -348,7 +348,7 @@
   padding: 14px;
   border-radius: 22px;
   border: 1px solid rgba(231, 229, 228, 0.92);
-  background: rgba(255, 248, 241, 0.72);
+  background: rgba(255, 252, 239, 0.76);
   display: grid;
   grid-template-columns: 40px minmax(0, 1fr);
   gap: 12px;
@@ -530,4 +530,29 @@
   .pd-thumbnail-strip {
     grid-auto-columns: 88px;
   }
+}
+
+:root[data-theme='dark'] .post-detail-page {
+  color: var(--color-text);
+}
+
+:root[data-theme='dark'] .pd-main-card,
+:root[data-theme='dark'] .pd-sidebar-card,
+:root[data-theme='dark'] .pd-card,
+:root[data-theme='dark'] .pd-state-card,
+:root[data-theme='dark'] .pd-seller-card,
+:root[data-theme='dark'] .pd-comment-item,
+:root[data-theme='dark'] .pd-meta-item {
+  background: linear-gradient(180deg, rgba(28, 22, 32, 0.98) 0%, rgba(22, 18, 27, 0.98) 100%);
+  border-color: var(--color-border);
+  color: var(--color-text);
+  box-shadow: var(--shadow-md);
+}
+
+:root[data-theme='dark'] .pd-card-head span,
+:root[data-theme='dark'] .pd-state-card p,
+:root[data-theme='dark'] .pd-comment-item p,
+:root[data-theme='dark'] .pd-seller-card span,
+:root[data-theme='dark'] .pd-meta-item small {
+  color: var(--color-text-muted);
 }

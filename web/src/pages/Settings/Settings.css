@@ -172,7 +172,7 @@
 }
 
 .settings-edit-btn:hover {
-    background: #ffe8ec;
+    background: var(--color-cream-panel);
 }
 
 /* ══════════════════════════
@@ -258,7 +258,7 @@
 }
 
 .settings-btn-register:hover {
-    background: #fff5f5;
+    background: var(--color-cream-panel);
     transform: translateY(-1px);
 }
 
@@ -324,7 +324,7 @@
 }
 
 .settings-item:hover .settings-item-icon {
-    background: #ffe8ec;
+    background: var(--color-cream-panel);
     color: #7f001f;
 }
 
@@ -598,7 +598,7 @@
 }
 
 .points-balance {
-    background: radial-gradient(circle at top left, #fff4d4, #ffe8ec);
+    background: radial-gradient(circle at top left, #fff4d4, #fffcef);
     border-radius: 18px;
     padding: 18px 18px 16px;
     border: 1px solid #ffe0b2;
@@ -1483,7 +1483,7 @@
     padding: 16px;
     border: 1px solid #f3c6ce;
     border-radius: 12px;
-    background: #fff7f8;
+    background: var(--color-cream-panel);
 }
 
 .settings-delete-actions {
@@ -2074,6 +2074,151 @@
         opacity: 1;
         transform: translateY(0) scale(1);
     }
+}
+
+:root[data-theme='dark'] .settings-page {
+    background: transparent;
+}
+
+:root[data-theme='dark'] .settings-header h1,
+:root[data-theme='dark'] .settings-profile-name,
+:root[data-theme='dark'] .settings-login-prompt h3,
+:root[data-theme='dark'] .settings-item-label,
+:root[data-theme='dark'] .settings-subview-header h2,
+:root[data-theme='dark'] .settings-form-group label,
+:root[data-theme='dark'] .points-history-header h3,
+:root[data-theme='dark'] .points-history-title,
+:root[data-theme='dark'] .video-task-title,
+:root[data-theme='dark'] .twofa-title,
+:root[data-theme='dark'] .twofa-switch-title,
+:root[data-theme='dark'] .twofa-section-title {
+    color: var(--color-text);
+}
+
+:root[data-theme='dark'] .settings-profile-email,
+:root[data-theme='dark'] .settings-login-prompt p,
+:root[data-theme='dark'] .settings-section-title,
+:root[data-theme='dark'] .settings-item-chevron,
+:root[data-theme='dark'] .settings-input-hint,
+:root[data-theme='dark'] .points-history-count,
+:root[data-theme='dark'] .points-history-time,
+:root[data-theme='dark'] .points-history-desc,
+:root[data-theme='dark'] .video-task-desc,
+:root[data-theme='dark'] .twofa-sub,
+:root[data-theme='dark'] .twofa-switch-text p,
+:root[data-theme='dark'] .twofa-backup-note,
+:root[data-theme='dark'] .twofa-footnote {
+    color: var(--color-text-muted);
+}
+
+:root[data-theme='dark'] .settings-profile-card,
+:root[data-theme='dark'] .settings-login-prompt,
+:root[data-theme='dark'] .settings-section-body,
+:root[data-theme='dark'] .settings-subview-content,
+:root[data-theme='dark'] .points-history,
+:root[data-theme='dark'] .video-task-card,
+:root[data-theme='dark'] .twofa-card,
+:root[data-theme='dark'] .settings-delete-box,
+:root[data-theme='dark'] .settings-upload-card,
+:root[data-theme='dark'] .qr-card,
+:root[data-theme='dark'] .zalopay-qr-shell,
+:root[data-theme='dark'] .zalopay-success-card,
+:root[data-theme='dark'] .zalopay-pending-box {
+    background: linear-gradient(180deg, rgba(28, 22, 32, 0.98) 0%, rgba(22, 18, 27, 0.98) 100%);
+    border-color: var(--color-border);
+    color: var(--color-text);
+    box-shadow: var(--shadow-md);
+}
+
+:root[data-theme='dark'] .settings-item {
+    border-bottom-color: rgba(70, 55, 68, 0.72);
+}
+
+:root[data-theme='dark'] .settings-item:hover {
+    background: var(--color-surface-hover);
+}
+
+:root[data-theme='dark'] .settings-item-icon,
+:root[data-theme='dark'] .settings-edit-btn,
+:root[data-theme='dark'] .settings-avatar-change-btn,
+:root[data-theme='dark'] .twofa-switch-row,
+:root[data-theme='dark'] .twofa-btn,
+:root[data-theme='dark'] .qr-code-text,
+:root[data-theme='dark'] .zalopay-countdown {
+    background: var(--color-cream-panel);
+    border-color: var(--color-border);
+    color: var(--color-text);
+}
+
+:root[data-theme='dark'] .settings-item:hover .settings-item-icon,
+:root[data-theme='dark'] .settings-edit-btn:hover,
+:root[data-theme='dark'] .settings-avatar-change-btn:hover,
+:root[data-theme='dark'] .twofa-btn:hover {
+    background: var(--color-cream-strong);
+}
+
+:root[data-theme='dark'] .settings-form-group input,
+:root[data-theme='dark'] .settings-form-group textarea,
+:root[data-theme='dark'] .settings-form-group input:focus,
+:root[data-theme='dark'] .settings-form-group textarea:focus,
+:root[data-theme='dark'] .settings-form-group input:disabled {
+    background: rgba(20, 16, 24, 0.96);
+    color: var(--color-text);
+    border-color: var(--color-border);
+}
+
+:root[data-theme='dark'] .settings-back-btn:hover,
+:root[data-theme='dark'] .settings-btn-register:hover,
+:root[data-theme='dark'] .settings-logout-btn:hover,
+:root[data-theme='dark'] .settings-cancel-btn {
+    background: var(--color-cream-panel);
+}
+
+:root[data-theme='dark'] .points-tier,
+:root[data-theme='dark'] .points-history-item.points-use {
+    background: linear-gradient(135deg, rgba(37, 99, 235, 0.16), rgba(76, 29, 149, 0.14));
+    border-color: rgba(96, 165, 250, 0.24);
+}
+
+:root[data-theme='dark'] .points-balance,
+:root[data-theme='dark'] .points-history-item.points-earn {
+    background: linear-gradient(135deg, rgba(201, 162, 39, 0.16), rgba(180, 83, 9, 0.12));
+    border-color: rgba(251, 191, 36, 0.24);
+}
+
+:root[data-theme='dark'] .points-history-icon,
+:root[data-theme='dark'] .video-reward-pill {
+    background: rgba(251, 191, 36, 0.16);
+    color: #facc15;
+}
+
+:root[data-theme='dark'] .points-history-item.points-use .points-history-icon {
+    background: rgba(96, 165, 250, 0.16);
+    color: #93c5fd;
+}
+
+:root[data-theme='dark'] .video-hero-card {
+    background: radial-gradient(circle at top left, rgba(127, 0, 31, 0.28), rgba(201, 162, 39, 0.12));
+    border-color: rgba(194, 31, 77, 0.24);
+}
+
+:root[data-theme='dark'] .video-points-now,
+:root[data-theme='dark'] .zalopay-qr-card {
+    background: rgba(20, 16, 24, 0.96);
+    border-color: var(--color-border);
+    color: var(--color-text);
+}
+
+:root[data-theme='dark'] .zalopay-topup-card {
+    box-shadow: 0 18px 40px rgba(0, 87, 255, 0.24);
+}
+
+:root[data-theme='dark'] .settings-danger-zone {
+    border-top-color: rgba(194, 31, 77, 0.18);
+}
+
+:root[data-theme='dark'] .settings-upload-card {
+    color: #f7d7df;
 }
 
 @keyframes zalopaySuccessIn {

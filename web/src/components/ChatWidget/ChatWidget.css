@@ -545,7 +545,7 @@
 
 .cd-input-icon:hover {
     color: #7f001f;
-    background: #fff5f5;
+    background: var(--color-cream-panel);
 }
 
 .cd-input-text {
@@ -605,4 +605,35 @@
         right: 16px;
         bottom: 16px;
     }
+}
+
+:root[data-theme='dark'] .chat-widget,
+:root[data-theme='dark'] .cw-search,
+:root[data-theme='dark'] .cw-chat-item,
+:root[data-theme='dark'] .cd-header,
+:root[data-theme='dark'] .cd-input-bar,
+:root[data-theme='dark'] .cd-msg-row.theirs .cd-msg-bubble {
+    background: linear-gradient(180deg, rgba(28, 22, 32, 0.98) 0%, rgba(22, 18, 27, 0.98) 100%);
+    border-color: var(--color-border);
+    color: var(--color-text);
+}
+
+:root[data-theme='dark'] .cw-search input,
+:root[data-theme='dark'] .cd-input-text {
+    background: rgba(20, 16, 24, 0.96);
+    color: var(--color-text);
+}
+
+:root[data-theme='dark'] .cw-search input::placeholder,
+:root[data-theme='dark'] .cd-input-text::placeholder,
+:root[data-theme='dark'] .cw-header-left span,
+:root[data-theme='dark'] .cw-chat-last,
+:root[data-theme='dark'] .cw-chat-time,
+:root[data-theme='dark'] .cd-msg-time {
+    color: var(--color-text-muted);
+}
+
+:root[data-theme='dark'] .cw-chat-item:hover,
+:root[data-theme='dark'] .cd-input-icon:hover {
+    background: var(--color-surface-hover);
 }

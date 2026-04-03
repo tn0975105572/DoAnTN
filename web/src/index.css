@@ -22,11 +22,14 @@
   --color-gold: #c9a227;
   --color-gold-light: #e8d48b;
   --color-bg: #fffcef;
-  --color-bg-warm: #fdf9f0;
-  --color-bg-subtle: #faf6ee;
+  --color-bg-warm: #fffdf8;
+  --color-bg-subtle: #fff9f2;
   --color-surface: #ffffff;
-  --color-surface-warm: #fffefc;
-  --color-surface-hover: #fefcf6;
+  --color-surface-warm: #fffdf8;
+  --color-surface-hover: #fff9ef;
+  --color-cream-soft: #fffaf1;
+  --color-cream-panel: #fff7eb;
+  --color-cream-strong: #fff1dc;
 
   /* Text */
   --color-text: #1c1917;
@@ -72,8 +75,8 @@
   --shadow-md: 0 4px 20px rgba(28, 25, 23, 0.07), 0 2px 6px rgba(28, 25, 23, 0.04);
   --shadow-lg: 0 12px 40px rgba(28, 25, 23, 0.08), 0 4px 12px rgba(28, 25, 23, 0.04);
   --shadow-xl: 0 20px 56px rgba(28, 25, 23, 0.1), 0 8px 20px rgba(28, 25, 23, 0.05);
-  --shadow-brand: 0 8px 32px rgba(127, 0, 31, 0.18), 0 2px 8px rgba(127, 0, 31, 0.08);
-  --shadow-brand-hover: 0 12px 40px rgba(127, 0, 31, 0.22), 0 4px 12px rgba(127, 0, 31, 0.1);
+  --shadow-brand: 0 8px 32px rgba(127, 0, 31, 0.14), 0 2px 8px rgba(127, 0, 31, 0.06);
+  --shadow-brand-hover: 0 12px 40px rgba(127, 0, 31, 0.18), 0 4px 12px rgba(127, 0, 31, 0.08);
   --shadow-gold: 0 4px 16px rgba(201, 162, 39, 0.2);
 
   /* Motion */
@@ -100,6 +103,43 @@
   --leading-relaxed: 1.65;
 }
 
+:root[data-theme='dark'] {
+  --color-primary: #a30d34;
+  --color-primary-dark: #7a0828;
+  --color-primary-light: #c21f4d;
+  --color-accent: #d43b63;
+  --color-gold: #d2ad48;
+  --color-gold-light: #f0d98f;
+  --color-bg: #0f0b10;
+  --color-bg-warm: #151017;
+  --color-bg-subtle: #1a141b;
+  --color-surface: #17121a;
+  --color-surface-warm: #1c1620;
+  --color-surface-hover: #241d28;
+  --color-cream-soft: #201922;
+  --color-cream-panel: #261d27;
+  --color-cream-strong: #30242d;
+  --color-text: #f8efe4;
+  --color-text-secondary: #dfd2c4;
+  --color-text-muted: #a8998a;
+  --color-text-inverse: #fffcef;
+  --color-border: #342932;
+  --color-border-strong: #463744;
+  --color-divider: #281f28;
+  --color-success: #34d399;
+  --color-warning: #f59e0b;
+  --color-error: #f87171;
+  --color-info: #60a5fa;
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.22);
+  --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.26);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.34);
+  --shadow-xl: 0 24px 56px rgba(0, 0, 0, 0.4);
+  --shadow-brand: 0 12px 34px rgba(127, 0, 31, 0.26), 0 4px 12px rgba(0, 0, 0, 0.22);
+  --shadow-brand-hover: 0 16px 42px rgba(127, 0, 31, 0.32), 0 8px 20px rgba(0, 0, 0, 0.28);
+  --shadow-gold: 0 8px 22px rgba(201, 162, 39, 0.18);
+}
+
 *,
 *::before,
 *::after {
@@ -119,9 +159,9 @@ body {
   color: var(--color-text);
   background: var(--color-bg);
   background-image:
-    radial-gradient(ellipse 120% 80% at 50% -20%, rgba(253, 249, 240, 0.9), transparent 50%),
-    radial-gradient(ellipse 80% 50% at 100% 50%, rgba(255, 252, 239, 0.5), transparent 45%),
-    radial-gradient(ellipse 60% 40% at 0% 80%, rgba(255, 248, 235, 0.4), transparent 40%);
+    radial-gradient(ellipse 120% 80% at 50% -20%, rgba(255, 252, 239, 0.92), transparent 52%),
+    radial-gradient(ellipse 80% 50% at 100% 50%, rgba(255, 245, 220, 0.24), transparent 45%),
+    radial-gradient(ellipse 60% 40% at 0% 80%, rgba(255, 248, 228, 0.2), transparent 38%);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
@@ -144,7 +184,7 @@ button {
 }
 
 ::selection {
-  background: rgba(127, 0, 31, 0.12);
+  background: rgba(127, 0, 31, 0.08);
   color: var(--color-text);
 }
 
@@ -166,4 +206,143 @@ button {
   background: linear-gradient(90deg, var(--color-primary) 0%, var(--color-gold) 100%);
   margin: var(--space-4) auto 0;
   border-radius: var(--radius-full);
+}
+
+:root[data-theme='dark'] body {
+  color: var(--color-text);
+  background:
+    radial-gradient(ellipse 120% 80% at 50% -20%, rgba(127, 0, 31, 0.18), transparent 52%),
+    radial-gradient(ellipse 90% 60% at 100% 40%, rgba(201, 162, 39, 0.08), transparent 44%),
+    radial-gradient(ellipse 60% 40% at 0% 85%, rgba(64, 48, 72, 0.28), transparent 38%),
+    var(--color-bg);
+}
+
+:root[data-theme='dark'] ::selection {
+  background: rgba(96, 165, 250, 0.18);
+  color: var(--color-text);
+}
+
+:root[data-theme='dark'] img {
+  opacity: 0.98;
+}
+
+:root[data-theme='dark'] :where(.main-content, .home-page, .settings-page, .notif-page, .messages-page, .map-page, .post-detail-page, .create-post-page, .admin-page) {
+  color: var(--color-text);
+}
+
+:root[data-theme='dark'] :where(.home-page, .settings-page, .notif-page, .messages-page, .map-page, .post-detail-page, .create-post-page, .admin-page)
+  :is(
+    .post-card,
+    .user-mini-card,
+    .app-banner-card,
+    .story-card,
+    .stat-card,
+    .person-card-small,
+    .settings-profile-card,
+    .settings-login-prompt,
+    .settings-section-body,
+    .settings-subview-content,
+    .points-history,
+    .video-task-card,
+    .twofa-card,
+    .settings-delete-box,
+    .settings-upload-card,
+    .notif-list-panel,
+    .notif-detail-panel,
+    .notif-detail-card,
+    .msg-list-panel,
+    .msg-detail-panel,
+    .msg-info-panel,
+    .map-controls,
+    .map-posts-panel,
+    .map-post-card,
+    .pd-main-card,
+    .pd-sidebar-card,
+    .pd-card,
+    .pd-state-card,
+    .pd-seller-card,
+    .cp-card,
+    .cp-preview-card,
+    .cp-hero-card,
+    .admin-card,
+    .admin-state-card,
+    .admin-sidebar-card,
+    .bankdash-metric,
+    .admin-post-row
+  ) {
+  background: linear-gradient(180deg, rgba(28, 22, 32, 0.98) 0%, rgba(22, 18, 27, 0.98) 100%);
+  border-color: var(--color-border);
+  color: var(--color-text);
+  box-shadow: var(--shadow-md);
+}
+
+:root[data-theme='dark'] :where(.home-page, .settings-page, .notif-page, .messages-page, .map-page, .post-detail-page, .create-post-page, .admin-page)
+  :is(input, textarea, select) {
+  background: rgba(20, 16, 24, 0.96);
+  color: var(--color-text);
+  border-color: var(--color-border);
+}
+
+:root[data-theme='dark'] :where(.home-page, .settings-page, .notif-page, .messages-page, .map-page, .post-detail-page, .create-post-page, .admin-page)
+  :is(input::placeholder, textarea::placeholder) {
+  color: var(--color-text-muted);
+}
+
+:root[data-theme='dark'] :where(.home-page, .settings-page, .notif-page, .messages-page, .map-page, .post-detail-page, .create-post-page, .admin-page)
+  :is(
+    .settings-item,
+    .notif-item,
+    .msg-thread-item,
+    .msg-list-item,
+    .admin-post-row,
+    .bankdash-nav-item
+  ):hover {
+  background: var(--color-surface-hover);
+}
+
+:root[data-theme='dark'] :where(.home-page, .settings-page, .notif-page, .messages-page, .map-page, .post-detail-page, .create-post-page, .admin-page)
+  :is(
+    h1,
+    h2,
+    h3,
+    h4,
+    strong,
+    .settings-profile-name,
+    .settings-section-title,
+    .points-history-title,
+    .video-hero-title,
+    .twofa-title,
+    .msg-title,
+    .notif-title,
+    .pd-state-card h1,
+    .cp-card h2
+  ) {
+  color: var(--color-text);
+}
+
+:root[data-theme='dark'] :where(.home-page, .settings-page, .notif-page, .messages-page, .map-page, .post-detail-page, .create-post-page, .admin-page)
+  :is(
+    p,
+    small,
+    label,
+    .settings-profile-email,
+    .settings-item-label,
+    .points-history-time,
+    .points-history-desc,
+    .video-task-desc,
+    .twofa-sub,
+    .notif-subtitle,
+    .msg-subtitle,
+    .pd-card-head span,
+    .admin-card-head p
+  ) {
+  color: var(--color-text-secondary);
+}
+
+:root[data-theme='dark'] :where(.settings-switch, .twofa-switch-btn) {
+  background: #4b5563;
+}
+
+:root[data-theme='dark'] :where(.settings-switch.on, .twofa-switch-btn.on) {
+  background: var(--color-primary);
 }

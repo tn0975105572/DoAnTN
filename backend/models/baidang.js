@@ -119,7 +119,7 @@ baidang.getByIdWithDetails = async (id) => {
     LEFT JOIN likebaidang lb_like ON b.ID_BaiDang = lb_like.ID_BaiDang
     LEFT JOIN binhluanbaidang bc ON b.ID_BaiDang = bc.ID_BaiDang
     LEFT JOIN baidang_anh ba ON b.ID_BaiDang = ba.ID_BaiDang
-    WHERE b.ID_BaiDang = ? AND b.trang_thai = 'dang_ban'
+    WHERE b.ID_BaiDang = ?
     GROUP BY b.ID_BaiDang
   `;
   const [rows] = await pool.query(query, [id]);

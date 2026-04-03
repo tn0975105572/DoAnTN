@@ -318,7 +318,7 @@
 }
 
 .msg-conv-item.selected {
-    background: linear-gradient(135deg, #7f001f08 0%, #9a000212 100%);
+    background: linear-gradient(135deg, rgba(201, 162, 39, 0.12) 0%, rgba(255, 252, 239, 0.95) 100%);
 }
 
 .msg-conv-avatar-wrap {
@@ -473,7 +473,7 @@
 }
 
 .msg-detail-action-btn:hover {
-    background: #ffe8ec;
+    background: var(--color-cream-panel);
 }
 
 /* Messages */
@@ -543,7 +543,7 @@
 }
 
 .msg-bubble-delete-btn:hover {
-    background: #ffe8ec;
+    background: var(--color-cream-panel);
     color: #7f001f;
     transform: scale(1.1);
 }
@@ -692,7 +692,7 @@
 }
 
 .msg-input-icon:hover {
-    background: #fff5f5;
+    background: var(--color-cream-panel);
 }
 
 .msg-input-text {
@@ -776,7 +776,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: linear-gradient(135deg, #7f001f10 0%, #9a000218 100%);
+    background: linear-gradient(135deg, rgba(201, 162, 39, 0.12) 0%, rgba(255, 252, 239, 0.95) 100%);
     border-radius: 50%;
 }
 
@@ -880,7 +880,7 @@
 }
 
 .msg-info-quick-btn:hover .msg-info-quick-icon {
-    background: #ffe8ec;
+    background: var(--color-cream-panel);
 }
 
 .msg-info-quick-label {
@@ -1281,4 +1281,49 @@
     color: #888;
     max-width: 220px;
     line-height: 1.4;
+}
+
+:root[data-theme='dark'] .messages-page {
+    color: var(--color-text);
+}
+
+:root[data-theme='dark'] .msg-list-panel,
+:root[data-theme='dark'] .msg-detail-panel,
+:root[data-theme='dark'] .msg-info-panel,
+:root[data-theme='dark'] .msg-search-dropdown,
+:root[data-theme='dark'] .msg-modal,
+:root[data-theme='dark'] .msg-list-search,
+:root[data-theme='dark'] .msg-input-bar,
+:root[data-theme='dark'] .msg-modal-search,
+:root[data-theme='dark'] .msg-conv-item {
+    background: linear-gradient(180deg, rgba(28, 22, 32, 0.98) 0%, rgba(22, 18, 27, 0.98) 100%);
+    border-color: var(--color-border);
+    color: var(--color-text);
+}
+
+:root[data-theme='dark'] .msg-list-search input,
+:root[data-theme='dark'] .msg-input-text,
+:root[data-theme='dark'] .msg-modal-search input {
+    color: var(--color-text);
+}
+
+:root[data-theme='dark'] .msg-list-search input::placeholder,
+:root[data-theme='dark'] .msg-input-text::placeholder,
+:root[data-theme='dark'] .msg-modal-search input::placeholder,
+:root[data-theme='dark'] .msg-search-dropdown-empty,
+:root[data-theme='dark'] .msg-search-dropdown-hint,
+:root[data-theme='dark'] .msg-modal-hint,
+:root[data-theme='dark'] .msg-modal-empty,
+:root[data-theme='dark'] .msg-modal-empty p {
+    color: var(--color-text-muted);
+}
+
+:root[data-theme='dark'] .msg-conv-item:hover,
+:root[data-theme='dark'] .msg-conv-item.selected,
+:root[data-theme='dark'] .msg-search-dropdown-tab:hover,
+:root[data-theme='dark'] .msg-modal-filter-tab:hover,
+:root[data-theme='dark'] .msg-input-icon:hover,
+:root[data-theme='dark'] .msg-input-emoji:hover,
+:root[data-theme='dark'] .msg-modal-clear:hover {
+    background: var(--color-surface-hover);
 }

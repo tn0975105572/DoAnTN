@@ -29,7 +29,7 @@
 .cp-hero-copy {
   padding: 28px;
   background:
-    radial-gradient(circle at top left, rgba(127, 0, 31, 0.08), transparent 34%),
+    radial-gradient(circle at top left, rgba(201, 162, 39, 0.08), transparent 34%),
     linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(255, 252, 239, 0.92));
 }
 
@@ -89,7 +89,7 @@
   display: grid;
   gap: 14px;
   background:
-    linear-gradient(145deg, rgba(127, 0, 31, 0.08), rgba(201, 162, 39, 0.1)),
+    linear-gradient(145deg, rgba(255, 252, 239, 0.96), rgba(201, 162, 39, 0.12)),
     rgba(255, 255, 255, 0.9);
 }
 
@@ -424,4 +424,40 @@
   .cp-submit-bar {
     flex-direction: column-reverse;
   }
+}
+
+:root[data-theme='dark'] .create-post-page {
+  color: var(--color-text);
+}
+
+:root[data-theme='dark'] .cp-hero-card,
+:root[data-theme='dark'] .cp-card,
+:root[data-theme='dark'] .cp-preview-card,
+:root[data-theme='dark'] .cp-input-icon,
+:root[data-theme='dark'] .cp-btn {
+  background: linear-gradient(180deg, rgba(28, 22, 32, 0.98) 0%, rgba(22, 18, 27, 0.98) 100%);
+  border-color: var(--color-border);
+  color: var(--color-text);
+  box-shadow: var(--shadow-md);
+}
+
+:root[data-theme='dark'] .cp-hero-copy p,
+:root[data-theme='dark'] .cp-card p,
+:root[data-theme='dark'] .cp-card li,
+:root[data-theme='dark'] .cp-preview-card span {
+  color: var(--color-text-secondary);
+}
+
+:root[data-theme='dark'] .cp-input-icon input,
+:root[data-theme='dark'] .cp-card input,
+:root[data-theme='dark'] .cp-card textarea,
+:root[data-theme='dark'] .cp-card select {
+  background: transparent;
+  color: var(--color-text);
+}
+
+:root[data-theme='dark'] .cp-input-icon input::placeholder,
+:root[data-theme='dark'] .cp-card input::placeholder,
+:root[data-theme='dark'] .cp-card textarea::placeholder {
+  color: var(--color-text-muted);
 }

@@ -71,10 +71,14 @@ const formatListing = (listing) => {
       .map((item) => item.trim())
       .filter(Boolean)
     : [];
+  const stockQuantity = Number(listing?.so_luong_con_lai ?? 0);
 
   return {
     id: listing.ID_BaiDang,
     userId: listing.ID_NguoiDung,
+    postTypeId: listing.ID_LoaiBaiDang || "",
+    categoryId: listing.ID_DanhMuc || "",
+    inventoryId: listing.ID_TonKho || "",
     title: listing.tieu_de,
     description: listing.mo_ta || "",
     price: listing.gia,
@@ -87,6 +91,7 @@ const formatListing = (listing) => {
     postTypeName: listing.ten_loai_bai_dang || "",
     likeCount: Number(listing.so_luot_thich || 0),
     commentCount: Number(listing.so_binh_luan || 0),
+    stockQuantity: Number.isFinite(stockQuantity) ? stockQuantity : 0,
     images,
     primaryImage: images[0] || "",
   };

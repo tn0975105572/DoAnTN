@@ -195,7 +195,7 @@
 }
 
 .af-tab:hover:not(.active) {
-    background: #fff5f5;
+    background: var(--color-cream-panel);
 }
 
 .af-tab.active {
@@ -601,7 +601,7 @@
     width: 100px;
     height: 100px;
     border-radius: 50%;
-    background: linear-gradient(135deg, #7f001f10 0%, #9a000218 100%);
+    background: linear-gradient(135deg, rgba(201, 162, 39, 0.12) 0%, rgba(255, 252, 239, 0.95) 100%);
     display: flex;
     align-items: center;
     justify-content: center;

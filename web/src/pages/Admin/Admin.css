@@ -2,9 +2,9 @@
   min-height: calc(100vh - 72px);
   padding: 18px 14px 42px;
   background:
-    radial-gradient(circle at top left, rgba(127, 0, 31, 0.12), transparent 26%),
+    radial-gradient(circle at top left, rgba(201, 162, 39, 0.12), transparent 26%),
     radial-gradient(circle at bottom right, rgba(201, 162, 39, 0.16), transparent 24%),
-    linear-gradient(180deg, #fff8f2 0%, #fbf7ef 56%, #f6f1e7 100%);
+    linear-gradient(180deg, #fffdf8 0%, #fffcef 56%, #f9f5ea 100%);
 }
 
 .admin-shell {
@@ -61,7 +61,7 @@
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 18px;
   background:
-    linear-gradient(135deg, rgba(127, 0, 31, 0.07), rgba(201, 162, 39, 0.08)),
+    linear-gradient(135deg, rgba(201, 162, 39, 0.08), rgba(255, 252, 239, 0.9)),
     rgba(255, 255, 255, 0.88);
 }
 
@@ -320,7 +320,7 @@
 
 .admin-pill.tone-muted,
 .admin-pill.tone-ghost {
-  background: rgba(255, 248, 241, 0.78);
+  background: rgba(255, 252, 239, 0.82);
   color: #7b6b66;
 }
 
@@ -606,7 +606,7 @@
   margin-top: 14px;
   padding: 16px;
   border-radius: 24px;
-  background: rgba(255, 248, 241, 0.76);
+  background: rgba(255, 252, 239, 0.8);
   border: 1px solid rgba(231, 229, 228, 0.92);
 }
 
@@ -704,7 +704,7 @@
 .admin-empty-note {
   padding: 18px;
   border-radius: 22px;
-  background: rgba(255, 248, 241, 0.8);
+  background: rgba(255, 252, 239, 0.84);
   border: 1px dashed rgba(214, 211, 209, 0.96);
 }
 
