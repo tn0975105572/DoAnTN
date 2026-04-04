@@ -245,6 +245,60 @@ profile.getListings = async (userId, limit = 24) => {
   return rows;
 };
 
+profile.getAllListings = async (userId) => {
+  const [rows] = await pool.query(
+    `
+      SELECT
+        b.ID_BaiDang,
+        b.ID_NguoiDung,
+        b.ID_LoaiBaiDang,
+        b.ID_DanhMuc,
+        b.tieu_de,
+        b.mo_ta,
+        b.gia,
+        b.vi_tri,
+        b.trang_thai,
+        b.thoi_gian_tao,
+        b.thoi_gian_cap_nhat,
+        tk.ID_TonKho,
+        tk.so_luong_con_lai,
+        lb.ten AS ten_loai_bai_dang,
+        dm.ten AS ten_danh_muc,
+        (
+          SELECT COUNT(*)
+          FROM likebaidang l
+          WHERE l.ID_BaiDang = b.ID_BaiDang
+        ) AS so_luot_thich,
+        (
+          SELECT COUNT(*)
+          FROM binhluanbaidang c
+          WHERE c.ID_BaiDang = b.ID_BaiDang
+        ) AS so_binh_luan,
+        (
+          SELECT GROUP_CONCAT(ba.LinkAnh ORDER BY ba.ID ASC SEPARATOR '|')
+          FROM baidang_anh ba
+          WHERE ba.ID_BaiDang = b.ID_BaiDang
+        ) AS danh_sach_anh
+      FROM baidang b
+      LEFT JOIN loaibaidang lb ON lb.ID_LoaiBaiDang = b.ID_LoaiBaiDang
+      LEFT JOIN danhmuc dm ON dm.ID_DanhMuc = b.ID_DanhMuc
+      LEFT JOIN (
+        SELECT
+          ID_BaiDang,
+          MIN(ID_TonKho) AS ID_TonKho,
+          COALESCE(SUM(so_luong_con_lai), 0) AS so_luong_con_lai
+        FROM tonkho
+        GROUP BY ID_BaiDang
+      ) tk ON tk.ID_BaiDang = b.ID_BaiDang
+      WHERE b.ID_NguoiDung = ?
+      ORDER BY b.thoi_gian_cap_nhat DESC, b.thoi_gian_tao DESC
+    `,
+    [userId],
+  );
+
+  return rows;
+};
+
 profile.getReviewSummary = async (userId) => {
   const [rows] = await pool.query(
     `

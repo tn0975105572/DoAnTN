@@ -1,5 +1,6 @@
 const express = require('express');
 const routes = express.Router();
+const adminRoutes = require('./admin');
 const baidangRoutes = require('./baidang');
 const baidang_anhRoutes = require('./baidang_anh');
 const baocaoRoutes = require('./baocao');
@@ -27,6 +28,7 @@ const quanHeBanBeRoutes = require('./quanHeBanBe');
 const profileRoutes = require('./profile');
 const zalopayRoutes = require('./zalopay'); // Add ZaloPay route
 
+routes.use('/admin', adminRoutes);
 routes.use('/baidang', baidangRoutes);
 routes.use('/baidang_anh', baidang_anhRoutes);
 routes.use('/baocao', baocaoRoutes);

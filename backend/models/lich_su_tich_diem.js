@@ -35,6 +35,15 @@ lich_su_tich_diem.getByUserId = async (userId, limit = 50, offset = 0) => {
   return rows;
 };
 
+lich_su_tich_diem.getAllByUserId = async (userId) => {
+  const [rows] = await pool.query(`
+    SELECT * FROM lich_su_tich_diem
+    WHERE ID_NguoiDung = ?
+    ORDER BY thoi_gian_tao DESC
+  `, [userId]);
+  return rows;
+};
+
 // Lấy lịch sử theo loại giao dịch
 lich_su_tich_diem.getByTransactionType = async (loai) => {
   const [rows] = await pool.query(`

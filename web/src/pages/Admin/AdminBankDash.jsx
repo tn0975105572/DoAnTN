@@ -373,14 +373,17 @@ const getPostingWindowSeries = (items) => {
 };
 
 const normalizePointHistoryItem = (item) => {
-    const pointsChanged = Number(item?.diem_thay_doi || item?.thay_doi_diem || 0);
+    // BE lich_su_tich_diem fields: ID_LichSu, diem_thay_doi, diem_truoc, diem_sau, loai_giao_dich, mo_ta, thoi_gian_tao
+    const pointsChanged = Number(item?.diem_thay_doi ?? item?.thay_doi_diem ?? 0);
+    const pointsBefore = Number(item?.diem_truoc ?? item?.diem_truoc_khi_su_dung ?? 0);
+    const pointsAfter = Number(item?.diem_sau ?? item?.diem_sau_khi_su_dung ?? 0);
 
     return {
-        id: item?.ID_LichSu || `${item?.thoi_gian_tao || ''}-${item?.mo_ta || ''}`,
+        id: item?.ID_LichSu || item?.ID_NguoiDungTichDiem || `${item?.thoi_gian_tao || ''}-${item?.mo_ta || ''}`,
         createdAt: item?.thoi_gian_tao || item?.thoi_gian || '',
         pointsChanged,
-        pointsBefore: Number(item?.diem_truoc || 0),
-        pointsAfter: Number(item?.diem_sau || 0),
+        pointsBefore,
+        pointsAfter,
         transactionType: item?.loai_giao_dich || '',
         description: item?.mo_ta || '',
         kind: pointsChanged < 0 ? 'use' : 'earn',
@@ -388,17 +391,19 @@ const normalizePointHistoryItem = (item) => {
 };
 
 const normalizePointUsageItem = (item) => {
-    const before = Number(item?.diem_truoc_khi_su_dung || 0);
-    const after = Number(item?.diem_sau_khi_su_dung || 0);
-    const delta = after - before;
+    // BE nguoidungtichdiem fields: ID_NguoiDungTichDiem, diem_truoc_khi_su_dung, diem_sau_khi_su_dung, thoi_gian_su_dung, ten_hang_muc, mo_ta, loai_giao_dich, loai
+    const before = Number(item?.diem_truoc_khi_su_dung ?? 0);
+    const after = Number(item?.diem_sau_khi_su_dung ?? 0);
+    // Điểm bị trừ khi đăng bài: before > after => delta âm
+    const deltaAbs = Math.abs(before - after);
 
     return {
         id: item?.ID_NguoiDungTichDiem || `${item?.thoi_gian_su_dung || ''}-${item?.ten_hang_muc || ''}`,
         createdAt: item?.thoi_gian_su_dung || '',
-        title: item?.ten_hang_muc || 'Sử dụng điểm',
+        title: item?.ten_hang_muc || item?.mo_ta || 'Sử dụng điểm',
         description: item?.mo_ta || item?.loai_giao_dich || 'Giao dịch điểm',
         transactionType: item?.loai_giao_dich || '',
-        usedPoints: Math.abs(delta),
+        usedPoints: deltaAbs,
         pointsBefore: before,
         pointsAfter: after,
         rewardType: item?.loai || '',
@@ -510,6 +515,35 @@ export default function AdminBankDash() {
         setError('');
 
         try {
+            try {
+                const dashboardResult = await apiFetch(`/admin/dashboard/${viewerId}`);
+                const dashboardData = dashboardResult?.data || dashboardResult || {};
+                const profilePayload = dashboardData?.profile || null;
+
+                if (!profilePayload?.user) {
+                    throw new Error('Admin dashboard payload is incomplete.');
+                }
+
+                const normalizedProfile = normalizeProfilePayload(profilePayload, origin);
+                setProfile(normalizedProfile);
+                setSelectedListingId((current) => {
+                    const listings = normalizedProfile?.listings?.items || [];
+                    if (!listings.length) return '';
+                    if (current && listings.some((item) => String(item.id) === String(current))) return current;
+                    return listings[0].id;
+                });
+
+                const historyArr = Array.isArray(dashboardData?.pointHistory) ? dashboardData.pointHistory : [];
+                setPointHistory(historyArr.map(normalizePointHistoryItem));
+
+                const usageArr = Array.isArray(dashboardData?.pointUsageHistory) ? dashboardData.pointUsageHistory : [];
+                setPointUsageHistory(usageArr.map(normalizePointUsageItem));
+                setPointsError('');
+                return;
+            } catch (dashboardError) {
+                console.warn('Load dedicated admin dashboard failed, fallback to legacy sources.', dashboardError);
+            }
+
             const query = new URLSearchParams({ viewerId, listingLimit: '60' });
             const [profileResult, pointHistoryResult, pointUsageResult] = await Promise.allSettled([
                 apiFetch(`/profile/${viewerId}?${query.toString()}`),
@@ -531,16 +565,20 @@ export default function AdminBankDash() {
             });
 
             if (pointHistoryResult.status === 'fulfilled') {
-                const nextHistory = Array.isArray(pointHistoryResult.value) ? pointHistoryResult.value.map(normalizePointHistoryItem) : [];
-                setPointHistory(nextHistory);
+                // BE trả raw array trực tiếp (không wrap trong {data})
+                const raw = pointHistoryResult.value;
+                const historyArr = Array.isArray(raw) ? raw : (Array.isArray(raw?.data) ? raw.data : []);
+                setPointHistory(historyArr.map(normalizePointHistoryItem));
             } else {
                 console.error('Load point history failed', pointHistoryResult.reason);
                 setPointHistory([]);
             }
 
             if (pointUsageResult.status === 'fulfilled') {
-                const nextUsage = Array.isArray(pointUsageResult.value) ? pointUsageResult.value.map(normalizePointUsageItem) : [];
-                setPointUsageHistory(nextUsage);
+                // BE trả raw array trực tiếp (không wrap trong {data})
+                const raw = pointUsageResult.value;
+                const usageArr = Array.isArray(raw) ? raw : (Array.isArray(raw?.data) ? raw.data : []);
+                setPointUsageHistory(usageArr.map(normalizePointUsageItem));
             } else {
                 console.error('Load point usage history failed', pointUsageResult.reason);
                 setPointUsageHistory([]);
@@ -872,6 +910,15 @@ export default function AdminBankDash() {
                                 <MessageCircle size={16} />
                                 Mở bình luận
                             </button>
+                            <button
+                                type="button"
+                                className="admin-btn admin-btn-danger"
+                                onClick={() => handleDeleteListing(selectedListing.id)}
+                                disabled={listingBusyId === String(selectedListing.id)}
+                            >
+                                {listingBusyId === String(selectedListing.id) ? <Loader2 size={16} className="spin" /> : <Trash2 size={16} />}
+                                Xóa bài đăng
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -937,8 +984,14 @@ export default function AdminBankDash() {
                                     <MessageCircle size={16} />
                                     Bình luận
                                 </button>
-                                <button type="button" className="admin-icon-danger" onClick={() => handleDeleteListing(listing.id)} disabled={listingBusyId === String(listing.id)}>
+                                <button
+                                    type="button"
+                                    className="admin-btn admin-btn-danger"
+                                    onClick={() => handleDeleteListing(listing.id)}
+                                    disabled={listingBusyId === String(listing.id)}
+                                >
                                     {listingBusyId === String(listing.id) ? <Loader2 size={16} className="spin" /> : <Trash2 size={16} />}
+                                    Xóa bài
                                 </button>
                             </div>
                         </article>

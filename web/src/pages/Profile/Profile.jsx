@@ -959,10 +959,21 @@ export default function Profile() {
                                                         Mở bình luận
                                                     </button>
                                                     {isOwner && (
-                                                        <button type="button" className="pr-btn pr-btn-soft" onClick={() => navigate('/admin')}>
-                                                            <Pencil size={16} />
-                                                            Mở Admin
-                                                        </button>
+                                                        <>
+                                                            <button type="button" className="pr-btn pr-btn-soft" onClick={() => navigate('/admin')}>
+                                                                <Pencil size={16} />
+                                                                Mở Admin
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                className="pr-btn pr-btn-danger"
+                                                                onClick={() => handleDeleteListing(selectedListing.id)}
+                                                                disabled={listingBusyId === String(selectedListing.id)}
+                                                            >
+                                                                {listingBusyId === String(selectedListing.id) ? <Loader2 size={16} className="spin" /> : <Trash2 size={16} />}
+                                                                Xóa bài đăng
+                                                            </button>
+                                                        </>
                                                     )}
                                                 </div>
                                             </div>
@@ -1128,10 +1139,21 @@ export default function Profile() {
                                                             Mở thảo luận
                                                         </button>
                                                         {isOwner && (
-                                                            <button type="button" className="pr-btn pr-btn-soft" onClick={() => navigate('/admin')}>
-                                                                <Pencil size={16} />
-                                                                Mở Admin
-                                                            </button>
+                                                            <>
+                                                                <button type="button" className="pr-btn pr-btn-soft" onClick={() => navigate('/admin')}>
+                                                                    <Pencil size={16} />
+                                                                    Mở Admin
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    className="pr-btn pr-btn-danger"
+                                                                    onClick={() => handleDeleteListing(selectedListing.id)}
+                                                                    disabled={listingBusyId === String(selectedListing.id)}
+                                                                >
+                                                                    {listingBusyId === String(selectedListing.id) ? <Loader2 size={16} className="spin" /> : <Trash2 size={16} />}
+                                                                    Xóa bài đăng
+                                                                </button>
+                                                            </>
                                                         )}
                                                     </div>
                                                 </div>
@@ -1386,12 +1408,12 @@ export default function Profile() {
                                                         </button>
                                                         <button
                                                             type="button"
-                                                            className="pr-icon-danger"
+                                                            className="pr-btn pr-btn-danger"
                                                             onClick={() => handleDeleteListing(listing.id)}
                                                             disabled={listingBusyId === String(listing.id)}
-                                                            title="Xóa bài đăng"
                                                         >
                                                             {listingBusyId === String(listing.id) ? <Loader2 size={16} className="spin" /> : <Trash2 size={16} />}
+                                                            Xóa bài
                                                         </button>
                                                     </div>
                                                 </div>
