@@ -4,6 +4,7 @@ import { QRCodeSVG } from "qrcode.react";
 import io from "socket.io-client";
 import axios from "axios";
 import { API_BASE_URL } from "../../constants";
+import { setAuthSession } from "../../utils/authSession";
 import "./Login.css";
 
 const QR_EXPIRE_SECONDS = 5 * 60; // 5 phút, khớp với backend
@@ -52,10 +53,10 @@ export default function Login() {
 
       if (res.data.token) {
         const user = res.data.user;
-        localStorage.setItem("token", res.data.token);
-        localStorage.setItem("user", JSON.stringify(user));
-        // Lưu userId riêng để dễ lấy ở các component khác
-        localStorage.setItem("userId", user.ID_NguoiDung);
+        setAuthSession({
+          token: res.data.token,
+          user,
+        });
         setMessage({
           type: "success",
           text: `Chào mừng trở lại, ${user.ho_ten || "bạn"}! 👋`,
@@ -115,9 +116,10 @@ export default function Login() {
 
       socket.on("qr-authenticated", (data) => {
         cleanupQR();
-        localStorage.setItem("token", data.token);
-        localStorage.setItem("user", JSON.stringify(data.user));
-        localStorage.setItem("userId", data.user?.ID_NguoiDung || "");
+        setAuthSession({
+          token: data.token,
+          user: data.user,
+        });
         navigate("/");
       });
 
@@ -128,9 +130,10 @@ export default function Login() {
           if (statusRes.data.status === "authenticated") {
             cleanupQR();
             const user = statusRes.data.user;
-            localStorage.setItem("token", statusRes.data.token);
-            localStorage.setItem("user", JSON.stringify(user));
-            localStorage.setItem("userId", user?.ID_NguoiDung || "");
+            setAuthSession({
+              token: statusRes.data.token,
+              user,
+            });
             navigate("/");
           }
         } catch (e) {

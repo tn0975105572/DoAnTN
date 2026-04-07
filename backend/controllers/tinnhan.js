@@ -1,6 +1,9 @@
 const tinnhan = require('../models/tinnhan');
 const thongbao = require('../models/thongbao');
 
+const getAuthenticatedUserId = (req) =>
+    String(req.user?.id || req.user?.userId || '');
+
 // Lấy tất cả tin nhắn
 exports.getAll = async (req, res) => {
     try {
@@ -47,10 +50,11 @@ exports.getById = async (req, res) => {
 // Lấy tin nhắn giữa 2 người (chat 1-1)
 exports.getPrivateMessages = async (req, res) => {
     try {
-        const { user1Id, user2Id } = req.params;
+        const authUserId = getAuthenticatedUserId(req);
+        const { user2Id } = req.params;
         const { limit = 50, offset = 0 } = req.query;
-        
-        const data = await tinnhan.getPrivateMessages(user1Id, user2Id, parseInt(limit), parseInt(offset));
+
+        const data = await tinnhan.getPrivateMessages(authUserId, user2Id, parseInt(limit), parseInt(offset));
         
         res.json({
             success: true,
@@ -69,7 +73,8 @@ exports.getPrivateMessages = async (req, res) => {
 // Lấy tin nhắn trong group
 exports.getGroupMessages = async (req, res) => {
     try {
-        const { groupId, userId } = req.params;
+        const { groupId } = req.params;
+        const userId = getAuthenticatedUserId(req);
         const { limit = 50, offset = 0 } = req.query;
         
         const data = await tinnhan.getGroupMessages(groupId, userId, parseInt(limit), parseInt(offset));
@@ -97,8 +102,9 @@ exports.getGroupMessages = async (req, res) => {
 // Gửi tin nhắn mới (với Socket.io)
 exports.sendMessage = async (req, res) => {
     try {
+        const authenticatedUserId = getAuthenticatedUserId(req);
         const messageData = {
-            ID_NguoiGui: req.body.ID_NguoiGui,
+            ID_NguoiGui: authenticatedUserId,
             ID_NguoiNhan: req.body.ID_NguoiNhan || null,
             ID_GroupChat: req.body.ID_GroupChat || null,
             noi_dung: req.body.noi_dung || '', // Đảm bảo noi_dung không null
@@ -188,6 +194,7 @@ exports.sendMessage = async (req, res) => {
 exports.updateMessage = async (req, res) => {
     try {
         const id = req.params.id;
+        const userId = getAuthenticatedUserId(req);
         const updateData = {
             noi_dung: req.body.noi_dung
         };
@@ -201,7 +208,7 @@ exports.updateMessage = async (req, res) => {
             });
         }
         
-        if (message.ID_NguoiGui !== req.body.userId) {
+        if (message.ID_NguoiGui !== userId) {
             return res.status(403).json({ 
                 success: false,
                 message: 'Bạn không có quyền chỉnh sửa tin nhắn này' 
@@ -233,7 +240,7 @@ exports.updateMessage = async (req, res) => {
 exports.deleteMessage = async (req, res) => {
     try {
         const id = req.params.id;
-        const userId = req.body.userId;
+        const userId = getAuthenticatedUserId(req);
         
         const affectedRows = await tinnhan.deleteForSender(id, userId);
         if (affectedRows === 0) {
@@ -259,7 +266,8 @@ exports.deleteMessage = async (req, res) => {
 // Đánh dấu tin nhắn đã đọc (chat 1-1) với Socket.io
 exports.markAsRead = async (req, res) => {
     try {
-        const { userId, senderId } = req.body;
+        const userId = getAuthenticatedUserId(req);
+        const { senderId } = req.body;
         
         const affectedRows = await tinnhan.markAsRead(userId, senderId);
         
@@ -292,7 +300,8 @@ exports.markAsRead = async (req, res) => {
 // Đánh dấu tin nhắn group đã đọc
 exports.markGroupAsRead = async (req, res) => {
     try {
-        const { userId, groupId } = req.body;
+        const userId = getAuthenticatedUserId(req);
+        const { groupId } = req.body;
         
         const affectedRows = await tinnhan.markGroupAsRead(userId, groupId);
         
@@ -313,7 +322,7 @@ exports.markGroupAsRead = async (req, res) => {
 // Đếm tin nhắn chưa đọc
 exports.countUnread = async (req, res) => {
     try {
-        const userId = req.params.userId;
+        const userId = getAuthenticatedUserId(req);
         const data = await tinnhan.countUnread(userId);
         
         res.json({
@@ -358,8 +367,9 @@ exports.uploadFile = async (req, res) => {
 // Upload file và gửi tin nhắn cùng lúc
 exports.uploadAndSendMessage = async (req, res) => {
     try {
+        const authenticatedUserId = getAuthenticatedUserId(req);
         const messageData = {
-            ID_NguoiGui: req.body.ID_NguoiGui,
+            ID_NguoiGui: authenticatedUserId,
             ID_NguoiNhan: req.body.ID_NguoiNhan || null,
             ID_GroupChat: req.body.ID_GroupChat || null,
             noi_dung: req.body.noi_dung || '', // Đảm bảo noi_dung không null
@@ -449,7 +459,7 @@ exports.uploadAndSendMessage = async (req, res) => {
 // Lấy danh sách cuộc trò chuyện
 exports.getConversations = async (req, res) => {
     try {
-        const userId = req.params.userId;
+        const userId = getAuthenticatedUserId(req);
         const data = await tinnhan.getConversations(userId);
         
         res.json({
@@ -469,7 +479,8 @@ exports.getConversations = async (req, res) => {
 // Xóa cuộc trò chuyện (xóa tất cả tin nhắn giữa 2 người)
 exports.deleteConversation = async (req, res) => {
     try {
-        const { userId, otherUserId } = req.params;
+        const userId = getAuthenticatedUserId(req);
+        const { otherUserId } = req.params;
         
         if (!userId || !otherUserId) {
             return res.status(400).json({ 

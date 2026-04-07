@@ -11,8 +11,8 @@ likebaidang.getAll = async () => {
 
 // Lấy likebaidang theo ID
 likebaidang.getById = async (id) => {
-  const [rows] = await pool.query("SELECT * FROM likebaidang WHERE ID_BaiDang = ?", [id]);
-  return rows;
+  const [rows] = await pool.query("SELECT * FROM likebaidang WHERE ID_Like = ?", [id]);
+  return rows[0] || null;
 };
 
 likebaidang.insert = async (data) => {

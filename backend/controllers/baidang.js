@@ -3,6 +3,11 @@ const baidang_anh = require("../models/baidang_anh");
 const { v4: uuidv4 } = require("uuid");
 const pool = require("../config/database");
 
+const getAuthenticatedUserId = (req) =>
+  String(req.user?.id || req.user?.userId || "").trim();
+
+const isAdminRequest = (req) => req.user?.Role === "admin";
+
 // Lấy tất cả bài đăng với thông tin liên quan
 exports.getAllWithDetails = async (req, res) => {
   try {
@@ -142,7 +147,20 @@ exports.search = async (req, res) => {
 // Lấy bài đăng của người dùng
 exports.getByUserId = async (req, res) => {
   try {
-    const userId = req.params.userId;
+    const authenticatedUserId = getAuthenticatedUserId(req);
+    const requestedUserId = String(req.params.userId || "").trim();
+    const userId =
+      isAdminRequest(req) && requestedUserId
+        ? requestedUserId
+        : authenticatedUserId;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Ban can dang nhap de xem danh sach bai dang cua minh",
+      });
+    }
+
     const data = await baidang.getByUserId(userId);
 
     // Format dữ liệu để phù hợp với frontend
@@ -191,14 +209,14 @@ exports.getById = async (req, res) => {
 
 exports.insert = async (req, res) => {
   try {
-    const newData = req.body;
-    const userId = newData.ID_NguoiDung;
+    const userId = getAuthenticatedUserId(req);
+    const newData = { ...req.body, ID_NguoiDung: userId };
     let connection;
 
     if (!userId) {
-      return res.status(400).json({
+      return res.status(401).json({
         success: false,
-        message: "Thiếu ID_NguoiDung"
+        message: "Ban can dang nhap de dang bai"
       });
     }
 
@@ -284,7 +302,25 @@ exports.insert = async (req, res) => {
 exports.update = async (req, res) => {
   try {
     const id = req.params.id;
-    const updatedData = req.body;
+    const actorId = getAuthenticatedUserId(req);
+
+    if (!actorId) {
+      return res.status(401).json({ message: "Ban can dang nhap de cap nhat bai dang" });
+    }
+
+    const existingPost = await baidang.getById(id);
+    if (!existingPost) {
+      return res.status(404).json({ message: "baidang không tồn tại" });
+    }
+
+    if (!isAdminRequest(req) && String(existingPost.ID_NguoiDung) !== actorId) {
+      return res.status(403).json({ message: "Bạn không có quyền cập nhật bài đăng này" });
+    }
+
+    const updatedData = {
+      ...req.body,
+      ID_NguoiDung: existingPost.ID_NguoiDung,
+    };
 
     // Convert datetime strings to MySQL format if they exist
     if (updatedData.thoi_gian_tao) {
@@ -301,9 +337,6 @@ exports.update = async (req, res) => {
     }
 
     const affectedRows = await baidang.update(id, updatedData);
-    if (affectedRows === 0) {
-      return res.status(404).json({ message: "baidang không tồn tại" });
-    }
     res.json({ message: "Cập nhật thành công" });
   } catch (error) {
     res.status(500).json({ message: "Lỗi máy chủ", error });
@@ -313,10 +346,22 @@ exports.update = async (req, res) => {
 exports.delete = async (req, res) => {
   try {
     const id = req.params.id;
-    const affectedRows = await baidang.delete(id);
-    if (affectedRows === 0) {
+    const actorId = getAuthenticatedUserId(req);
+
+    if (!actorId) {
+      return res.status(401).json({ message: "Ban can dang nhap de xoa bai dang" });
+    }
+
+    const existingPost = await baidang.getById(id);
+    if (!existingPost) {
       return res.status(404).json({ message: "baidang không tồn tại" });
     }
+
+    if (!isAdminRequest(req) && String(existingPost.ID_NguoiDung) !== actorId) {
+      return res.status(403).json({ message: "Bạn không có quyền xóa bài đăng này" });
+    }
+
+    const affectedRows = await baidang.delete(id);
     res.json({ message: "Xóa thành công" });
   } catch (error) {
     res.status(500).json({ message: "Lỗi máy chủ", error });
@@ -326,12 +371,17 @@ exports.delete = async (req, res) => {
 // Xóa tất cả bài đăng và ảnh của người dùng theo ID
 exports.deleteAllByUserId = async (req, res) => {
   try {
-    const userId = req.params.userId;
+    const authenticatedUserId = getAuthenticatedUserId(req);
+    const requestedUserId = String(req.params.userId || "").trim();
+    const userId =
+      isAdminRequest(req) && requestedUserId
+        ? requestedUserId
+        : authenticatedUserId;
     
     if (!userId) {
-      return res.status(400).json({
+      return res.status(401).json({
         success: false,
-        message: "ID người dùng không được để trống"
+        message: "Ban can dang nhap de xoa bai dang"
       });
     }
 

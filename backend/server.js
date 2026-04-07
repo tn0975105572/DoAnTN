@@ -13,6 +13,7 @@ const mysql = require('mysql2/promise');
 const routes = require("./routes");
 const qrLoginRoutes = require("./routes/qrlogin");
 const errorHandler = require("./middleware/errorHandler");
+const authMiddleware = require("./middleware/baoVe");
 
 const app = express();
 const server = http.createServer(app);
@@ -362,8 +363,17 @@ app.get('/api/recommendation-status', async (req, res) => {
 });
 
 // API lấy gợi ý bài đăng cho người dùng
-app.get('/api/recommendations/:userId', async (req, res) => {
-  const userId = req.params.userId;
+app.get('/api/recommendations/:userId', authMiddleware.authenticateToken, async (req, res) => {
+  const requestedUserId = String(req.params.userId || '').trim();
+  const authenticatedUserId = String(req.user?.id || req.user?.userId || '').trim();
+  const userId = req.user?.Role === 'admin' && requestedUserId
+    ? requestedUserId
+    : authenticatedUserId;
+
+  if (!userId) {
+    return res.status(401).json({ error: 'Ban can dang nhap de lay goi y bai dang' });
+  }
+
   try {
     // 1. Lấy danh sách bạn bè trước để dùng chung
     const [friends] = await pool.query(

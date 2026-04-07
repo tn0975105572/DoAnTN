@@ -1,11 +1,19 @@
 const tichdiem = require("../models/tichdiem");
 
+const getAuthenticatedUserId = (req) =>
+  String(req.user?.id || req.user?.userId || "");
+
 // Lấy tất cả giao dịch tích điểm với phân trang
 exports.getAll = async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
-    const userId = req.query.userId || null;
+    const requestedUserId = req.query.userId || null;
+    const authenticatedUserId = getAuthenticatedUserId(req);
+    const userId =
+      req.user?.Role === "admin"
+        ? requestedUserId
+        : authenticatedUserId || null;
     const offset = (page - 1) * limit;
 
     const { data, total } = await tichdiem.getAllPaginated(limit, offset, userId);
@@ -31,7 +39,7 @@ exports.getAll = async (req, res) => {
 // Lấy giao dịch theo ID người dùng
 exports.getByUserId = async (req, res) => {
   try {
-    const userId = req.params.userId;
+    const userId = getAuthenticatedUserId(req);
     const data = await tichdiem.getByUserId(userId);
 
     res.json({
@@ -51,7 +59,8 @@ exports.getByUserId = async (req, res) => {
 // Thêm điểm cho người dùng
 exports.addPoints = async (req, res) => {
   try {
-    const { userId, pointChange, transactionType, description, referenceId } = req.body;
+    const userId = getAuthenticatedUserId(req);
+    const { pointChange, transactionType, description, referenceId } = req.body;
 
     if (!userId || !pointChange || !transactionType) {
       return res.status(400).json({

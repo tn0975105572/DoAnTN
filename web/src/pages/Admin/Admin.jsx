@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { API_BASE_URL } from '../../constants';
 import PostMediaGallery from '../../components/post/PostMediaGallery';
+import { useAuthSession } from '../../utils/authSession';
 import './Admin.css';
 
 const DEFAULT_AVATAR = 'https://i.pravatar.cc/200?u=admin-user';
@@ -313,8 +314,7 @@ function SidebarStat({ label, value, helper, tone = 'brand' }) {
 
 export default function Admin() {
     const navigate = useNavigate();
-    const viewerId = useMemo(() => localStorage.getItem('userId') || '', []);
-    const token = useMemo(() => localStorage.getItem('token') || '', []);
+    const { userId: viewerId, token } = useAuthSession();
     const backendOrigin = useMemo(() => getBackendOrigin(), []);
 
     const [loading, setLoading] = useState(true);
@@ -595,7 +595,6 @@ export default function Admin() {
             await apiFetch('/tinnhan/send', {
                 method: 'POST',
                 body: JSON.stringify({
-                    ID_NguoiGui: viewerId,
                     ID_NguoiNhan: selectedConversation.id,
                     noi_dung: chatDraft.trim(),
                 }),

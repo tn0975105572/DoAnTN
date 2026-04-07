@@ -4,6 +4,7 @@ import {
     ArrowLeft, MessageSquare, Send, Heart,
     ChevronDown, ChevronUp, Reply, MoreHorizontal, Smile,
 } from 'lucide-react';
+import { useAuthSession } from '../../utils/authSession';
 import './PostComments.css';
 
 /* ════════ API CONFIG ════════ */
@@ -187,15 +188,7 @@ export default function PostComments() {
     const [isLoading, setIsLoading] = useState(true);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState(null);
-
-    // ── Auth từ localStorage ──
-    const [token, setToken] = useState('');
-    const [userId, setUserId] = useState('');
-
-    useEffect(() => {
-        setToken(localStorage.getItem('token') || '');
-        setUserId(localStorage.getItem('userId') || '');
-    }, []);
+    const { token, userId } = useAuthSession();
 
     // keep ref in sync
     useEffect(() => {
@@ -307,7 +300,6 @@ export default function PostComments() {
         try {
             const payload = {
                 ID_BaiDang: postId,
-                ID_NguoiDung: userId,
                 noi_dung: newComment.trim(),
                 ID_BinhLuanCha: null,
             };
@@ -340,7 +332,6 @@ export default function PostComments() {
             try {
                 const payload = {
                     ID_BaiDang: postId,
-                    ID_NguoiDung: userId,
                     noi_dung: text,
                     ID_BinhLuanCha: id,
                 };

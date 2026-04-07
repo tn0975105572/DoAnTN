@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { API_BASE_URL } from '../../constants';
+import { useAuthSession } from '../../utils/authSession';
 import './AddFriends.css';
 
 /* ════════ COVER IMAGES ════════ */
@@ -216,8 +217,7 @@ export default function AddFriends() {
 
     const sentTabRef = useRef(null);
 
-    const myUserId = useMemo(() => localStorage.getItem('userId') || '', []);
-    const token = useMemo(() => localStorage.getItem('token') || '', []);
+    const { userId: myUserId, token } = useAuthSession();
     const backendOrigin = useMemo(() => {
         try {
             return new URL(API_BASE_URL).origin; // e.g. http://localhost:3000

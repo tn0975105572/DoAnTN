@@ -15,8 +15,10 @@ import {
     ShieldCheck,
     Tag,
     UserRound,
+    X,
 } from 'lucide-react';
 import { API_BASE_URL } from '../../constants';
+import { useAuthSession } from '../../utils/authSession';
 import './PostDetail.css';
 
 const DEFAULT_AVATAR = 'https://i.pravatar.cc/200?u=post-detail-user';
@@ -24,6 +26,8 @@ const FALLBACK_IMAGE = 'https://via.placeholder.com/1200x800?text=No+Image';
 
 const STATUS_LABELS = {
     dang_ban: 'Đang bán',
+    dang_giu_cho: 'Đang giữ chỗ',
+    dang_giao_dich: 'Đang giao dịch',
     da_ban: 'Đã bán',
     cho_duyet: 'Chờ duyệt',
     da_trao_doi: 'Đã trao đổi',
@@ -195,12 +199,74 @@ function DetailMeta({ icon: Icon, label, value }) {
     );
 }
 
+function SellerMessageModal({
+    post,
+    draftMessage,
+    onDraftChange,
+    onClose,
+    onSubmit,
+    isSending,
+    error,
+}) {
+    const previewImage = post?.images?.[0] || FALLBACK_IMAGE;
+
+    return (
+        <div className="pd-message-overlay" onClick={onClose}>
+            <div className="pd-message-modal" onClick={(event) => event.stopPropagation()}>
+                <div className="pd-message-handle" />
+                <div className="pd-message-header">
+                    <h3>Nhắn người bán</h3>
+                    <button type="button" className="pd-message-close-btn" onClick={onClose} aria-label="Đóng form nhắn người bán">
+                        <X size={20} />
+                    </button>
+                </div>
+
+                <div className="pd-message-post-preview">
+                    <img className="pd-message-preview-img" src={previewImage} alt={post?.title || 'Bài đăng'} />
+                    <div className="pd-message-preview-info">
+                        <div className="pd-message-preview-title">{post?.title || 'Bài đăng'}</div>
+                        <div className="pd-message-preview-meta">Người bán: {post?.author || 'Người bán'}</div>
+                        <div className="pd-message-preview-price">{formatCurrency(post?.price)}</div>
+                    </div>
+                </div>
+
+                <div className="pd-message-input-section">
+                    <textarea
+                        className="pd-message-textarea"
+                        placeholder="Nhập lời nhắn của bạn cho người bán..."
+                        value={draftMessage}
+                        onChange={(event) => onDraftChange(event.target.value)}
+                    />
+                </div>
+
+                {error && (
+                    <div className="pd-message-error">
+                        <ShieldCheck size={16} />
+                        <span>{error}</span>
+                    </div>
+                )}
+
+                <div className="pd-message-footer">
+                    <button
+                        type="button"
+                        className="pd-message-send-btn"
+                        disabled={isSending}
+                        onClick={onSubmit}
+                    >
+                        {isSending ? 'Đang gửi...' : 'Gửi kèm bài viết'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 export default function PostDetail() {
     const navigate = useNavigate();
     const { postId } = useParams();
     const location = useLocation();
     const backendOrigin = useMemo(() => getBackendOrigin(), []);
-    const viewerId = useMemo(() => localStorage.getItem('userId') || '', []);
+    const { userId: viewerId, token } = useAuthSession();
     const initialPost = useMemo(
         () => normalizePostFromState(location.state?.post, backendOrigin),
         [backendOrigin, location.state?.post],
@@ -211,6 +277,10 @@ export default function PostDetail() {
     const [error, setError] = useState('');
     const [copied, setCopied] = useState(false);
     const [activeImageIndex, setActiveImageIndex] = useState(0);
+    const [isMessageModalOpen, setIsMessageModalOpen] = useState(false);
+    const [messageDraft, setMessageDraft] = useState('');
+    const [messageError, setMessageError] = useState('');
+    const [messageSending, setMessageSending] = useState(false);
 
     useEffect(() => {
         let cancelled = false;
@@ -260,6 +330,17 @@ export default function PostDetail() {
         setActiveImageIndex(0);
     }, [post?.id]);
 
+    useEffect(() => {
+        if (!isMessageModalOpen) return undefined;
+
+        const previousOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+
+        return () => {
+            document.body.style.overflow = previousOverflow;
+        };
+    }, [isMessageModalOpen]);
+
     const shareUrl = post?.id ? `${window.location.origin}/post/${post.id}` : window.location.href;
     const canMessage = Boolean(viewerId && post?.authorId && String(viewerId) !== String(post.authorId));
     const totalImages = post?.images?.length || 0;
@@ -284,23 +365,101 @@ export default function PostDetail() {
         navigate(`/profile/${post.authorId}`);
     }, [navigate, post?.authorId]);
 
-    const openMessages = useCallback(() => {
+    const openMessageComposer = useCallback(() => {
         if (!post?.authorId) return;
         if (!viewerId) {
             navigate('/login');
             return;
         }
 
-        navigate('/messages', {
-            state: {
-                selectedUser: {
-                    id: post.authorId,
-                    name: post.author,
-                    avatar: post.avatar,
-                },
-            },
-        });
+        setMessageError('');
+        setMessageDraft('');
+        setIsMessageModalOpen(true);
     }, [navigate, post, viewerId]);
+
+    const handleMessageSubmit = useCallback(async () => {
+        if (!post?.authorId || !post?.id) return;
+        if (!viewerId || !token) {
+            navigate('/login');
+            return;
+        }
+
+        const targetUserId = post.authorId;
+        const postImage = post.images?.[0] || '';
+        const shareTextLines = [
+            `📱 Bài đăng: ${post.title}`,
+            '🔗 Xem chi tiết bài đăng này',
+            `🆔 Post ID: ${post.id}`,
+        ];
+
+        if (postImage) {
+            shareTextLines.push(`🖼️ Post Image: ${postImage}`);
+        }
+
+        const shareText = shareTextLines.join('\n');
+        const headers = {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+        };
+
+        try {
+            setMessageSending(true);
+            setMessageError('');
+
+            if (messageDraft.trim()) {
+                const textResponse = await fetch(`${API_BASE_URL}/tinnhan/send`, {
+                    method: 'POST',
+                    headers,
+                    body: JSON.stringify({
+                        ID_NguoiNhan: targetUserId,
+                        noi_dung: messageDraft.trim(),
+                        loai_tin_nhan: 'text',
+                        file_dinh_kem: null,
+                        tin_nhan_phu_thuoc: null,
+                    }),
+                });
+
+                if (!textResponse.ok) {
+                    throw new Error('Không gửi được lời nhắn tới người bán.');
+                }
+            }
+
+            const postResponse = await fetch(`${API_BASE_URL}/tinnhan/send`, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({
+                    ID_NguoiNhan: targetUserId,
+                    noi_dung: shareText,
+                    loai_tin_nhan: 'text',
+                    file_dinh_kem: null,
+                    tin_nhan_phu_thuoc: null,
+                }),
+            });
+
+            if (!postResponse.ok) {
+                throw new Error('Không gửi được bài viết cho người bán.');
+            }
+
+            setIsMessageModalOpen(false);
+            setMessageDraft('');
+
+            navigate('/messages', {
+                state: {
+                    selectedUser: {
+                        id: targetUserId,
+                        name: post.author,
+                        avatar: post.avatar,
+                    },
+                    focusPostId: post.id,
+                },
+            });
+        } catch (requestError) {
+            console.error('Send seller message failed', requestError);
+            setMessageError(requestError.message || 'Không thể gửi tin nhắn cho người bán.');
+        } finally {
+            setMessageSending(false);
+        }
+    }, [messageDraft, navigate, post, token, viewerId]);
 
     const copyLink = useCallback(async () => {
         try {
@@ -504,7 +663,7 @@ export default function PostDetail() {
                                 Xem người bán
                             </button>
                             {canMessage && (
-                                <button type="button" className="pd-btn pd-btn-soft" onClick={openMessages}>
+                                <button type="button" className="pd-btn pd-btn-soft" onClick={openMessageComposer}>
                                     <Send size={16} />
                                     Nhắn tin ngay
                                 </button>
@@ -513,6 +672,22 @@ export default function PostDetail() {
                     </aside>
                 </div>
             </div>
+
+            {isMessageModalOpen && post && (
+                <SellerMessageModal
+                    post={post}
+                    draftMessage={messageDraft}
+                    onDraftChange={setMessageDraft}
+                    onClose={() => {
+                        if (messageSending) return;
+                        setIsMessageModalOpen(false);
+                        setMessageError('');
+                    }}
+                    onSubmit={handleMessageSubmit}
+                    isSending={messageSending}
+                    error={messageError}
+                />
+            )}
         </div>
     );
 }

@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import './Home.css';
 import PostMediaGallery from '../../components/post/PostMediaGallery';
+import { useAuthSession } from '../../utils/authSession';
 
 const API_BASE = 'http://localhost:3000';
 const API_URLS = {
@@ -28,6 +29,7 @@ const API_URLS = {
     PENDING_FRIEND_REQUESTS: `${API_BASE}/api/quanHeBanBe/requests/`,
     FRIEND_SUGGESTIONS: `${API_BASE}/api/quanhebanbe/suggestions/`,
     FRIEND_REQUEST: `${API_BASE}/api/quanhebanbe/request`,
+    SEND_MESSAGE: `${API_BASE}/api/tinnhan/send`,
 };
 const POSTS_PER_CHUNK = 5;
 const INITIAL_LOAD_COUNT = 8;
@@ -445,6 +447,56 @@ function ShareModal({ post, onClose }) {
     );
 }
 
+function MessageModal({ post, onClose, onSubmit }) {
+    const [draftMessage, setDraftMessage] = useState('');
+    const previewImage = (Array.isArray(post?.imageUrls) && post.imageUrls[0]) || post?.img || DEFAULT_AVATAR;
+    const sellerName = post?.author || 'Người bán';
+    const canSubmit = !!post;
+
+    return (
+        <div className="modal-overlay" onClick={onClose}>
+            <div className="message-modal" onClick={(e) => e.stopPropagation()}>
+                <div className="modal-handle" />
+                <div className="modal-header">
+                    <h3 className="modal-title">Nhắn người bán</h3>
+                    <button className="modal-close-btn" onClick={onClose} type="button">
+                        <X size={20} />
+                    </button>
+                </div>
+
+                <div className="message-post-preview">
+                    <img className="msg-preview-img" src={previewImage} alt={post?.title || 'Bài đăng'} />
+                    <div className="msg-preview-info">
+                        <div className="msg-preview-title">{post?.title}</div>
+                        <div className="msg-preview-meta">Người bán: {sellerName}</div>
+                        <div className="msg-preview-price">{post?.price} ₫</div>
+                    </div>
+                </div>
+
+                <div className="message-input-section">
+                    <textarea
+                        className="message-textarea"
+                        placeholder="Nhập lời nhắn của bạn cho người bán..."
+                        value={draftMessage}
+                        onChange={(e) => setDraftMessage(e.target.value)}
+                    />
+                </div>
+
+                <div className="message-footer">
+                    <button
+                        type="button"
+                        className="send-message-btn"
+                        disabled={!canSubmit}
+                        onClick={() => onSubmit(draftMessage.trim())}
+                    >
+                        Gửi kèm bài viết
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 function HomePageLoader() {
     return (
         <div className="home-page-loader" role="status" aria-live="polite">
@@ -468,14 +520,13 @@ function HomePageLoader() {
 }
 
 /* ════════ LIKE TOOLTIP COMPONENT ════════ */
-function LikeTooltip({ postId, show }) {
+function LikeTooltip({ postId, show, token }) {
     const [likers, setLikers] = useState([]);
     const [loading, setLoading] = useState(false);
     const [fetched, setFetched] = useState(false);
 
     useEffect(() => {
         if (!show || fetched || loading) return;
-        const token = localStorage.getItem('token') || '';
         if (!token) return;
         setLoading(true);
         (async () => {
@@ -546,7 +597,7 @@ function LikeTooltip({ postId, show }) {
                 setLoading(false);
             }
         })();
-    }, [show, fetched, loading, postId]);
+    }, [show, fetched, loading, postId, token]);
 
     if (!show) return null;
 
@@ -601,7 +652,7 @@ function LikeTooltip({ postId, show }) {
 
 /* ════════ SUB-COMPONENTS ════════ */
 
-function LikeStats({ postId, liked, likeCount, comments }) {
+function LikeStats({ postId, liked, likeCount, comments, token }) {
     const [showTooltip, setShowTooltip] = useState(false);
     const hoverTimeoutRef = useRef(null);
 
@@ -622,7 +673,7 @@ function LikeStats({ postId, liked, likeCount, comments }) {
             >
                 <Heart size={13} fill={liked ? '#7f001f' : 'none'} color={liked ? '#7f001f' : '#aaa'} />
                 {likeCount.toLocaleString()} thích
-                <LikeTooltip postId={postId} show={showTooltip} />
+                <LikeTooltip postId={postId} show={showTooltip} token={token} />
             </span>
             <span className="stat-item">
                 <MessageSquare size={13} color="#aaa" />
@@ -632,7 +683,7 @@ function LikeStats({ postId, liked, likeCount, comments }) {
     );
 }
 
-function PostCard({ post, onCommentClick, onShareClick, onMessageClick, onLike, onOpenDetail }) {
+function PostCard({ post, onCommentClick, onShareClick, onMessageClick, onLike, onOpenDetail, token }) {
     // Khi có onLike (API mode) → dùng giá trị từ props trực tiếp
     // Khi không có onLike (mock mode) 
     const [localLiked, setLocalLiked] = useState(false);
@@ -730,7 +781,7 @@ function PostCard({ post, onCommentClick, onShareClick, onMessageClick, onLike, 
             />
 
             {/* Stats */}
-            <LikeStats postId={post.id} liked={liked} likeCount={likeCount} comments={post.comments} />
+            <LikeStats postId={post.id} liked={liked} likeCount={likeCount} comments={post.comments} token={token} />
 
             <div className="post-divider" />
 
@@ -760,14 +811,13 @@ function PostCard({ post, onCommentClick, onShareClick, onMessageClick, onLike, 
 /* ════════ MAIN PAGE ════════ */
 export default function Home() {
     const navigate = useNavigate();
+    const { token, userId, user: authUser } = useAuthSession();
     const [activeTab, setActiveTab] = useState('recommend');
     const [activeFilter, setActiveFilter] = useState('Tất cả');
     const [searchFocused, setSearchFocused] = useState(false);
     const [sharePost, setSharePost] = useState(null);
+    const [messagePost, setMessagePost] = useState(null);
 
-    // ── Auth từ localStorage ──
-    const [token, setToken] = useState('');
-    const [userId, setUserId] = useState('');
     const [currentUser, setCurrentUser] = useState({ name: 'Bạn', avatar: DEFAULT_AVATAR });
     const [badgeCounts, setBadgeCounts] = useState({ friends: 0, messages: 0, notifications: 0 });
     const [peopleSuggestions, setPeopleSuggestions] = useState(PEOPLE_MAY_KNOW_FALLBACK);
@@ -792,6 +842,84 @@ export default function Home() {
     const sessionSeenPostIdsRef = useRef(new Set());
     const isAuthenticated = !!token && !!userId;
 
+    const handleMessageSubmit = useCallback(async (draftMessage) => {
+        if (!messagePost) return;
+
+        const targetUserId = messagePost?.authorId || '';
+        if (!targetUserId) {
+            setToast({ type: 'error', text: 'Không xác định được người nhận tin nhắn.' });
+            return;
+        }
+
+        const postImage = (Array.isArray(messagePost.imageUrls) && messagePost.imageUrls[0]) || messagePost.img || '';
+        const shareTextLines = [
+            `📱 Bài đăng: ${messagePost.title}`,
+            '🔗 Xem chi tiết bài đăng này',
+            `🆔 Post ID: ${messagePost.id}`,
+        ];
+        if (postImage) {
+            shareTextLines.push(`🖼️ Post Image: ${postImage}`);
+        }
+        const shareText = shareTextLines.join('\n');
+
+        const headers = {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+        };
+
+        try {
+            if (draftMessage) {
+                const textResponse = await fetch(API_URLS.SEND_MESSAGE, {
+                    method: 'POST',
+                    headers,
+                    body: JSON.stringify({
+                        ID_NguoiNhan: targetUserId,
+                        noi_dung: draftMessage,
+                        loai_tin_nhan: 'text',
+                        file_dinh_kem: null,
+                        tin_nhan_phu_thuoc: null,
+                    }),
+                });
+
+                if (!textResponse.ok) {
+                    throw new Error('Không gửi được lời nhắn.');
+                }
+            }
+
+            const postResponse = await fetch(API_URLS.SEND_MESSAGE, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({
+                    ID_NguoiNhan: targetUserId,
+                    noi_dung: shareText,
+                    loai_tin_nhan: 'text',
+                    file_dinh_kem: null,
+                    tin_nhan_phu_thuoc: null,
+                }),
+            });
+
+            if (!postResponse.ok) {
+                throw new Error('Không gửi được bài đăng.');
+            }
+
+            setMessagePost(null);
+
+            navigate('/messages', {
+                state: {
+                    selectedUser: {
+                        id: targetUserId,
+                        name: messagePost.author,
+                        avatar: messagePost.avatar,
+                    },
+                    focusPostId: messagePost.id,
+                },
+            });
+        } catch (error) {
+            console.error('Send post share failed', error);
+            setToast({ type: 'error', text: error.message || 'Không thể gửi tin nhắn.' });
+        }
+    }, [messagePost, navigate, token, userId]);
+
     const finishInitialPageLoading = useCallback(() => {
         if (hasFinishedInitialPageLoadRef.current) return;
 
@@ -808,27 +936,11 @@ export default function Home() {
         }, remaining);
     }, []);
 
-    // ── Load token & userId ──
     useEffect(() => {
-        const syncAuth = () => {
-            const nextToken = localStorage.getItem('token') || '';
-            const nextUserId = localStorage.getItem('userId') || '';
-
-            setToken(nextToken);
-            setUserId(nextUserId);
-
-            if (!nextToken || !nextUserId) {
-                finishInitialPageLoading();
-            }
-        };
-        syncAuth();
-        window.addEventListener('storage', syncAuth);
-        window.addEventListener('focus', syncAuth);
-        return () => {
-            window.removeEventListener('storage', syncAuth);
-            window.removeEventListener('focus', syncAuth);
-        };
-    }, [finishInitialPageLoading]);
+        if (!token || !userId) {
+            finishInitialPageLoading();
+        }
+    }, [finishInitialPageLoading, token, userId]);
 
     useEffect(() => () => {
         if (pageLoaderTimeoutRef.current) {
@@ -1158,7 +1270,7 @@ export default function Home() {
                 const r = await fetch(API_URLS.LIKE_CREATE, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                    body: JSON.stringify({ ID_BaiDang: postId, ID_NguoiDung: userId }),
+                    body: JSON.stringify({ ID_BaiDang: postId }),
                 });
                 if (r.ok) {
                     const data = await r.json();
@@ -1242,6 +1354,19 @@ export default function Home() {
         window.addEventListener('scroll', onScroll);
         return () => window.removeEventListener('scroll', onScroll);
     }, [handleLoadMore]);
+
+    useEffect(() => {
+        if (!authUser) return;
+
+        setCurrentUser({
+            name: authUser.ho_ten || authUser.name || 'Bạn',
+            avatar: normalizeUrl(
+                authUser.anh_dai_dien
+                    ? (authUser.anh_dai_dien.startsWith('http') ? authUser.anh_dai_dien : `${API_BASE}/uploads/${authUser.anh_dai_dien}`)
+                    : DEFAULT_AVATAR
+            ),
+        });
+    }, [authUser]);
 
     // ── Badge counts & user info ──
     useEffect(() => {
@@ -1582,6 +1707,7 @@ export default function Home() {
                         >
                             <PostCard
                                 post={p}
+                                token={token}
                                 onLike={handleLike}
                                 onOpenDetail={(postData) => navigate(`/post/${postData.id}`, { state: { post: postData } })}
                                 onCommentClick={(postData) => navigate(`/post/${postData.id}/comments`, { state: { post: postData } })}
@@ -1600,7 +1726,7 @@ export default function Home() {
                                         setToast({ type: 'error', text: 'Không thể nhắn tin cho chính bạn.' });
                                         return;
                                     }
-                                    navigate('/messages');
+                                    setMessagePost(postData);
                                 }}
                             />
 
@@ -1675,6 +1801,14 @@ export default function Home() {
                     <ShareModal
                         post={sharePost}
                         onClose={() => setSharePost(null)}
+                    />
+                )}
+
+                {messagePost && (
+                    <MessageModal
+                        post={messagePost}
+                        onClose={() => setMessagePost(null)}
+                        onSubmit={handleMessageSubmit}
                     />
                 )}
 

@@ -14,6 +14,7 @@ import {
     VideoEarnView
 } from '../../components/settings';
 import { API_BASE_URL } from '../../constants';
+import { clearAuthSession, updateStoredUser, useAuthSession } from '../../utils/authSession';
 import './Settings.css';
 
 const PAYMENT_QR_LIFETIME_SECONDS = 180;
@@ -75,13 +76,12 @@ function normalizeSettingsUser(userData) {
 
 export default function Settings() {
     const navigate = useNavigate();
+    const { token, userId: authUserId, user: authUser } = useAuthSession();
     const [currentUser, setCurrentUser] = useState(() => {
-        const saved = localStorage.getItem('user');
-        return saved ? normalizeSettingsUser(JSON.parse(saved)) : null;
+        return authUser ? normalizeSettingsUser(authUser) : null;
     });
     const [isVerified, setIsVerified] = useState(() => {
-        const saved = localStorage.getItem('user');
-        return saved ? JSON.parse(saved).da_xac_thuc === 1 : false;
+        return authUser ? authUser.da_xac_thuc === 1 : false;
     });
     const [activeView, setActiveView] = useState('main');
     const [isSavingProfile, setIsSavingProfile] = useState(false);
@@ -107,22 +107,23 @@ export default function Settings() {
     const [paymentSuccessInfo, setPaymentSuccessInfo] = useState(null);
     const [hasReturnedFromZaloPay, setHasReturnedFromZaloPay] = useState(false);
 
-    const token = localStorage.getItem('token');
     const authHeaders = useMemo(
         () => (token ? { Authorization: `Bearer ${token}` } : {}),
         [token]
     );
-    const currentUserId = currentUser?.ID_NguoiDung || localStorage.getItem('userId');
+    const currentUserId = currentUser?.ID_NguoiDung || authUserId;
+
+    useEffect(() => {
+        setCurrentUser(authUser ? normalizeSettingsUser(authUser) : null);
+        setIsVerified(authUser?.da_xac_thuc === 1);
+    }, [authUser]);
 
     const syncUserState = useCallback((userData) => {
         const normalizedUser = normalizeSettingsUser(userData);
 
         setCurrentUser(normalizedUser);
         setIsVerified(normalizedUser?.da_xac_thuc === 1);
-        localStorage.setItem('user', JSON.stringify(normalizedUser));
-        if (normalizedUser?.ID_NguoiDung) {
-            localStorage.setItem('userId', String(normalizedUser.ID_NguoiDung));
-        }
+        updateStoredUser(normalizedUser);
     }, []);
 
     const loadLatestUser = useCallback(async () => {
@@ -164,9 +165,7 @@ export default function Settings() {
 
     const handleLogout = () => {
         if (window.confirm('Bạn có chắc chắn muốn đăng xuất khỏi tài khoản này không?')) {
-            ['token', 'user', 'userId', 'cart', 'preferences', 'session', 'notifications'].forEach((key) => {
-                localStorage.removeItem(key);
-            });
+            clearAuthSession(['cart', 'preferences', 'session', 'notifications']);
             setCurrentUser(null);
             setIsVerified(false);
         }
@@ -243,9 +242,7 @@ export default function Settings() {
             });
 
             if (response.data?.success) {
-                ['token', 'user', 'userId', 'cart', 'preferences', 'session', 'notifications'].forEach((key) => {
-                    localStorage.removeItem(key);
-                });
+                clearAuthSession(['cart', 'preferences', 'session', 'notifications']);
                 resetPassword('');
                 closeBox(false);
                 alert('Xóa tài khoản thành công!');
@@ -442,7 +439,7 @@ export default function Settings() {
         setPaymentStatus('checking');
         try {
             const response = await axios.get(
-                `${API_BASE_URL}/zalopay/order-status/${transId}?userId=${currentUserId}`,
+                `${API_BASE_URL}/zalopay/order-status/${transId}`,
                 { headers: authHeaders }
             );
 

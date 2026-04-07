@@ -1,6 +1,9 @@
 const nguoidungtichdiem = require('../models/nguoidungtichdiem');
 const { v4: uuidv4 } = require('uuid');
 
+const getAuthenticatedUserId = (req) =>
+    String(req.user?.id || req.user?.userId || '');
+
 exports.getAll = async (req, res) => {
     try {
         const data = await nguoidungtichdiem.getAll();
@@ -25,7 +28,7 @@ exports.getById = async (req, res) => {
 
 exports.getByUserId = async (req, res) => {
     try {
-        const userId = req.params.userId;
+        const userId = getAuthenticatedUserId(req);
         const data = await nguoidungtichdiem.getByUserId(userId);
         res.json(data);
     } catch (error) {
@@ -85,7 +88,7 @@ exports.delete = async (req, res) => {
 
 exports.getStatsByUser = async (req, res) => {
     try {
-        const userId = req.params.userId;
+        const userId = getAuthenticatedUserId(req);
         const data = await nguoidungtichdiem.getStatsByUser(userId);
         res.json(data);
     } catch (error) {

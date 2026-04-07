@@ -2,14 +2,345 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     Search, MoreHorizontal, Edit3, Phone, Video, Info,
     Send, Image, Smile, Mic, ChevronDown,
-    MessageCircle, User, Bell, Shield, X, Mail, Users, UserCheck, UserX, FileText, Trash2
+    MessageCircle, User, Bell, Shield, X, Mail, Users, UserCheck, UserX, FileText, Trash2,
+    Sparkles, Handshake, ShoppingBag, MapPin, Clock3, BadgeCheck, AlertTriangle, LocateFixed
 } from 'lucide-react';
 import io from 'socket.io-client';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { API_BASE_URL } from '../../constants';
+import { useAuthSession } from '../../utils/authSession';
 import './Messages.css';
 
 const avatarFallback = (seed) => `https://i.pravatar.cc/150?u=${encodeURIComponent(seed || 'user')}`;
+const POST_SHARE_PREFIX = '📱 Bài đăng:';
+const POST_SHARE_ID_PREFIX = '🆔 Post ID:';
+const POST_SHARE_IMAGE_PREFIX = '🖼️ Post Image:';
+const ACTIVE_ACCEPTED_STATUSES = ['nguoi_ban_da_chap_nhan', 'cho_hen_gap', 'cho_xac_nhan_hoan_tat'];
+const OPEN_DEAL_STATUSES = ['cho_nguoi_ban_xac_nhan', 'nguoi_ban_da_chap_nhan', 'cho_hen_gap', 'cho_xac_nhan_hoan_tat'];
+const EMPTY_DEAL_CONTEXT = {
+    post: null,
+    transactions: [],
+    currentTransaction: null,
+    activeAcceptedOther: null,
+    role: 'viewer',
+    buyerId: null,
+    sellerId: null,
+};
+
+const currencyFormatter = new Intl.NumberFormat('vi-VN', {
+    style: 'currency',
+    currency: 'VND',
+    maximumFractionDigits: 0,
+});
+
+const TRANSACTION_STATUS_META = {
+    idle: {
+        label: 'Sẵn sàng mở giao dịch',
+        tone: 'idle',
+        headline: 'Bật chế độ chốt đơn ngay trong chat',
+        description: 'Chỉ một cú xác nhận là bài đăng có thể chuyển sang giữ chỗ hoặc giao dịch.',
+    },
+    cho_nguoi_ban_xac_nhan: {
+        label: 'Chờ người bán xác nhận',
+        tone: 'warm',
+        headline: 'Yêu cầu mua đang được giữ ở phòng chờ',
+        description: 'Người bán chỉ cần một lần đồng ý để chuyển bài đăng sang trạng thái giữ chỗ.',
+    },
+    nguoi_ban_da_chap_nhan: {
+        label: 'Đã chấp nhận',
+        tone: 'live',
+        headline: 'Hai bên đã bắt tay giao dịch',
+        description: 'Bài đăng đã được giữ cho người mua hiện tại. Có thể chốt điểm hẹn hoặc chuẩn bị hoàn tất.',
+    },
+    cho_hen_gap: {
+        label: 'Đang chốt điểm hẹn',
+        tone: 'live',
+        headline: 'Điểm hẹn đã lên bàn',
+        description: 'Cập nhật nơi gặp và thời gian để đẩy giao dịch sang bước gặp mặt rõ ràng hơn.',
+    },
+    cho_xac_nhan_hoan_tat: {
+        label: 'Chờ xác nhận hoàn tất',
+        tone: 'signal',
+        headline: 'Giao dịch đang ở nhịp chốt cuối',
+        description: 'Một bước xác nhận nữa từ người bán là bài đăng sẽ chuyển hẳn sang đã bán.',
+    },
+    hoan_tat: {
+        label: 'Hoàn tất',
+        tone: 'done',
+        headline: 'Giao dịch đã khép lại',
+        description: 'Bài đăng đã được đánh dấu đã bán và lịch sử giao dịch vẫn còn lưu trong đoạn chat này.',
+    },
+    nguoi_mua_da_huy: {
+        label: 'Người mua đã hủy',
+        tone: 'muted',
+        headline: 'Yêu cầu mua đã được đóng',
+        description: 'Bài đăng quay về trạng thái mở bán, người mua có thể tạo lại yêu cầu mới nếu cần.',
+    },
+    nguoi_ban_da_tu_choi: {
+        label: 'Người bán từ chối',
+        tone: 'muted',
+        headline: 'Người bán chưa chốt giao dịch này',
+        description: 'Đoạn chat vẫn còn, nhưng giao dịch đã dừng ở bước xác nhận ban đầu.',
+    },
+    he_thong_da_huy: {
+        label: 'Đã đóng tự động',
+        tone: 'blocked',
+        headline: 'Giao dịch này bị khóa lại',
+        description: 'Hệ thống tự đóng vì bài đăng đã giữ cho người mua khác hoặc đã hoàn tất với người khác.',
+    },
+    het_han: {
+        label: 'Đã hết hạn',
+        tone: 'blocked',
+        headline: 'Yêu cầu mua đã quá hạn',
+        description: 'Không còn giữ chỗ cho giao dịch này nữa. Có thể mở lại một yêu cầu mới nếu bài vẫn còn bán.',
+    },
+};
+
+const POST_STATUS_META = {
+    dang_ban: {
+        label: 'Đang mở bán',
+        hint: 'Bài đăng vẫn đang mở cho người mua mới.',
+    },
+    dang_giu_cho: {
+        label: 'Đang giữ chỗ',
+        hint: 'Người bán đang ưu tiên xử lý một giao dịch.',
+    },
+    dang_giao_dich: {
+        label: 'Đang giao dịch',
+        hint: 'Bài đăng đang ở giữa tiến trình chốt đơn.',
+    },
+    da_ban: {
+        label: 'Đã bán',
+        hint: 'Bài đăng đã hoàn tất giao dịch.',
+    },
+    da_trao_doi: {
+        label: 'Đã trao đổi',
+        hint: 'Bài đăng đã được xử lý xong.',
+    },
+    da_tang: {
+        label: 'Đã tặng',
+        hint: 'Bài đăng không còn mở để giao dịch.',
+    },
+};
+
+const DEAL_PROGRESS_STEPS = [
+    {
+        key: 'request',
+        label: 'Yêu cầu mua',
+        hint: 'Người mua mở yêu cầu chốt đơn trong chat.',
+    },
+    {
+        key: 'accept',
+        label: 'Xác nhận',
+        hint: 'Người bán chấp nhận để giữ bài cho đúng người.',
+    },
+    {
+        key: 'meeting',
+        label: 'Điểm hẹn',
+        hint: 'Hai bên chốt nơi gặp hoặc thời gian giao nhận.',
+    },
+    {
+        key: 'complete',
+        label: 'Hoàn tất',
+        hint: 'Giao dịch được chốt và bài đăng chuyển sang đã bán.',
+    },
+];
+
+const HISTORY_ACTION_LABELS = {
+    tao_yeu_cau_mua: 'Đã tạo yêu cầu mua',
+    nguoi_ban_chap_nhan: 'Người bán đã chấp nhận',
+    nguoi_ban_tu_choi: 'Người bán đã từ chối',
+    cap_nhat_diem_hen: 'Đã cập nhật điểm hẹn',
+    yeu_cau_hoan_tat: 'Đã gửi yêu cầu hoàn tất',
+    hoan_tat_giao_dich: 'Đã hoàn tất giao dịch',
+    nguoi_mua_huy: 'Người mua đã hủy',
+    he_thong_huy: 'Hệ thống đã đóng giao dịch',
+    het_han_giao_dich: 'Giao dịch đã hết hạn',
+};
+
+function getPostShareMetadataLine(text, prefix) {
+    if (typeof text !== 'string') return '';
+    return text
+        .split('\n')
+        .find((line) => line.startsWith(prefix))
+        ?.replace(prefix, '')
+        .trim() || '';
+}
+
+function isPostShareMessage(text) {
+    return typeof text === 'string' && text.includes(POST_SHARE_PREFIX);
+}
+
+function extractPostShareTitle(text) {
+    if (!isPostShareMessage(text)) return '';
+    return getPostShareMetadataLine(text, POST_SHARE_PREFIX);
+}
+
+function extractPostShareId(text) {
+    return getPostShareMetadataLine(text, POST_SHARE_ID_PREFIX);
+}
+
+function extractPostShareImage(text) {
+    return getPostShareMetadataLine(text, POST_SHARE_IMAGE_PREFIX);
+}
+
+function formatCurrency(value) {
+    const amount = Number(value || 0);
+    return Number.isFinite(amount) ? currencyFormatter.format(amount) : 'Liên hệ';
+}
+
+function formatDateTime(value) {
+    if (!value) return 'Chưa cập nhật';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return 'Chưa cập nhật';
+    return date.toLocaleString('vi-VN', {
+        hour: '2-digit',
+        minute: '2-digit',
+        day: '2-digit',
+        month: '2-digit',
+    });
+}
+
+function toDateTimeLocalValue(value) {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    const offsetDate = new Date(date.getTime() - (date.getTimezoneOffset() * 60000));
+    return offsetDate.toISOString().slice(0, 16);
+}
+
+function toMySqlDateTime(value) {
+    if (!value) return null;
+    return `${value.replace('T', ' ')}:00`;
+}
+
+function getTransactionMeta(status) {
+    return TRANSACTION_STATUS_META[status] || TRANSACTION_STATUS_META.idle;
+}
+
+function getPostStatusMeta(status) {
+    return POST_STATUS_META[status] || {
+        label: 'Chưa rõ',
+        hint: 'Trạng thái bài đăng chưa được xác định.',
+    };
+}
+
+function getDealProgressPosition(status) {
+    switch (status) {
+    case 'cho_nguoi_ban_xac_nhan':
+        return 0;
+    case 'nguoi_ban_da_chap_nhan':
+        return 1;
+    case 'cho_hen_gap':
+        return 2;
+    case 'cho_xac_nhan_hoan_tat':
+        return 3;
+    case 'hoan_tat':
+        return 4;
+    default:
+        return 0;
+    }
+}
+
+function getDealFocusSummary({ transaction, role, activeAcceptedOther }) {
+    if (activeAcceptedOther && !transaction) {
+        return {
+            waitingLabel: 'Đang chờ giao dịch khác kết thúc',
+            waitingHint: `Bài đang được giữ cho ${activeAcceptedOther.ten_nguoi_mua || 'người mua khác'}.`,
+            nextLabel: 'Tiếp tục nhắn tin hoặc chờ mở lại',
+            nextHint: 'Bạn chỉ có thể thao tác lại khi giao dịch kia đóng hoặc bài mở bán trở lại.',
+        };
+    }
+
+    if (!transaction) {
+        return role === 'seller'
+            ? {
+                waitingLabel: 'Đang chờ người mua mở yêu cầu',
+                waitingHint: 'Khi có yêu cầu mới, bạn sẽ thấy nút chấp nhận hoặc từ chối.',
+                nextLabel: 'Theo dõi ghi chú của người mua',
+                nextHint: 'Phần yêu cầu mua sẽ là nơi người mua để lại ý định chốt đơn.',
+            }
+            : {
+                waitingLabel: 'Chưa có giao dịch được mở',
+                waitingHint: 'Bạn cần gửi yêu cầu mua để bắt đầu luồng chốt đơn.',
+                nextLabel: 'Gửi yêu cầu mua trong form đỏ',
+                nextHint: 'Ghi rõ mong muốn chốt nhanh, thời gian hoặc cách gặp mặt để người bán dễ phản hồi.',
+            };
+    }
+
+    switch (transaction.trang_thai) {
+    case 'cho_nguoi_ban_xac_nhan':
+        return role === 'seller'
+            ? {
+                waitingLabel: 'Đến lượt bạn phản hồi',
+                waitingHint: 'Người mua đã gửi yêu cầu và đang chờ quyết định từ người bán.',
+                nextLabel: 'Chấp nhận hoặc từ chối yêu cầu',
+                nextHint: 'Chấp nhận sẽ chuyển bài sang giữ chỗ cho cuộc chat này.',
+            }
+            : {
+                waitingLabel: 'Đang chờ người bán xác nhận',
+                waitingHint: 'Yêu cầu đã được gửi, người bán chưa phản hồi.',
+                nextLabel: 'Chờ phản hồi hoặc tự hủy',
+                nextHint: 'Nếu đổi ý, bạn có thể hủy yêu cầu ngay trong deal room.',
+            };
+    case 'nguoi_ban_da_chap_nhan':
+        return {
+            waitingLabel: 'Hai bên đang ở pha giữ chỗ',
+            waitingHint: 'Bài đăng đã được khóa cho cuộc giao dịch hiện tại.',
+            nextLabel: 'Chốt điểm hẹn hoặc chuẩn bị hoàn tất',
+            nextHint: 'Cập nhật địa chỉ gặp hoặc thời gian giao nhận để tiến tới bước cuối.',
+        };
+    case 'cho_hen_gap':
+        return {
+            waitingLabel: 'Đang chờ điểm hẹn rõ ràng',
+            waitingHint: 'Hai bên cần thống nhất nơi gặp hoặc mốc thời gian cụ thể.',
+            nextLabel: 'Lưu điểm hẹn mới nhất',
+            nextHint: 'Thông tin điểm hẹn càng rõ thì xác suất chốt đơn càng cao.',
+        };
+    case 'cho_xac_nhan_hoan_tat':
+        return role === 'seller'
+            ? {
+                waitingLabel: 'Đến lượt người bán chốt deal',
+                waitingHint: 'Người mua đã đề nghị hoàn tất giao dịch.',
+                nextLabel: 'Xác nhận đã bán',
+                nextHint: 'Sau thao tác này, bài đăng sẽ chuyển sang đã bán.',
+            }
+            : {
+                waitingLabel: 'Đang chờ người bán xác nhận hoàn tất',
+                waitingHint: 'Yêu cầu kết thúc đã được gửi đi.',
+                nextLabel: 'Theo dõi phản hồi cuối cùng',
+                nextHint: 'Người bán chỉ cần một thao tác nữa để đóng giao dịch.',
+            };
+    case 'hoan_tat':
+        return {
+            waitingLabel: 'Không còn bước chờ xử lý',
+            waitingHint: 'Giao dịch đã khép lại thành công.',
+            nextLabel: 'Xem lại lịch sử hoặc mở giao dịch mới',
+            nextHint: 'Deal room vẫn giữ lịch sử để tiện đối chiếu sau này.',
+        };
+    case 'nguoi_mua_da_huy':
+        return {
+            waitingLabel: 'Yêu cầu đã bị hủy bởi người mua',
+            waitingHint: 'Bài đăng có thể quay lại trạng thái mở bán.',
+            nextLabel: 'Tạo yêu cầu mới nếu vẫn muốn mua',
+            nextHint: 'Luồng cũ đã đóng, cần mở một yêu cầu mới để tiếp tục.',
+        };
+    case 'nguoi_ban_da_tu_choi':
+        return {
+            waitingLabel: 'Người bán đã từ chối yêu cầu',
+            waitingHint: 'Cuộc giao dịch này dừng ở bước xác nhận ban đầu.',
+            nextLabel: 'Tiếp tục trao đổi hoặc tìm bài khác',
+            nextHint: 'Bạn vẫn có thể nhắn tin nhưng không còn giao dịch mở.',
+        };
+    default:
+        return {
+            waitingLabel: 'Deal room đang tạm khóa',
+            waitingHint: 'Giao dịch này chưa thể thao tác thêm.',
+            nextLabel: 'Theo dõi trạng thái mới nhất',
+            nextHint: 'Khi trạng thái đổi, các nút hành động sẽ được mở lại tương ứng.',
+        };
+    }
+}
 
 /* ════════ MAIN PAGE ════════ */
 export default function Messages() {
@@ -41,9 +372,21 @@ export default function Messages() {
     const [searchFilter, setSearchFilter] = useState('all');
 
     const messagesEndRef = useRef(null);
+    const messagesViewportRef = useRef(null);
+    const buyerRequestComposerRef = useRef(null);
     const socketRef = useRef(null);
+    const previousUserIdRef = useRef('');
     const listSearchInputRef = useRef(null);
     const pendingSelectedUserRef = useRef(location.state?.selectedUser || null);
+    const [focusedPostId, setFocusedPostId] = useState(location.state?.focusPostId || null);
+    const [dealContext, setDealContext] = useState(EMPTY_DEAL_CONTEXT);
+    const [loadingDeal, setLoadingDeal] = useState(false);
+    const [dealActionLoading, setDealActionLoading] = useState('');
+    const [dealNotice, setDealNotice] = useState(null);
+    const [purchaseNote, setPurchaseNote] = useState('');
+    const [showDealReturnButton, setShowDealReturnButton] = useState(false);
+    const [showMeetingComposer, setShowMeetingComposer] = useState(false);
+    const [meetingDraft, setMeetingDraft] = useState({ address: '', time: '', note: '' });
 
     const tabs = [
         { key: 'all', label: 'Tất cả' },
@@ -51,8 +394,7 @@ export default function Messages() {
         { key: 'groups', label: 'Nhóm' },
     ];
 
-    const myUserId = useMemo(() => localStorage.getItem('userId') || '', []);
-    const token = useMemo(() => localStorage.getItem('token') || '', []);
+    const { userId: myUserId, token, user: currentUser } = useAuthSession();
     const backendOrigin = useMemo(() => {
         try { return new URL(API_BASE_URL).origin; } catch { return 'http://localhost:3000'; }
     }, []);
@@ -60,6 +402,12 @@ export default function Messages() {
 
     const normalizeUploadsUrl = useCallback((raw, uploadsSubPath = '') => {
         if (!raw) return '';
+        if (typeof raw === 'string' && raw.startsWith('/uploads/')) {
+            return `${backendOrigin}${raw}`;
+        }
+        if (typeof raw === 'string' && raw.startsWith('uploads/')) {
+            return `${backendOrigin}/${raw}`;
+        }
         // filename only
         if (typeof raw === 'string' && !raw.startsWith('http://') && !raw.startsWith('https://')) {
             const sub = uploadsSubPath ? `/${uploadsSubPath.replace(/^\/+|\/+$/g, '')}` : '';
@@ -89,6 +437,12 @@ export default function Messages() {
     }, [token]);
 
     useEffect(() => {
+        if (!dealNotice) return undefined;
+        const timeoutId = window.setTimeout(() => setDealNotice(null), 4200);
+        return () => window.clearTimeout(timeoutId);
+    }, [dealNotice]);
+
+    useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }, [chatMessages]);
 
@@ -100,6 +454,267 @@ export default function Messages() {
         if (q) list = list.filter(c => (c.name || '').toLowerCase().includes(q));
         return list;
     }, [conversations, activeTab, searchQuery]);
+
+    const latestSharedPostMessage = useMemo(
+        () => [...chatMessages].reverse().find((msg) => msg.isPostShare && msg.postId) || null,
+        [chatMessages],
+    );
+
+    const activeDealPostId = focusedPostId || latestSharedPostMessage?.postId || null;
+
+    const currentDealMeta = useMemo(() => {
+        if (dealContext.activeAcceptedOther && !dealContext.currentTransaction) {
+            return {
+                ...TRANSACTION_STATUS_META.he_thong_da_huy,
+                label: 'Đang giữ cho người mua khác',
+                tone: 'blocked',
+                headline: 'Bài đăng này đang khóa cho một giao dịch khác',
+                description: 'Bạn vẫn có thể nhắn tin, nhưng không thể thao tác chốt đơn trên bài đăng này trong cuộc chat hiện tại.',
+            };
+        }
+
+        return getTransactionMeta(dealContext.currentTransaction?.trang_thai || 'idle');
+    }, [dealContext.activeAcceptedOther, dealContext.currentTransaction]);
+
+    const dealTimeline = useMemo(
+        () => [...(dealContext.currentTransaction?.lich_su_json || [])].reverse().slice(0, 4),
+        [dealContext.currentTransaction],
+    );
+
+    const currentPostStatusMeta = useMemo(
+        () => getPostStatusMeta(dealContext.post?.status),
+        [dealContext.post?.status],
+    );
+
+    const dealFocusSummary = useMemo(
+        () => getDealFocusSummary({
+            transaction: dealContext.currentTransaction,
+            role: dealContext.role,
+            activeAcceptedOther: dealContext.activeAcceptedOther,
+        }),
+        [dealContext.activeAcceptedOther, dealContext.currentTransaction, dealContext.role],
+    );
+
+    const dealParticipantInfo = useMemo(() => {
+        const transaction = dealContext.currentTransaction;
+        const sellerName = transaction?.ten_nguoi_ban
+            || dealContext.post?.sellerName
+            || (dealContext.role === 'buyer' ? selectedChat?.name : currentUser?.ho_ten)
+            || 'Người bán';
+        const sellerAvatar = normalizeUploadsUrl(
+            transaction?.anh_nguoi_ban
+                || dealContext.post?.sellerAvatar
+                || (dealContext.role === 'buyer' ? selectedChat?.avatar : currentUser?.anh_dai_dien || currentUser?.avatar || ''),
+            'avatars',
+        ) || avatarFallback(`seller-${dealContext.sellerId || dealContext.post?.authorId || selectedChat?.id}`);
+
+        const buyerName = transaction?.ten_nguoi_mua
+            || (dealContext.role === 'seller' ? selectedChat?.name : currentUser?.ho_ten)
+            || 'Người mua';
+        const buyerAvatar = normalizeUploadsUrl(
+            transaction?.anh_nguoi_mua
+                || (dealContext.role === 'seller' ? selectedChat?.avatar : currentUser?.anh_dai_dien || currentUser?.avatar || ''),
+            'avatars',
+        ) || avatarFallback(`buyer-${dealContext.buyerId || selectedChat?.id || 'current'}`);
+
+        return {
+            seller: {
+                label: 'Người bán',
+                name: sellerName,
+                avatar: sellerAvatar,
+                isMe: dealContext.role === 'seller',
+            },
+            buyer: {
+                label: 'Người mua',
+                name: buyerName,
+                avatar: buyerAvatar,
+                isMe: dealContext.role === 'buyer',
+            },
+        };
+    }, [
+        currentUser?.anh_dai_dien,
+        currentUser?.avatar,
+        currentUser?.ho_ten,
+        dealContext.buyerId,
+        dealContext.currentTransaction,
+        dealContext.post?.authorId,
+        dealContext.post?.sellerAvatar,
+        dealContext.post?.sellerName,
+        dealContext.role,
+        dealContext.sellerId,
+        normalizeUploadsUrl,
+        selectedChat?.avatar,
+        selectedChat?.id,
+        selectedChat?.name,
+    ]);
+
+    const competingRequestCount = useMemo(
+        () => dealContext.transactions.filter((transaction) => {
+            if (dealContext.currentTransaction && transaction.ID_GiaoDich === dealContext.currentTransaction.ID_GiaoDich) {
+                return false;
+            }
+
+            return OPEN_DEAL_STATUSES.includes(transaction.trang_thai);
+        }).length,
+        [dealContext.currentTransaction, dealContext.transactions],
+    );
+
+    const dealInsightCards = useMemo(() => [
+        {
+            label: 'Trạng thái bài đăng',
+            value: currentPostStatusMeta.label,
+            hint: currentPostStatusMeta.hint,
+        },
+        {
+            label: 'Ai đang chờ ai',
+            value: dealFocusSummary.waitingLabel,
+            hint: dealFocusSummary.waitingHint,
+        },
+        {
+            label: 'Bước tiếp theo',
+            value: dealFocusSummary.nextLabel,
+            hint: dealFocusSummary.nextHint,
+        },
+        {
+            label: 'Yêu cầu cạnh tranh',
+            value: competingRequestCount > 0 ? `${competingRequestCount} đang mở` : 'Không có',
+            hint: competingRequestCount > 0
+                ? 'Còn các yêu cầu khác trên cùng bài đăng đang chờ hoặc đang được xử lý.'
+                : 'Cuộc chat này hiện không phải cạnh tranh với yêu cầu mở nào khác.',
+        },
+    ], [competingRequestCount, currentPostStatusMeta.hint, currentPostStatusMeta.label, dealFocusSummary.nextHint, dealFocusSummary.nextLabel, dealFocusSummary.waitingHint, dealFocusSummary.waitingLabel]);
+
+    const dealProgressSteps = useMemo(() => {
+        const status = dealContext.currentTransaction?.trang_thai || null;
+        const isClosedDeal = ['nguoi_mua_da_huy', 'nguoi_ban_da_tu_choi', 'he_thong_da_huy', 'het_han'].includes(status);
+        const progressPosition = getDealProgressPosition(status);
+
+        return DEAL_PROGRESS_STEPS.map((step, index) => {
+            let state = 'upcoming';
+
+            if (status === 'hoan_tat') {
+                state = 'done';
+            } else if (isClosedDeal) {
+                state = index === 0 ? 'done' : 'muted';
+            } else if (index < progressPosition) {
+                state = 'done';
+            } else if (index === progressPosition) {
+                state = 'current';
+            }
+
+            return {
+                ...step,
+                state,
+            };
+        });
+    }, [dealContext.currentTransaction?.trang_thai]);
+
+    const resetDealStage = useCallback(() => {
+        setDealContext(EMPTY_DEAL_CONTEXT);
+        setPurchaseNote('');
+        setShowMeetingComposer(false);
+        setMeetingDraft({ address: '', time: '', note: '' });
+    }, []);
+
+    useEffect(() => {
+        const previousUserId = previousUserIdRef.current;
+        const hasUserSwitched = previousUserId && previousUserId !== myUserId;
+
+        if (!myUserId || hasUserSwitched) {
+            setSelectedChat(null);
+            setConversations([]);
+            setChatMessages([]);
+            setSearchQuery('');
+            setError('');
+            resetDealStage();
+        }
+
+        previousUserIdRef.current = myUserId;
+    }, [myUserId, resetDealStage]);
+
+    const loadDealContext = useCallback(async (postId, conversation) => {
+        if (!postId || !conversation || conversation.type !== 'private' || !myUserId) {
+            resetDealStage();
+            return;
+        }
+
+        setLoadingDeal(true);
+
+        try {
+            const [postResponse, transactionResponse] = await Promise.all([
+                apiFetch(`/baidang/getByIdWithDetails/${postId}`),
+                apiFetch(`/giaodich_baidang/post/${postId}`),
+            ]);
+
+            const rawPost = postResponse?.data || null;
+            const rawTransactions = Array.isArray(transactionResponse?.data) ? transactionResponse.data : [];
+
+            if (!rawPost) {
+                setDealContext(EMPTY_DEAL_CONTEXT);
+                return;
+            }
+
+            const imageList = Array.isArray(rawPost.DanhSachAnh) ? rawPost.DanhSachAnh : [];
+            const post = {
+                id: rawPost.ID_BaiDang,
+                title: rawPost.tieu_de || 'Bài đăng',
+                price: rawPost.gia,
+                location: rawPost.vi_tri || 'Chưa có vị trí',
+                authorId: rawPost.ID_NguoiDung,
+                image: normalizeUploadsUrl(imageList[0] || ''),
+                status: rawPost.trang_thai || 'dang_ban',
+                sellerName: rawPost.TenNguoiDung || 'Người bán',
+                sellerAvatar: normalizeUploadsUrl(rawPost.anh_dai_dien || '', 'avatars'),
+                category: rawPost.TenDanhMuc || 'Bài đăng',
+                typeLabel: rawPost.TenLoaiBaiDang || '',
+            };
+
+            let role = 'viewer';
+            let buyerId = null;
+            const sellerId = rawPost.ID_NguoiDung;
+
+            if (String(sellerId) === String(myUserId) && String(conversation.id) !== String(sellerId)) {
+                role = 'seller';
+                buyerId = conversation.id;
+            } else if (String(sellerId) === String(conversation.id)) {
+                role = 'buyer';
+                buyerId = myUserId;
+            }
+
+            const currentTransaction = buyerId
+                ? rawTransactions.find(
+                    (transaction) => String(transaction.ID_NguoiBan) === String(sellerId)
+                        && String(transaction.ID_NguoiMua) === String(buyerId),
+                ) || null
+                : null;
+
+            const activeAcceptedOther = rawTransactions.find(
+                (transaction) => ACTIVE_ACCEPTED_STATUSES.includes(transaction.trang_thai)
+                    && (!buyerId || String(transaction.ID_NguoiMua) !== String(buyerId)),
+            ) || null;
+
+            setDealContext({
+                post,
+                transactions: rawTransactions,
+                currentTransaction,
+                activeAcceptedOther,
+                role,
+                buyerId,
+                sellerId,
+            });
+
+            setMeetingDraft({
+                address: currentTransaction?.dia_chi_hen_gap || '',
+                time: toDateTimeLocalValue(currentTransaction?.thoi_gian_hen_gap),
+                note: currentTransaction?.ghi_chu_hen_gap || '',
+            });
+        } catch (loadError) {
+            console.error('Load deal context failed', loadError);
+            setDealContext(EMPTY_DEAL_CONTEXT);
+        } finally {
+            setLoadingDeal(false);
+        }
+    }, [apiFetch, myUserId, normalizeUploadsUrl, resetDealStage]);
 
     const loadConversations = useCallback(async () => {
         if (!myUserId) return;
@@ -148,16 +763,23 @@ export default function Messages() {
                 .reverse()
                 .map((m) => {
                     const isMine = m.ID_NguoiGui === myUserId;
+                    const text = m.noi_dung || '';
                     const time = m.thoi_gian_gui
                         ? new Date(m.thoi_gian_gui).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false })
                         : '';
                     const file = m.file_dinh_kem ? normalizeUploadsUrl(m.file_dinh_kem, 'messages') : '';
+                    const postShare = isPostShareMessage(text);
+                    const postImage = postShare ? normalizeUploadsUrl(extractPostShareImage(text)) : '';
                     return {
                         id: m.ID_TinNhan,
                         sender: isMine ? 'me' : 'them',
-                        text: m.noi_dung || '',
+                        text,
                         time,
                         image: file || '',
+                        isPostShare: postShare,
+                        postTitle: postShare ? extractPostShareTitle(text) : '',
+                        postId: postShare ? extractPostShareId(text) : null,
+                        postImage,
                     };
                 });
             setChatMessages(msgs.length ? msgs : [{ id: 'start', sender: 'system', text: 'Bắt đầu cuộc trò chuyện! 👋', time: '' }]);
@@ -170,8 +792,14 @@ export default function Messages() {
         }
     }, [apiFetch, myUserId, normalizeUploadsUrl]);
 
-    const handleSelectChat = useCallback((conv) => {
+    const handleSelectChat = useCallback((conv, options = {}) => {
+        const { preserveFocusedPost = false } = options;
         setSelectedChat(conv);
+        if (!preserveFocusedPost) {
+            setFocusedPostId(null);
+        }
+        setDealNotice(null);
+        setShowMeetingComposer(false);
         setConversations(prev => prev.map(c => c.id === conv.id ? { ...c, unread: 0 } : c));
         loadMessages(conv);
         // join socket room for realtime
@@ -187,8 +815,17 @@ export default function Messages() {
     }, [loadConversations]);
 
     useEffect(() => {
+        if (!selectedChat || loadingMsgs || chatMessages.length > 0) return;
+        loadMessages(selectedChat);
+    }, [chatMessages.length, loadMessages, loadingMsgs, selectedChat]);
+
+    useEffect(() => {
         const pending = pendingSelectedUserRef.current;
         if (!pending || loadingConvs || !myUserId) return;
+
+        if (location.state?.focusPostId) {
+            setFocusedPostId(location.state.focusPostId);
+        }
 
         const existing = conversations.find(
             (conv) => conv.type === 'private' && String(conv.id) === String(pending.id),
@@ -206,7 +843,7 @@ export default function Messages() {
         };
 
         if (!selectedChat || String(selectedChat.id) !== String(nextConv.id)) {
-            handleSelectChat(nextConv);
+            handleSelectChat(nextConv, { preserveFocusedPost: Boolean(location.state?.focusPostId) });
         }
 
         pendingSelectedUserRef.current = null;
@@ -214,6 +851,20 @@ export default function Messages() {
             navigate(location.pathname, { replace: true, state: {} });
         }
     }, [conversations, handleSelectChat, loadingConvs, location.pathname, location.state, myUserId, navigate, selectedChat]);
+
+    useEffect(() => {
+        if (!selectedChat || selectedChat.type !== 'private') {
+            resetDealStage();
+            return;
+        }
+
+        if (!activeDealPostId) {
+            setDealContext(EMPTY_DEAL_CONTEXT);
+            return;
+        }
+
+        loadDealContext(activeDealPostId, selectedChat);
+    }, [activeDealPostId, loadDealContext, resetDealStage, selectedChat]);
 
     // socket connect
     useEffect(() => {
@@ -251,21 +902,41 @@ export default function Messages() {
             if (!m) return;
 
             const otherId = m.ID_NguoiGui === myUserId ? m.ID_NguoiNhan : m.ID_NguoiGui;
+            const text = m.noi_dung || '';
             const time = m.thoi_gian_gui
                 ? new Date(m.thoi_gian_gui).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false })
                 : '';
             const img = m.file_dinh_kem ? normalizeUploadsUrl(m.file_dinh_kem, 'messages') : '';
+            const postShare = isPostShareMessage(text);
+            const postImage = postShare ? normalizeUploadsUrl(extractPostShareImage(text)) : '';
 
             // update messages if current chat is open with this user
             if (selectedChat?.type === 'private' && selectedChat.id === otherId) {
-                const msg = { id: m.ID_TinNhan, sender: m.ID_NguoiGui === myUserId ? 'me' : 'them', text: m.noi_dung || '', time, image: img };
+                const msg = {
+                    id: m.ID_TinNhan,
+                    sender: m.ID_NguoiGui === myUserId ? 'me' : 'them',
+                    text,
+                    time,
+                    image: img,
+                    isPostShare: postShare,
+                    postTitle: postShare ? extractPostShareTitle(text) : '',
+                    postId: postShare ? extractPostShareId(text) : null,
+                    postImage,
+                };
                 setChatMessages(prev => {
                     // Nếu là tin nhắn của mình, tìm tin nhắn tạm trùng nội dung để thay thế
                     if (m.ID_NguoiGui === myUserId) {
                         const tempIdx = prev.findIndex(x => x.sender === 'me' && x.id.toString().startsWith('temp_') && x.text === msg.text);
                         if (tempIdx !== -1) {
                             const updated = [...prev];
-                            updated[tempIdx] = msg;
+                            const tempMessage = updated[tempIdx];
+                            updated[tempIdx] = {
+                                ...msg,
+                                isPostShare: tempMessage.isPostShare || msg.isPostShare,
+                                postTitle: tempMessage.postTitle || msg.postTitle,
+                                postId: tempMessage.postId || msg.postId,
+                                postImage: tempMessage.postImage || msg.postImage,
+                            };
                             return updated;
                         }
                     }
@@ -432,6 +1103,38 @@ export default function Messages() {
         }
     };
 
+    const sendMessageWithOptimistic = useCallback(async (payload, optimisticMessage) => {
+        setChatMessages((prev) => [...prev, optimisticMessage]);
+
+        if (socketRef.current?.connected) {
+            socketRef.current.emit('send_message', payload);
+            return;
+        }
+
+        try {
+            const response = await apiFetch('/tinnhan/send', {
+                method: 'POST',
+                body: JSON.stringify(payload),
+            });
+            const serverMessage = response?.data;
+            if (!serverMessage?.ID_TinNhan) return;
+
+            setChatMessages((prev) => prev.map((msg) => (
+                msg.id === optimisticMessage.id
+                    ? {
+                        ...msg,
+                        id: serverMessage.ID_TinNhan,
+                        time: serverMessage.thoi_gian_gui
+                            ? new Date(serverMessage.thoi_gian_gui).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false })
+                            : msg.time,
+                    }
+                    : msg
+            )));
+        } catch (sendError) {
+            console.error('Send message HTTP failed', sendError);
+        }
+    }, [apiFetch]);
+
     const handleSend = () => {
         if (!inputText.trim()) return;
         if (!selectedChat || selectedChat.type !== 'private') return;
@@ -440,12 +1143,15 @@ export default function Messages() {
             text: inputText.trim(),
             sender: 'me',
             time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false }),
+            image: '',
+            isPostShare: false,
+            postTitle: '',
+            postId: null,
+            postImage: '',
         };
-        setChatMessages(prev => [...prev, newMsg]);
         setInputText('');
 
         const payload = {
-            ID_NguoiGui: myUserId,
             ID_NguoiNhan: selectedChat.id,
             noi_dung: newMsg.text,
             loai_tin_nhan: 'text',
@@ -453,17 +1159,7 @@ export default function Messages() {
             tin_nhan_phu_thuoc: null,
         };
 
-        if (socketRef.current?.connected) {
-            socketRef.current.emit('send_message', payload);
-        } else {
-            // fallback HTTP
-            apiFetch('/tinnhan/send', {
-                method: 'POST',
-                body: JSON.stringify(payload),
-            }).catch((e) => {
-                console.error('Send message HTTP failed', e);
-            });
-        }
+        sendMessageWithOptimistic(payload, newMsg);
     };
 
     const handleKeyDown = (e) => {
@@ -472,6 +1168,156 @@ export default function Messages() {
             handleSend();
         }
     };
+
+    const refreshDealContext = useCallback(async () => {
+        if (!selectedChat || !activeDealPostId) return;
+        await loadDealContext(activeDealPostId, selectedChat);
+        await loadConversations();
+    }, [activeDealPostId, loadConversations, loadDealContext, selectedChat]);
+
+    const runDealAction = useCallback(async (actionKey, path, body, options = {}) => {
+        setDealActionLoading(actionKey);
+        setDealNotice(null);
+
+        try {
+            const response = await apiFetch(path, {
+                method: 'POST',
+                body: JSON.stringify(body),
+            });
+
+            await refreshDealContext();
+
+            if (options.resetPurchaseNote) {
+                setPurchaseNote('');
+            }
+
+            if (options.closeMeetingComposer) {
+                setShowMeetingComposer(false);
+            }
+
+            setDealNotice({
+                type: 'success',
+                text: response?.message || 'Đã cập nhật giao dịch.',
+            });
+        } catch (actionError) {
+            console.error('Deal action failed', actionError);
+            setDealNotice({
+                type: 'error',
+                text: actionError.message || 'Không thể cập nhật giao dịch.',
+            });
+        } finally {
+            setDealActionLoading('');
+        }
+    }, [apiFetch, refreshDealContext]);
+
+    const handleCreateRequest = useCallback(() => {
+        if (!activeDealPostId || dealContext.role !== 'buyer') return;
+
+        runDealAction('request', '/giaodich_baidang/request', {
+            ID_BaiDang: activeDealPostId,
+            ghi_chu_nguoi_mua: purchaseNote.trim() || null,
+            ID_TinNhanKhoiTao: latestSharedPostMessage?.id?.toString().startsWith('temp_') ? null : latestSharedPostMessage?.id || null,
+        }, { resetPurchaseNote: true });
+    }, [activeDealPostId, dealContext.role, latestSharedPostMessage?.id, purchaseNote, runDealAction]);
+
+    const handleAcceptDeal = useCallback(() => {
+        if (!dealContext.currentTransaction) return;
+        runDealAction('accept', `/giaodich_baidang/${dealContext.currentTransaction.ID_GiaoDich}/accept`, {});
+    }, [dealContext.currentTransaction, runDealAction]);
+
+    const handleRejectDeal = useCallback(() => {
+        if (!dealContext.currentTransaction) return;
+        runDealAction('reject', `/giaodich_baidang/${dealContext.currentTransaction.ID_GiaoDich}/reject`, {
+            lyDo: 'Người bán chưa sẵn sàng chốt giao dịch này.',
+        });
+    }, [dealContext.currentTransaction, runDealAction]);
+
+    const handleCancelDeal = useCallback(() => {
+        if (!dealContext.currentTransaction) return;
+        runDealAction('cancel', `/giaodich_baidang/${dealContext.currentTransaction.ID_GiaoDich}/cancel`, {
+            lyDo: dealContext.role === 'buyer'
+                ? 'Người mua chủ động hủy yêu cầu.'
+                : 'Người bán chủ động đóng giao dịch.',
+        }, { closeMeetingComposer: true });
+    }, [dealContext.currentTransaction, dealContext.role, runDealAction]);
+
+    const handleSubmitMeeting = useCallback(() => {
+        if (!dealContext.currentTransaction) return;
+        if (!meetingDraft.address.trim()) {
+            setDealNotice({ type: 'error', text: 'Nhập địa chỉ hoặc điểm hẹn trước khi lưu.' });
+            return;
+        }
+
+        runDealAction('meeting', `/giaodich_baidang/${dealContext.currentTransaction.ID_GiaoDich}/meeting`, {
+            dia_chi_hen_gap: meetingDraft.address.trim(),
+            ghi_chu_hen_gap: meetingDraft.note.trim() || null,
+            thoi_gian_hen_gap: toMySqlDateTime(meetingDraft.time),
+        }, { closeMeetingComposer: true });
+    }, [dealContext.currentTransaction, meetingDraft.address, meetingDraft.note, meetingDraft.time, runDealAction]);
+
+    const handleRequestComplete = useCallback(() => {
+        if (!dealContext.currentTransaction) return;
+        runDealAction('requestComplete', `/giaodich_baidang/${dealContext.currentTransaction.ID_GiaoDich}/request-complete`, {
+            note: 'Đề nghị chốt giao dịch ngay trong phòng chat này.',
+        });
+    }, [dealContext.currentTransaction, runDealAction]);
+
+    const handleCompleteDeal = useCallback(() => {
+        if (!dealContext.currentTransaction) return;
+        runDealAction('complete', `/giaodich_baidang/${dealContext.currentTransaction.ID_GiaoDich}/complete`, {
+            note: 'Người bán đã xác nhận giao dịch hoàn tất.',
+        }, { closeMeetingComposer: true });
+    }, [dealContext.currentTransaction, runDealAction]);
+
+    const scrollToBuyerRequestComposer = useCallback(() => {
+        buyerRequestComposerRef.current?.scrollIntoView({
+            behavior: 'smooth',
+            block: 'start',
+        });
+    }, []);
+
+    const showBuyerRequestComposer = dealContext.role === 'buyer'
+        && !dealContext.currentTransaction
+        && !dealContext.activeAcceptedOther
+        && Boolean(activeDealPostId);
+    const showSellerApprovalActions = dealContext.role === 'seller'
+        && dealContext.currentTransaction?.trang_thai === 'cho_nguoi_ban_xac_nhan';
+    const showBuyerPendingState = dealContext.role === 'buyer'
+        && dealContext.currentTransaction?.trang_thai === 'cho_nguoi_ban_xac_nhan';
+    const showLiveDealActions = Boolean(dealContext.currentTransaction)
+        && ACTIVE_ACCEPTED_STATUSES.includes(dealContext.currentTransaction.trang_thai);
+    const canSellerComplete = dealContext.role === 'seller'
+        && dealContext.currentTransaction?.trang_thai === 'cho_xac_nhan_hoan_tat';
+
+    useEffect(() => {
+        if (!showBuyerRequestComposer) {
+            setShowDealReturnButton(false);
+            return undefined;
+        }
+
+        const viewport = messagesViewportRef.current;
+        const composer = buyerRequestComposerRef.current;
+
+        if (!viewport || !composer) {
+            setShowDealReturnButton(false);
+            return undefined;
+        }
+
+        const observer = new IntersectionObserver(
+            ([entry]) => {
+                const scrolledPastComposer = viewport.scrollTop > 120;
+                setShowDealReturnButton(!entry.isIntersecting && scrolledPastComposer);
+            },
+            {
+                root: viewport,
+                threshold: 0.35,
+            },
+        );
+
+        observer.observe(composer);
+
+        return () => observer.disconnect();
+    }, [showBuyerRequestComposer, selectedChat?.id, activeDealPostId, loadingDeal]);
 
     return (
         <div className="messages-page">
@@ -701,6 +1547,322 @@ export default function Messages() {
                             </div>
                         </div>
 
+                        <div ref={messagesViewportRef} className="msg-detail-scrollbody">
+                        {selectedChat.type === 'private' && (
+                            <section className={`msg-deal-stage tone-${currentDealMeta.tone}`}>
+                                {loadingDeal ? (
+                                    <div className="msg-deal-empty-stage loading">
+                                        <Sparkles size={20} />
+                                        <div>
+                                            <h3>Đang dựng bảng chốt đơn...</h3>
+                                            <p>Hệ thống đang ghép bài đăng và trạng thái giao dịch vào cuộc trò chuyện này.</p>
+                                        </div>
+                                    </div>
+                                ) : activeDealPostId && dealContext.post ? (
+                                    <>
+                                        <div className="msg-deal-stage-head">
+                                            <div className="msg-deal-stage-copy">
+                                                <span className="msg-deal-kicker">Deal room</span>
+                                                <h3>{currentDealMeta.headline}</h3>
+                                                <p>{currentDealMeta.description}</p>
+                                            </div>
+                                            <div className={`msg-deal-status-pill tone-${currentDealMeta.tone}`}>
+                                                {currentDealMeta.label}
+                                            </div>
+                                        </div>
+
+                                        <div className="msg-deal-insights">
+                                            {dealInsightCards.map((item) => (
+                                                <div key={item.label} className="msg-deal-insight-card">
+                                                    <span>{item.label}</span>
+                                                    <strong>{item.value}</strong>
+                                                    <small>{item.hint}</small>
+                                                </div>
+                                            ))}
+                                        </div>
+
+                                        <div className="msg-deal-actors">
+                                            {Object.values(dealParticipantInfo).map((party) => (
+                                                <div key={party.label} className={`msg-deal-actor-card ${party.isMe ? 'is-me' : ''}`}>
+                                                    <img src={party.avatar} alt={party.name} className="msg-deal-actor-avatar" />
+                                                    <div className="msg-deal-actor-copy">
+                                                        <span>{party.label}</span>
+                                                        <strong>{party.name}</strong>
+                                                        <small>{party.isMe ? 'Bạn đang ở vai trò này' : 'Đối tác trong giao dịch hiện tại'}</small>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+
+                                        <div className="msg-deal-grid">
+                                            <button
+                                                type="button"
+                                                className="msg-deal-post-card"
+                                                onClick={() => navigate(`/post/${dealContext.post.id}`)}
+                                            >
+                                                <div className="msg-deal-post-visual">
+                                                    {dealContext.post.image ? (
+                                                        <img src={dealContext.post.image} alt={dealContext.post.title} />
+                                                    ) : (
+                                                        <div className="msg-deal-post-placeholder">
+                                                            <ShoppingBag size={22} />
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div className="msg-deal-post-copy">
+                                                    <div className="msg-deal-post-title">{dealContext.post.title}</div>
+                                                    <div className="msg-deal-post-badges">
+                                                        <span className="msg-deal-post-badge status">{currentPostStatusMeta.label}</span>
+                                                        {dealContext.post.category && (
+                                                            <span className="msg-deal-post-badge">{dealContext.post.category}</span>
+                                                        )}
+                                                        {dealContext.post.typeLabel && (
+                                                            <span className="msg-deal-post-badge subtle">{dealContext.post.typeLabel}</span>
+                                                        )}
+                                                    </div>
+                                                    <div className="msg-deal-post-meta">
+                                                        <span><BadgeCheck size={14} /> {formatCurrency(dealContext.post.price)}</span>
+                                                        <span><MapPin size={14} /> {dealContext.post.location}</span>
+                                                    </div>
+                                                    <div className="msg-deal-post-foot">
+                                                        <span>{dealContext.currentTransaction ? `Mã GD #${dealContext.currentTransaction.ID_GiaoDich.slice(0, 8)}` : 'Chưa mở mã giao dịch'}</span>
+                                                        <span>{formatDateTime(dealContext.currentTransaction?.thoi_gian_yeu_cau || dealContext.currentTransaction?.thoi_gian_tao)}</span>
+                                                    </div>
+                                                </div>
+                                            </button>
+
+                                            <div className="msg-deal-progress-card">
+                                                <div className="msg-deal-panel-head">
+                                                    <span><Shield size={15} /> Đường đi giao dịch</span>
+                                                    <strong>{dealContext.currentTransaction ? 'Đang theo dõi' : 'Chưa kích hoạt'}</strong>
+                                                </div>
+                                                <div className="msg-deal-progress-list">
+                                                    {dealProgressSteps.map((step) => (
+                                                        <div key={step.key} className={`msg-deal-progress-step ${step.state}`}>
+                                                            <div className="msg-deal-progress-mark" />
+                                                            <div className="msg-deal-progress-copy">
+                                                                <strong>{step.label}</strong>
+                                                                <small>{step.hint}</small>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {dealContext.currentTransaction?.ghi_chu_nguoi_mua && (
+                                            <div className="msg-deal-buyer-note">
+                                                <div className="msg-deal-panel-head">
+                                                    <span><FileText size={15} /> Ghi chú chốt đơn</span>
+                                                    <strong>{formatDateTime(dealContext.currentTransaction.thoi_gian_yeu_cau || dealContext.currentTransaction.thoi_gian_tao)}</strong>
+                                                </div>
+                                                <p>{dealContext.currentTransaction.ghi_chu_nguoi_mua}</p>
+                                            </div>
+                                        )}
+
+                                        {dealNotice && (
+                                            <div className={`msg-deal-note-banner ${dealNotice.type}`}>
+                                                {dealNotice.type === 'error' ? <AlertTriangle size={16} /> : <BadgeCheck size={16} />}
+                                                <span>{dealNotice.text}</span>
+                                            </div>
+                                        )}
+
+                                        {dealContext.activeAcceptedOther && !dealContext.currentTransaction && (
+                                            <div className="msg-deal-lock-banner">
+                                                <AlertTriangle size={16} />
+                                                <span>Bài đăng này đang được giữ cho người mua khác. Bạn vẫn có thể nhắn tin, nhưng không thể chốt đơn ở cuộc trò chuyện này.</span>
+                                            </div>
+                                        )}
+
+                                        {dealContext.currentTransaction?.dia_chi_hen_gap && (
+                                            <div className="msg-deal-meeting-card">
+                                                <div className="msg-deal-meeting-head">
+                                                    <span><LocateFixed size={15} /> Điểm hẹn hiện tại</span>
+                                                    <strong>{formatDateTime(dealContext.currentTransaction.thoi_gian_hen_gap)}</strong>
+                                                </div>
+                                                <div className="msg-deal-meeting-address">{dealContext.currentTransaction.dia_chi_hen_gap}</div>
+                                                {dealContext.currentTransaction.ghi_chu_hen_gap && (
+                                                    <div className="msg-deal-meeting-note">{dealContext.currentTransaction.ghi_chu_hen_gap}</div>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {showBuyerRequestComposer && (
+                                            <div ref={buyerRequestComposerRef} className="msg-deal-action-panel standout">
+                                                <div className="msg-deal-action-copy">
+                                                    <Handshake size={18} />
+                                                    <div>
+                                                        <strong>Mở yêu cầu mua ngay trong chat</strong>
+                                                        <span>Để lại một ghi chú ngắn để người bán biết bạn đang muốn chốt theo hướng nào.</span>
+                                                    </div>
+                                                </div>
+                                                <textarea
+                                                    className="msg-deal-textarea"
+                                                    placeholder="Ví dụ: Mình chốt luôn hôm nay, có thể gặp ở cổng trường lúc 18:00."
+                                                    value={purchaseNote}
+                                                    onChange={(event) => setPurchaseNote(event.target.value)}
+                                                />
+                                                <div className="msg-deal-action-row">
+                                                    <button
+                                                        type="button"
+                                                        className="msg-deal-btn primary"
+                                                        onClick={handleCreateRequest}
+                                                        disabled={dealActionLoading === 'request'}
+                                                    >
+                                                        {dealActionLoading === 'request' ? 'Đang gửi...' : 'Yêu cầu mua'}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {showSellerApprovalActions && (
+                                            <div className="msg-deal-action-panel">
+                                                <div className="msg-deal-action-copy">
+                                                    <Sparkles size={18} />
+                                                    <div>
+                                                        <strong>Người mua đã gõ cửa</strong>
+                                                        <span>Chấp nhận để chuyển bài đăng sang giữ chỗ, hoặc từ chối để đóng yêu cầu này.</span>
+                                                    </div>
+                                                </div>
+                                                {dealContext.currentTransaction?.ghi_chu_nguoi_mua && (
+                                                    <div className="msg-deal-quote">“{dealContext.currentTransaction.ghi_chu_nguoi_mua}”</div>
+                                                )}
+                                                <div className="msg-deal-action-row">
+                                                    <button
+                                                        type="button"
+                                                        className="msg-deal-btn primary"
+                                                        onClick={handleAcceptDeal}
+                                                        disabled={dealActionLoading === 'accept'}
+                                                    >
+                                                        {dealActionLoading === 'accept' ? 'Đang chấp nhận...' : 'Chấp nhận'}
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="msg-deal-btn ghost"
+                                                        onClick={handleRejectDeal}
+                                                        disabled={dealActionLoading === 'reject'}
+                                                    >
+                                                        {dealActionLoading === 'reject' ? 'Đang từ chối...' : 'Từ chối'}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {showBuyerPendingState && (
+                                            <div className="msg-deal-action-panel compact">
+                                                <div className="msg-deal-action-copy">
+                                                    <Clock3 size={18} />
+                                                    <div>
+                                                        <strong>Yêu cầu đang chờ người bán phản hồi</strong>
+                                                        <span>Bạn có thể hủy yêu cầu nếu đã đổi ý hoặc muốn mở cuộc giao dịch khác.</span>
+                                                    </div>
+                                                </div>
+                                                <div className="msg-deal-action-row">
+                                                    <button
+                                                        type="button"
+                                                        className="msg-deal-btn danger"
+                                                        onClick={handleCancelDeal}
+                                                        disabled={dealActionLoading === 'cancel'}
+                                                    >
+                                                        {dealActionLoading === 'cancel' ? 'Đang hủy...' : 'Hủy yêu cầu'}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {showLiveDealActions && (
+                                            <div className="msg-deal-action-panel live">
+                                                <div className="msg-deal-action-copy">
+                                                    <Handshake size={18} />
+                                                    <div>
+                                                        <strong>Đang ở nhịp chốt đơn</strong>
+                                                        <span>Đẩy giao dịch tiến thêm một bước bằng điểm hẹn, yêu cầu hoàn tất hoặc đóng giao dịch nếu cần.</span>
+                                                    </div>
+                                                </div>
+                                                <div className="msg-deal-action-row wrap">
+                                                    <button
+                                                        type="button"
+                                                        className="msg-deal-btn primary"
+                                                        onClick={() => setShowMeetingComposer((current) => !current)}
+                                                    >
+                                                        {showMeetingComposer ? 'Ẩn điểm hẹn' : 'Cập nhật điểm hẹn'}
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="msg-deal-btn ghost"
+                                                        onClick={handleRequestComplete}
+                                                        disabled={dealActionLoading === 'requestComplete'}
+                                                    >
+                                                        {dealActionLoading === 'requestComplete' ? 'Đang gửi...' : 'Yêu cầu hoàn tất'}
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="msg-deal-btn danger"
+                                                        onClick={handleCancelDeal}
+                                                        disabled={dealActionLoading === 'cancel'}
+                                                    >
+                                                        {dealActionLoading === 'cancel' ? 'Đang đóng...' : 'Hủy giao dịch'}
+                                                    </button>
+                                                    {canSellerComplete && (
+                                                        <button
+                                                            type="button"
+                                                            className="msg-deal-btn signal"
+                                                            onClick={handleCompleteDeal}
+                                                            disabled={dealActionLoading === 'complete'}
+                                                        >
+                                                            {dealActionLoading === 'complete' ? 'Đang hoàn tất...' : 'Xác nhận đã bán'}
+                                                        </button>
+                                                    )}
+                                                </div>
+
+                                                {showMeetingComposer && (
+                                                    <div className="msg-deal-meeting-form">
+                                                        <input
+                                                            className="msg-deal-input"
+                                                            type="text"
+                                                            placeholder="Điểm hẹn hoặc địa chỉ cụ thể"
+                                                            value={meetingDraft.address}
+                                                            onChange={(event) => setMeetingDraft((current) => ({ ...current, address: event.target.value }))}
+                                                        />
+                                                        <div className="msg-deal-form-split">
+                                                            <input
+                                                                className="msg-deal-input"
+                                                                type="datetime-local"
+                                                                value={meetingDraft.time}
+                                                                onChange={(event) => setMeetingDraft((current) => ({ ...current, time: event.target.value }))}
+                                                            />
+                                                            <button
+                                                                type="button"
+                                                                className="msg-deal-btn primary"
+                                                                onClick={handleSubmitMeeting}
+                                                                disabled={dealActionLoading === 'meeting'}
+                                                            >
+                                                                {dealActionLoading === 'meeting' ? 'Đang lưu...' : 'Lưu điểm hẹn'}
+                                                            </button>
+                                                        </div>
+                                                        <textarea
+                                                            className="msg-deal-textarea compact"
+                                                            placeholder="Ghi chú thêm: cổng nào, mốc nhận diện, số điện thoại phụ..."
+                                                            value={meetingDraft.note}
+                                                            onChange={(event) => setMeetingDraft((current) => ({ ...current, note: event.target.value }))}
+                                                        />
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </>
+                                ) : (
+                                    <div className="msg-deal-empty-stage">
+                                        <Sparkles size={20} />
+                                        <div>
+                                            <h3>Bảng chốt đơn sẽ hiện ở đây</h3>
+                                            <p>Gửi kèm một bài đăng trong cuộc trò chuyện hoặc mở chat từ trang chi tiết bài đăng để bật giao diện giao dịch.</p>
+                                        </div>
+                                    </div>
+                                )}
+                            </section>
+                        )}
+
                         {/* Messages */}
                         <div className="msg-detail-messages">
                             {loadingMsgs && <div style={{ padding: 16, color: '#777' }}>Đang tải tin nhắn...</div>}
@@ -709,7 +1871,30 @@ export default function Messages() {
                                     <div className="msg-bubble-container">
                                         {msg.image && <img className="msg-bubble-img" src={msg.image} alt="" />}
                                         <div className="msg-bubble-wrap">
-                                            <div className="msg-bubble">{msg.text}</div>
+                                            {msg.isPostShare ? (
+                                                <button
+                                                    type="button"
+                                                    className={`msg-post-share-card ${msg.sender === 'me' ? 'mine' : 'theirs'} ${msg.postId ? 'clickable' : ''}`}
+                                                    onClick={() => {
+                                                        if (msg.postId) {
+                                                            navigate(`/post/${msg.postId}`);
+                                                        }
+                                                    }}
+                                                >
+                                                    {msg.postImage && (
+                                                        <img className="msg-post-share-image" src={msg.postImage} alt={msg.postTitle || 'Bài đăng'} />
+                                                    )}
+                                                    <div className="msg-post-share-content">
+                                                        <div className="msg-post-share-label">Bài đăng được chia sẻ</div>
+                                                        <div className="msg-post-share-title">{msg.postTitle || extractPostShareTitle(msg.text) || 'Bài đăng từ OLODO'}</div>
+                                                        <div className="msg-post-share-subtitle">
+                                                            {msg.postId ? 'Nhấn để xem chi tiết bài đăng' : 'Bài đăng được gửi kèm trong cuộc trò chuyện'}
+                                                        </div>
+                                                    </div>
+                                                </button>
+                                            ) : (
+                                                <div className="msg-bubble">{msg.text}</div>
+                                            )}
                                             {msg.sender === 'me' && msg.id && !msg.id.toString().startsWith('temp_') && (
                                                 <button
                                                     className="msg-bubble-delete-btn"
@@ -726,23 +1911,38 @@ export default function Messages() {
                             ))}
                             <div ref={messagesEndRef} />
                         </div>
+                        </div>
 
                         {/* Input */}
-                        <div className="msg-input-bar">
-                            <button className="msg-input-icon"><Image size={20} /></button>
-                            <button className="msg-input-icon"><Mic size={20} /></button>
-                            <input
-                                type="text"
-                                className="msg-input-text"
-                                placeholder="Aa"
-                                value={inputText}
-                                onChange={e => setInputText(e.target.value)}
-                                onKeyDown={handleKeyDown}
-                            />
-                            <button className="msg-input-emoji">😊</button>
-                            <button className="msg-send-btn" onClick={handleSend}>
-                                <Send size={18} />
-                            </button>
+                        <div className="msg-input-zone">
+                            {showBuyerRequestComposer && showDealReturnButton && (
+                                <div className="msg-deal-return-row">
+                                    <button
+                                        type="button"
+                                        className="msg-deal-return-btn"
+                                        onClick={scrollToBuyerRequestComposer}
+                                    >
+                                        <Sparkles size={15} />
+                                        <span>Mở lại form chốt đơn</span>
+                                    </button>
+                                </div>
+                            )}
+                            <div className="msg-input-bar">
+                                <button className="msg-input-icon"><Image size={20} /></button>
+                                <button className="msg-input-icon"><Mic size={20} /></button>
+                                <input
+                                    type="text"
+                                    className="msg-input-text"
+                                    placeholder="Aa"
+                                    value={inputText}
+                                    onChange={e => setInputText(e.target.value)}
+                                    onKeyDown={handleKeyDown}
+                                />
+                                <button className="msg-input-emoji">😊</button>
+                                <button className="msg-send-btn" onClick={handleSend}>
+                                    <Send size={18} />
+                                </button>
+                            </div>
                         </div>
                     </>
                 ) : (
@@ -786,6 +1986,64 @@ export default function Messages() {
                                 </button>
                             </div>
                         </div>
+
+                        {activeDealPostId && dealContext.post && (
+                            <div className={`msg-deal-sidecard tone-${currentDealMeta.tone}`}>
+                                <div className="msg-deal-sidecard-head">
+                                    <div>
+                                        <span className="msg-deal-kicker">Hộ chiếu giao dịch</span>
+                                        <h4>{dealContext.post.title}</h4>
+                                    </div>
+                                    <span className={`msg-deal-side-pill tone-${currentDealMeta.tone}`}>{currentDealMeta.label}</span>
+                                </div>
+
+                                <div className="msg-deal-sidefacts">
+                                    <div>
+                                        <span>Trạng thái bài</span>
+                                        <strong>{currentPostStatusMeta.label}</strong>
+                                    </div>
+                                    <div>
+                                        <span>Ai đang chờ ai</span>
+                                        <strong>{dealFocusSummary.waitingLabel}</strong>
+                                    </div>
+                                    <div>
+                                        <span>Bước kế tiếp</span>
+                                        <strong>{dealFocusSummary.nextLabel}</strong>
+                                    </div>
+                                    <div>
+                                        <span>Mã giao dịch</span>
+                                        <strong>{dealContext.currentTransaction ? `#${dealContext.currentTransaction.ID_GiaoDich.slice(0, 8)}` : 'Chưa mở'}</strong>
+                                    </div>
+                                </div>
+
+                                {dealContext.currentTransaction?.ghi_chu_nguoi_mua && (
+                                    <div className="msg-deal-side-note">
+                                        <span>Ghi chú chốt đơn</span>
+                                        <p>{dealContext.currentTransaction.ghi_chu_nguoi_mua}</p>
+                                    </div>
+                                )}
+
+                                {dealTimeline.length > 0 ? (
+                                    <div className="msg-deal-timeline">
+                                        {dealTimeline.map((entry) => (
+                                            <div key={entry.id || `${entry.hanh_dong}-${entry.thoi_gian}`} className="msg-deal-timeline-item">
+                                                <span className="msg-deal-timeline-dot" />
+                                                <div>
+                                                    <strong>{HISTORY_ACTION_LABELS[entry.hanh_dong] || entry.hanh_dong || 'Cập nhật giao dịch'}</strong>
+                                                    <p>{entry.noi_dung || 'Không có ghi chú thêm.'}</p>
+                                                    <small>{formatDateTime(entry.thoi_gian)}</small>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="msg-deal-side-empty">
+                                        <Clock3 size={16} />
+                                        <span>Lịch sử giao dịch sẽ hiện ở đây sau khi bắt đầu chốt đơn.</span>
+                                    </div>
+                                )}
+                            </div>
+                        )}
 
                         <div className="msg-info-section">
                             <button className="msg-info-section-header">

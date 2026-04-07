@@ -1,6 +1,9 @@
 const groupChat = require('../models/group_chat');
 const thanhVienGroup = require('../models/thanh_vien_group');
 
+const getAuthenticatedUserId = (req) =>
+    String(req.user?.id || req.user?.userId || '');
+
 // Lấy tất cả group chat
 exports.getAll = async (req, res) => {
     try {
@@ -23,6 +26,14 @@ exports.getAll = async (req, res) => {
 exports.getById = async (req, res) => {
     try {
         const id = req.params.id;
+        const userId = getAuthenticatedUserId(req);
+        const isMember = await groupChat.isMember(id, userId);
+        if (!isMember) {
+            return res.status(403).json({
+                success: false,
+                message: 'Bạn không phải thành viên của group này'
+            });
+        }
         const data = await groupChat.getById(id);
         if (!data) {
             return res.status(404).json({ 
@@ -47,7 +58,7 @@ exports.getById = async (req, res) => {
 // Lấy danh sách group của user
 exports.getByUserId = async (req, res) => {
     try {
-        const userId = req.params.userId;
+        const userId = getAuthenticatedUserId(req);
         const data = await groupChat.getByUserId(userId);
         
         res.json({
@@ -67,11 +78,12 @@ exports.getByUserId = async (req, res) => {
 // Tạo group chat mới
 exports.create = async (req, res) => {
     try {
+        const authenticatedUserId = getAuthenticatedUserId(req);
         const groupData = {
             ten_group: req.body.ten_group,
             mo_ta: req.body.mo_ta || null,
             anh_dai_dien: req.body.anh_dai_dien || null,
-            ID_NguoiTao: req.body.ID_NguoiTao
+            ID_NguoiTao: authenticatedUserId
         };
         
         // Validation
@@ -109,7 +121,7 @@ exports.create = async (req, res) => {
 exports.update = async (req, res) => {
     try {
         const id = req.params.id;
-        const userId = req.body.userId;
+        const userId = getAuthenticatedUserId(req);
         const updateData = {
             ten_group: req.body.ten_group,
             mo_ta: req.body.mo_ta,
@@ -150,7 +162,7 @@ exports.update = async (req, res) => {
 exports.delete = async (req, res) => {
     try {
         const id = req.params.id;
-        const userId = req.body.userId;
+        const userId = getAuthenticatedUserId(req);
         
         // Kiểm tra quyền admin
         const isAdmin = await groupChat.isAdmin(id, userId);
@@ -186,6 +198,14 @@ exports.delete = async (req, res) => {
 exports.getMembers = async (req, res) => {
     try {
         const groupId = req.params.id;
+        const userId = getAuthenticatedUserId(req);
+        const isMember = await groupChat.isMember(groupId, userId);
+        if (!isMember) {
+            return res.status(403).json({
+                success: false,
+                message: 'Bạn không phải thành viên của group này'
+            });
+        }
         const data = await groupChat.getMembers(groupId);
         
         res.json({
@@ -206,7 +226,7 @@ exports.getMembers = async (req, res) => {
 exports.addMember = async (req, res) => {
     try {
         const { groupId, userId } = req.params;
-        const { addedBy } = req.body;
+        const addedBy = getAuthenticatedUserId(req);
         
         // Kiểm tra quyền thêm thành viên (chỉ admin)
         const isAdmin = await groupChat.isAdmin(groupId, addedBy);
@@ -246,11 +266,11 @@ exports.addMember = async (req, res) => {
 exports.removeMember = async (req, res) => {
     try {
         const { groupId, userId } = req.params;
-        const { removedBy } = req.body;
+        const removedBy = getAuthenticatedUserId(req);
         
         // Kiểm tra quyền xóa thành viên (admin hoặc tự xóa)
         const isAdmin = await groupChat.isAdmin(groupId, removedBy);
-        const isSelf = removedBy === userId;
+        const isSelf = String(removedBy) === String(userId);
         
         if (!isAdmin && !isSelf) {
             return res.status(403).json({ 
@@ -290,7 +310,8 @@ exports.removeMember = async (req, res) => {
 exports.updateMemberRole = async (req, res) => {
     try {
         const { groupId, userId } = req.params;
-        const { newRole, updatedBy } = req.body;
+        const { newRole } = req.body;
+        const updatedBy = getAuthenticatedUserId(req);
         
         // Kiểm tra quyền admin
         const isAdmin = await groupChat.isAdmin(groupId, updatedBy);
@@ -302,7 +323,7 @@ exports.updateMemberRole = async (req, res) => {
         }
         
         // Không cho phép thay đổi vai trò của chính mình
-        if (updatedBy === userId) {
+        if (String(updatedBy) === String(userId)) {
             return res.status(400).json({ 
                 success: false,
                 message: 'Không thể thay đổi vai trò của chính mình' 
@@ -329,7 +350,7 @@ exports.updateMemberRole = async (req, res) => {
 exports.transferAdmin = async (req, res) => {
     try {
         const { groupId, newAdminId } = req.body;
-        const currentAdminId = req.body.currentAdminId;
+        const currentAdminId = getAuthenticatedUserId(req);
         
         // Kiểm tra quyền admin hiện tại
         const isAdmin = await groupChat.isAdmin(groupId, currentAdminId);
@@ -368,7 +389,7 @@ exports.transferAdmin = async (req, res) => {
 exports.getStats = async (req, res) => {
     try {
         const groupId = req.params.id;
-        const userId = req.query.userId;
+        const userId = getAuthenticatedUserId(req);
         
         // Kiểm tra user có trong group không
         const isMember = await groupChat.isMember(groupId, userId);

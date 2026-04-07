@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { API_BASE_URL } from '../../constants';
+import { setAuthSession } from '../../utils/authSession';
 import './Register.css';
 
 const STEPS = ['Tài khoản', 'Thông tin', 'Hoàn tất'];
@@ -220,9 +221,10 @@ export default function Register() {
 
           if (loginRes.data.token) {
             const loggedUser = loginRes.data.user;
-            localStorage.setItem('token', loginRes.data.token);
-            localStorage.setItem('user', JSON.stringify(loggedUser));
-            localStorage.setItem('userId', loggedUser.ID_NguoiDung || '');
+            setAuthSession({
+              token: loginRes.data.token,
+              user: loggedUser,
+            });
             setMessage({ type: 'success', text: 'Đăng ký thành công! Đang chuyển hướng...' });
             setTimeout(() => navigate('/'), 1500);
             return;

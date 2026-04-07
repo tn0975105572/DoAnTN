@@ -7,6 +7,7 @@ import {
 import './Notifications.css';
 import axios from 'axios';
 import { API_BASE_URL } from '../../constants';
+import { useAuthSession } from '../../utils/authSession';
 
 /* ════════ MAP BACKEND → UI MODEL ════════ */
 const mapApiNotification = (n) => {
@@ -50,6 +51,7 @@ const TABS = [
 
 /* ════════ MAIN COMPONENT ════════ */
 export default function Notifications() {
+    const { userId, token } = useAuthSession();
     const [notifications, setNotifications] = useState([]);
     const [selected, setSelected] = useState(null);
     const [activeTab, setActiveTab] = useState('all');
@@ -79,7 +81,6 @@ export default function Notifications() {
     }, [backendOrigin]);
 
     useEffect(() => {
-        const userId = localStorage.getItem('userId');
         if (!userId) {
             setLoading(false);
             setError('Bạn cần đăng nhập để xem thông báo.');
@@ -90,8 +91,9 @@ export default function Notifications() {
             try {
                 setLoading(true);
                 setError('');
-                // API_BASE_URL đã bao gồm '/api' (xem constants/index.js)
-                const res = await axios.get(`${API_BASE_URL}/thongbao/user/${userId}?limit=50`);
+                const res = await axios.get(`${API_BASE_URL}/thongbao/user/${userId}?limit=50`, {
+                    headers: token ? { Authorization: `Bearer ${token}` } : {},
+                });
                 const data = res.data?.data || [];
                 const mapped = data.map(mapApiNotification);
                 setNotifications(mapped);
@@ -103,7 +105,7 @@ export default function Notifications() {
         };
 
         fetchNotifications();
-    }, []);
+    }, [token, userId]);
 
     const unreadCount = notifications.filter(n => n.unread).length;
 
@@ -135,7 +137,9 @@ export default function Notifications() {
 
     const handleDelete = async (notifId) => {
         try {
-            await axios.delete(`${API_BASE_URL}/thongbao/delete/${notifId}`);
+            await axios.delete(`${API_BASE_URL}/thongbao/delete/${notifId}`, {
+                headers: token ? { Authorization: `Bearer ${token}` } : {},
+            });
         } catch (e) {
             // API lỗi vẫn xóa local
         }
@@ -144,10 +148,11 @@ export default function Notifications() {
     };
 
     const handleMarkAllRead = async () => {
-        const userId = localStorage.getItem('userId');
         if (!userId) return;
         try {
-            await axios.put(`${API_BASE_URL}/thongbao/mark-all-read/${userId}`);
+            await axios.put(`${API_BASE_URL}/thongbao/mark-all-read/${userId}`, null, {
+                headers: token ? { Authorization: `Bearer ${token}` } : {},
+            });
             setNotifications(prev => prev.map(n => ({ ...n, unread: false })));
         } catch (e) {
             // giữ im lặng, UI vẫn cập nhật local

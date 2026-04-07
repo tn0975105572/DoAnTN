@@ -4,6 +4,7 @@ import {
   Heart, Bell, MessageCircle, User, Menu, X, ShoppingBag, LogOut
 } from 'lucide-react';
 import ChatWidget from '../ChatWidget/ChatWidget';
+import { clearAuthSession, useAuthSession } from '../../utils/authSession';
 import './Layout.css';
 
 const LOGO_SRC = '/123.png';
@@ -29,32 +30,26 @@ function ScrollToTop() {
 
 const Layout = () => {
   const navigate = useNavigate();
+  const { token, userId, user: storedUser } = useAuthSession();
   const [currentUser, setCurrentUser] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
-    const savedUser = localStorage.getItem('user');
-    const token = localStorage.getItem('token');
-    const savedUserId = localStorage.getItem('userId');
-
-    if (savedUser) {
-      try {
-        const parsed = JSON.parse(savedUser);
-        setCurrentUser({
-          name: parsed.ho_ten || parsed.name || 'Bạn',
-          avatar: normalizeUrl(parsed.anh_dai_dien
-            ? (parsed.anh_dai_dien.startsWith('http') ? parsed.anh_dai_dien : `${API_BASE}/uploads/${parsed.anh_dai_dien}`)
-            : DEFAULT_AVATAR)
-        });
-      } catch {
-        setCurrentUser(null);
-      }
+    if (storedUser) {
+      setCurrentUser({
+        name: storedUser.ho_ten || storedUser.name || 'Bạn',
+        avatar: normalizeUrl(storedUser.anh_dai_dien
+          ? (storedUser.anh_dai_dien.startsWith('http') ? storedUser.anh_dai_dien : `${API_BASE}/uploads/${storedUser.anh_dai_dien}`)
+          : DEFAULT_AVATAR)
+      });
+    } else {
+      setCurrentUser(null);
     }
 
     const fetchUserInfo = async () => {
-      if (!token || !savedUserId) return;
+      if (!token || !userId) return;
       try {
-        const res = await fetch(`${API_BASE}/api/nguoidung/get/${savedUserId}`, {
+        const res = await fetch(`${API_BASE}/api/nguoidung/get/${userId}`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         if (res.ok) {
@@ -75,12 +70,10 @@ const Layout = () => {
     };
 
     fetchUserInfo();
-  }, []);
+  }, [storedUser, token, userId]);
 
   const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    localStorage.removeItem('userId');
+    clearAuthSession();
     setCurrentUser(null);
   };
 

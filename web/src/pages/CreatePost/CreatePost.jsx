@@ -12,6 +12,7 @@ import {
     Wallet,
 } from 'lucide-react';
 import { API_BASE_URL } from '../../constants';
+import { notifyAuthSessionChanged, useAuthSession } from '../../utils/authSession';
 import './CreatePost.css';
 
 const INITIAL_FORM = {
@@ -53,8 +54,7 @@ export default function CreatePost() {
     const [selectedFiles, setSelectedFiles] = useState([]);
     const [feedback, setFeedback] = useState(null);
 
-    const userId = useMemo(() => localStorage.getItem('userId') || '', []);
-    const token = useMemo(() => localStorage.getItem('token') || '', []);
+    const { userId, token } = useAuthSession();
     const backendOrigin = useMemo(() => getBackendOrigin(), []);
 
     const apiFetch = useCallback(async (path, options = {}) => {
@@ -91,6 +91,7 @@ export default function CreatePost() {
                 } catch {
                     localStorage.setItem('user', JSON.stringify(nextUser));
                 }
+                notifyAuthSessionChanged();
             }
         }
         return nextUser;
@@ -290,7 +291,6 @@ export default function CreatePost() {
         try {
             const timestamp = new Date().toISOString();
             const payload = {
-                ID_NguoiDung: userId,
                 ID_LoaiBaiDang: form.ID_LoaiBaiDang,
                 ID_DanhMuc: form.ID_DanhMuc,
                 tieu_de: form.tieu_de.trim(),

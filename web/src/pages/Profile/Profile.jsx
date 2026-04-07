@@ -32,6 +32,7 @@ import {
     XCircle,
 } from 'lucide-react';
 import { API_BASE_URL } from '../../constants';
+import { useAuthSession } from '../../utils/authSession';
 import './Profile.css';
 import PostMediaGallery from '../../components/post/PostMediaGallery';
 
@@ -49,6 +50,8 @@ const BADGE_ICONS = {
 
 const MANAGE_STATUSES = [
     { value: 'dang_ban', label: 'Đang bán' },
+    { value: 'dang_giu_cho', label: 'Đang giữ chỗ' },
+    { value: 'dang_giao_dich', label: 'Đang giao dịch' },
     { value: 'da_ban', label: 'Đã bán' },
     { value: 'da_trao_doi', label: 'Đã trao đổi' },
     { value: 'da_tang', label: 'Đã tặng' },
@@ -258,11 +261,9 @@ export default function Profile() {
     const [reviewBusy, setReviewBusy] = useState(false);
     const [listingBusyId, setListingBusyId] = useState('');
 
-    const viewerId = useMemo(() => localStorage.getItem('userId') || '', []);
-    const token = useMemo(() => localStorage.getItem('token') || '', []);
+    const { userId: viewerId, token } = useAuthSession();
     const backendOrigin = useMemo(() => getBackendOrigin(), []);
-    const stateUserId = location.state?.userId ? String(location.state.userId) : '';
-    const targetUserId = routeUserId || stateUserId || viewerId || '';
+    const targetUserId = routeUserId || viewerId || '';
 
     const apiFetch = useCallback(async (path, options = {}) => {
         const headers = {

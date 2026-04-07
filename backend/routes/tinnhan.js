@@ -5,6 +5,7 @@ const path = require("path");
 const { v4: uuidv4 } = require("uuid");
 const fs = require("fs");
 const tinnhanController = require("../controllers/tinnhan");
+const authMiddleware = require("../middleware/baoVe");
 
 // Cấu hình upload cho tin nhắn
 const uploadDir = path.join(__dirname, "../uploads/messages");
@@ -34,39 +35,39 @@ router.get("/getAll", tinnhanController.getAll);
 router.get("/getById/:id", tinnhanController.getById);
 
 // Lấy tin nhắn giữa 2 người (chat 1-1)
-router.get("/private/:user1Id/:user2Id", tinnhanController.getPrivateMessages);
+router.get("/private/:user1Id/:user2Id", authMiddleware.authenticateToken, tinnhanController.getPrivateMessages);
 
 // Lấy tin nhắn trong group
-router.get("/group/:groupId/:userId", tinnhanController.getGroupMessages);
+router.get("/group/:groupId/:userId", authMiddleware.authenticateToken, tinnhanController.getGroupMessages);
 
 // Lấy danh sách cuộc trò chuyện của user
-router.get("/conversations/:userId", tinnhanController.getConversations);
+router.get("/conversations/:userId", authMiddleware.authenticateToken, tinnhanController.getConversations);
 
 // Đếm tin nhắn chưa đọc
-router.get("/unread/:userId", tinnhanController.countUnread);
+router.get("/unread/:userId", authMiddleware.authenticateToken, tinnhanController.countUnread);
 
 // Gửi tin nhắn mới
-router.post("/send", tinnhanController.sendMessage);
+router.post("/send", authMiddleware.authenticateToken, tinnhanController.sendMessage);
 
 // Cập nhật tin nhắn (edit)
-router.put("/update/:id", tinnhanController.updateMessage);
+router.put("/update/:id", authMiddleware.authenticateToken, tinnhanController.updateMessage);
 
 // Xóa tin nhắn (soft delete cho người gửi)
-router.delete("/delete/:id", tinnhanController.deleteMessage);
+router.delete("/delete/:id", authMiddleware.authenticateToken, tinnhanController.deleteMessage);
 
 // Đánh dấu tin nhắn đã đọc (chat 1-1)
-router.post("/mark-read", tinnhanController.markAsRead);
+router.post("/mark-read", authMiddleware.authenticateToken, tinnhanController.markAsRead);
 
 // Đánh dấu tin nhắn group đã đọc
-router.post("/mark-group-read", tinnhanController.markGroupAsRead);
+router.post("/mark-group-read", authMiddleware.authenticateToken, tinnhanController.markGroupAsRead);
 
 // Upload file cho tin nhắn (chỉ trả về tên file)
-router.post("/upload", upload.single("file"), tinnhanController.uploadFile);
+router.post("/upload", authMiddleware.authenticateToken, upload.single("file"), tinnhanController.uploadFile);
 
 // Upload file và gửi tin nhắn cùng lúc
-router.post("/upload-and-send", upload.single("file"), tinnhanController.uploadAndSendMessage);
+router.post("/upload-and-send", authMiddleware.authenticateToken, upload.single("file"), tinnhanController.uploadAndSendMessage);
 
 // Xóa cuộc trò chuyện (xóa tất cả tin nhắn giữa 2 người)
-router.delete("/delete-conversation/:userId/:otherUserId", tinnhanController.deleteConversation);
+router.delete("/delete-conversation/:userId/:otherUserId", authMiddleware.authenticateToken, tinnhanController.deleteConversation);
 
 module.exports = router;

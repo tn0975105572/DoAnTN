@@ -3,6 +3,11 @@ const thongbao = require('../models/thongbao');
 const { v4: uuidv4 } = require('uuid'); // Dùng để tạo ID duy nhất
 const pool = require("../config/database");
 
+const getAuthenticatedUserId = (req) =>
+    String(req.user?.id || req.user?.userId || '').trim();
+
+const isAdminRequest = (req) => req.user?.Role === 'admin';
+
 // Lấy tất cả
 exports.getAll = async (req, res) => {
     try {
@@ -73,9 +78,13 @@ exports.getCommentCountByPost = async (req, res) => {
 exports.insert = async (req, res) => {
     try {
         const newId = uuidv4();
-        const newData = { ID_BinhLuan: newId, ...req.body };
-        const userId = newData.ID_NguoiDung;
+        const userId = getAuthenticatedUserId(req);
+        const newData = { ID_BinhLuan: newId, ...req.body, ID_NguoiDung: userId };
         const postId = newData.ID_BaiDang;
+
+        if (!userId || !postId || !newData.noi_dung) {
+            return res.status(400).json({ message: 'Thiếu phiên đăng nhập hoặc dữ liệu bình luận' });
+        }
 
         await binhluanbaidang.insert(newData);
 
@@ -135,10 +144,29 @@ exports.insert = async (req, res) => {
 // Cập nhật bình luận
 exports.update = async (req, res) => {
     try {
-        const affectedRows = await binhluanbaidang.update(req.params.id, req.body);
-        if (affectedRows === 0) {
+        const actorId = getAuthenticatedUserId(req);
+        const existingComment = await binhluanbaidang.getById(req.params.id);
+
+        if (!actorId) {
+            return res.status(401).json({ message: 'Bạn cần đăng nhập để cập nhật bình luận' });
+        }
+
+        if (!existingComment) {
             return res.status(404).json({ message: 'Bình luận không tồn tại' });
         }
+
+        if (!isAdminRequest(req) && String(existingComment.ID_NguoiDung) !== actorId) {
+            return res.status(403).json({ message: 'Bạn không có quyền cập nhật bình luận này' });
+        }
+
+        const updatePayload = {
+            ...req.body,
+            ID_NguoiDung: existingComment.ID_NguoiDung,
+            ID_BaiDang: existingComment.ID_BaiDang,
+            ID_BinhLuanCha: existingComment.ID_BinhLuanCha,
+        };
+
+        const affectedRows = await binhluanbaidang.update(req.params.id, updatePayload);
         res.json({ message: 'Cập nhật thành công' });
     } catch (error) {
         res.status(500).json({ message: 'Lỗi máy chủ', error });
@@ -148,10 +176,22 @@ exports.update = async (req, res) => {
 // Xóa bình luận
 exports.delete = async (req, res) => {
     try {
-        const affectedRows = await binhluanbaidang.delete(req.params.id);
-        if (affectedRows === 0) {
+        const actorId = getAuthenticatedUserId(req);
+        const existingComment = await binhluanbaidang.getById(req.params.id);
+
+        if (!actorId) {
+            return res.status(401).json({ message: 'Bạn cần đăng nhập để xóa bình luận' });
+        }
+
+        if (!existingComment) {
             return res.status(404).json({ message: 'Bình luận không tồn tại' });
         }
+
+        if (!isAdminRequest(req) && String(existingComment.ID_NguoiDung) !== actorId) {
+            return res.status(403).json({ message: 'Bạn không có quyền xóa bình luận này' });
+        }
+
+        const affectedRows = await binhluanbaidang.delete(req.params.id);
         res.json({ message: 'Xóa thành công' });
     } catch (error) {
         res.status(500).json({ message: 'Lỗi máy chủ', error });

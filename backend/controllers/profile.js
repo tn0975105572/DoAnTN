@@ -3,6 +3,8 @@ const danhgiaModel = require("../models/danhgia");
 
 const STATUS_LABELS = {
   dang_ban: "Đang bán",
+  dang_giu_cho: "Đang giữ chỗ",
+  dang_giao_dich: "Đang giao dịch",
   da_ban: "Đã bán",
   da_trao_doi: "Đã trao đổi",
   da_tang: "Đã tặng",
@@ -18,6 +20,9 @@ const ACTIVITY_TITLES = {
 
 const asyncHandler = (fn) => (req, res, next) =>
   Promise.resolve(fn(req, res, next)).catch(next);
+
+const getAuthenticatedViewerId = (req) =>
+  String(req.user?.id || req.user?.userId || "").trim();
 
 const isMissingReviewTableError = (error) =>
   error?.code === "ER_NO_SUCH_TABLE" && String(error?.sqlMessage || "").includes("danhgia");
@@ -71,14 +76,12 @@ const formatListing = (listing) => {
       .map((item) => item.trim())
       .filter(Boolean)
     : [];
-  const stockQuantity = Number(listing?.so_luong_con_lai ?? 0);
 
   return {
     id: listing.ID_BaiDang,
     userId: listing.ID_NguoiDung,
     postTypeId: listing.ID_LoaiBaiDang || "",
     categoryId: listing.ID_DanhMuc || "",
-    inventoryId: listing.ID_TonKho || "",
     title: listing.tieu_de,
     description: listing.mo_ta || "",
     price: listing.gia,
@@ -91,7 +94,6 @@ const formatListing = (listing) => {
     postTypeName: listing.ten_loai_bai_dang || "",
     likeCount: Number(listing.so_luot_thich || 0),
     commentCount: Number(listing.so_binh_luan || 0),
-    stockQuantity: Number.isFinite(stockQuantity) ? stockQuantity : 0,
     images,
     primaryImage: images[0] || "",
   };
@@ -238,7 +240,7 @@ const sortActivities = (items) =>
 
 exports.getProfile = asyncHandler(async (req, res) => {
   const { userId } = req.params;
-  const viewerId = typeof req.query.viewerId === "string" ? req.query.viewerId.trim() : "";
+  const viewerId = getAuthenticatedViewerId(req);
 
   if (!userId) {
     return res.status(400).json({
@@ -305,6 +307,8 @@ exports.getProfile = asyncHandler(async (req, res) => {
   const stats = {
     total_listings: Number(listingStats?.total_listings || 0),
     active_listings: Number(listingStats?.active_listings || 0),
+    reserved_listings: Number(listingStats?.reserved_listings || 0),
+    in_transaction_listings: Number(listingStats?.in_transaction_listings || 0),
     sold_listings: Number(listingStats?.sold_listings || 0),
     exchanged_listings: Number(listingStats?.exchanged_listings || 0),
     gifted_listings: Number(listingStats?.gifted_listings || 0),
@@ -509,7 +513,8 @@ exports.getProfile = asyncHandler(async (req, res) => {
 
 exports.upsertReview = asyncHandler(async (req, res) => {
   const { userId } = req.params;
-  const { viewerId, rating, comment } = req.body || {};
+  const viewerId = getAuthenticatedViewerId(req);
+  const { rating, comment } = req.body || {};
 
   if (!userId || !viewerId) {
     return res.status(400).json({

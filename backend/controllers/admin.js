@@ -4,6 +4,8 @@ const nguoiDungTichDiemModel = require("../models/nguoidungtichdiem");
 
 const MANAGE_STATUSES = [
   { value: "dang_ban", label: "Dang ban" },
+  { value: "dang_giu_cho", label: "Dang giu cho" },
+  { value: "dang_giao_dich", label: "Dang giao dich" },
   { value: "da_ban", label: "Da ban" },
   { value: "da_trao_doi", label: "Da trao doi" },
   { value: "da_tang", label: "Da tang" },
@@ -11,6 +13,8 @@ const MANAGE_STATUSES = [
 
 const STATUS_LABELS = {
   dang_ban: "Dang ban",
+  dang_giu_cho: "Dang giu cho",
+  dang_giao_dich: "Dang giao dich",
   da_ban: "Da ban",
   da_trao_doi: "Da trao doi",
   da_tang: "Da tang",
@@ -29,6 +33,11 @@ const MAX_ACTIVITY_LIMIT = 50;
 
 const asyncHandler = (fn) => (req, res, next) =>
   Promise.resolve(fn(req, res, next)).catch(next);
+
+const getAuthenticatedUserId = (req) =>
+  String(req.user?.id || req.user?.userId || "").trim();
+
+const isAdminRequest = (req) => req.user?.Role === "admin";
 
 const isMissingReviewTableError = (error) =>
   error?.code === "ER_NO_SUCH_TABLE" && String(error?.sqlMessage || "").includes("danhgia");
@@ -68,14 +77,12 @@ const formatListing = (listing) => {
       .map((item) => item.trim())
       .filter(Boolean)
     : [];
-  const stockQuantity = Number(listing?.so_luong_con_lai ?? 0);
 
   return {
     id: listing.ID_BaiDang,
     userId: listing.ID_NguoiDung,
     postTypeId: listing.ID_LoaiBaiDang || "",
     categoryId: listing.ID_DanhMuc || "",
-    inventoryId: listing.ID_TonKho || "",
     title: listing.tieu_de,
     description: listing.mo_ta || "",
     price: listing.gia,
@@ -88,7 +95,6 @@ const formatListing = (listing) => {
     postTypeName: listing.ten_loai_bai_dang || "",
     likeCount: Number(listing.so_luot_thich || 0),
     commentCount: Number(listing.so_binh_luan || 0),
-    stockQuantity: Number.isFinite(stockQuantity) ? stockQuantity : 0,
     images,
     primaryImage: images[0] || "",
   };
@@ -410,7 +416,12 @@ const getSafeRecentReviews = async (userId, limit) => {
 };
 
 exports.getDashboard = asyncHandler(async (req, res) => {
-  const { userId } = req.params;
+  const requestedUserId = String(req.params.userId || "").trim();
+  const authenticatedUserId = getAuthenticatedUserId(req);
+  const userId =
+    isAdminRequest(req) && requestedUserId
+      ? requestedUserId
+      : authenticatedUserId;
   const activityLimit = normalizeLimit(req.query.activityLimit, 24, MAX_ACTIVITY_LIMIT);
   const perSourceActivityLimit = Math.max(activityLimit, 12);
 

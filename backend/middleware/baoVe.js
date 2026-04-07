@@ -25,6 +25,29 @@ const authenticateToken = (req, res, next) => {
   }
 };
 
+const optionalAuthenticateToken = (req, res, next) => {
+  const authHeader = req.header("Authorization");
+  if (!authHeader) {
+    next();
+    return;
+  }
+
+  const token = authHeader.split(" ")[1];
+  if (!token) {
+    next();
+    return;
+  }
+
+  try {
+    const decoded = jwt.verify(token, SECRET_KEY);
+    req.user = decoded;
+  } catch (error) {
+    req.user = null;
+  }
+
+  next();
+};
+
 // Middleware phân quyền theo Role
 const authorizeRole = (...allowedRoles) => {
   return (req, res, next) => {
@@ -35,4 +58,4 @@ const authorizeRole = (...allowedRoles) => {
   };
 };
 
-module.exports = { authenticateToken, authorizeRole };
+module.exports = { authenticateToken, optionalAuthenticateToken, authorizeRole };

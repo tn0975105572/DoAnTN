@@ -35,12 +35,15 @@ import {
 } from 'recharts';
 import { API_BASE_URL } from '../../constants';
 import PostMediaGallery from '../../components/post/PostMediaGallery';
+import { useAuthSession } from '../../utils/authSession';
 import './AdminBankDash.css';
 
 const DEFAULT_AVATAR = 'https://i.pravatar.cc/200?u=admin-user';
 
 const MANAGE_STATUSES = [
     { value: 'dang_ban', label: 'Đang bán' },
+    { value: 'dang_giu_cho', label: 'Đang giữ chỗ' },
+    { value: 'dang_giao_dich', label: 'Đang giao dịch' },
     { value: 'da_ban', label: 'Đã bán' },
     { value: 'da_trao_doi', label: 'Đã trao đổi' },
     { value: 'da_tang', label: 'Đã tặng' },
@@ -48,6 +51,8 @@ const MANAGE_STATUSES = [
 
 const STATUS_LABELS = {
     dang_ban: 'Đang bán',
+    dang_giu_cho: 'Đang giữ chỗ',
+    dang_giao_dich: 'Đang giao dịch',
     da_ban: 'Đã bán',
     da_trao_doi: 'Đã trao đổi',
     da_tang: 'Đã tặng',
@@ -56,6 +61,8 @@ const STATUS_LABELS = {
 
 const STATUS_TONES = {
     dang_ban: 'success',
+    dang_giu_cho: 'gold',
+    dang_giao_dich: 'brand',
     da_ban: 'danger',
     da_trao_doi: 'brand',
     da_tang: 'gold',
@@ -245,7 +252,8 @@ const getEngagementScore = (listing) => Number(listing.likeCount || 0) * 3 + Num
 const estimateTraffic = (listing) => {
     const likes = Number(listing.likeCount || 0);
     const comments = Number(listing.commentCount || 0);
-    return likes * 18 + comments * 32 + (listing.status === 'dang_ban' ? 24 : 8);
+    const liveBoost = ['dang_ban', 'dang_giu_cho', 'dang_giao_dich'].includes(listing.status) ? 24 : 8;
+    return likes * 18 + comments * 32 + liveBoost;
 };
 
 const buildPostNavigationState = (listing, user) => {
@@ -469,8 +477,7 @@ function SidebarNavItem({ icon: Icon, label, helper, active, onClick }) {
 
 export default function AdminBankDash() {
     const navigate = useNavigate();
-    const viewerId = useMemo(() => localStorage.getItem('userId') || '', []);
-    const token = useMemo(() => localStorage.getItem('token') || '', []);
+    const { userId: viewerId, token } = useAuthSession();
     const origin = useMemo(() => getBackendOrigin(), []);
     const chartPalette = useMemo(() => CHART_PALETTE, []);
     const chartTickStyle = useMemo(
@@ -886,8 +893,8 @@ export default function AdminBankDash() {
                                 <strong>{selectedListing.location || 'Chưa có vị trí'}</strong>
                             </div>
                             <div>
-                                <span>Tồn kho</span>
-                                <strong>{formatNumber(selectedListing.stockQuantity || 0)}</strong>
+                                <span>Mã bài</span>
+                                <strong>#{String(selectedListing.id || '').slice(0, 8) || 'Chưa có'}</strong>
                             </div>
                             <div>
                                 <span>Tiếp cận</span>

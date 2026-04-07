@@ -23,9 +23,13 @@ const pendingOrders = new Map();
 
 const zalopayController = {};
 
+const getAuthenticatedUserId = (req) =>
+    String(req.user?.id || req.user?.userId || '');
+
 zalopayController.createOrder = async (req, res) => {
     try {
-        const { userId, amount, points, description, redirectBaseUrl } = req.body;
+        const userId = getAuthenticatedUserId(req);
+        const { amount, points, description, redirectBaseUrl } = req.body;
 
         if (!userId || !amount) {
             return res.status(400).json({ return_code: 0, return_message: "Thiếu thông tin bắt buộc" });
@@ -206,7 +210,7 @@ zalopayController.callback = async (req, res) => {
 
 zalopayController.checkOrderStatus = async (req, res) => {
     const { app_trans_id } = req.params;
-    const userId = req.query.userId || req.body.userId;
+    const userId = getAuthenticatedUserId(req);
 
     let postData = {
         app_id: config.app_id,

@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import io from 'socket.io-client';
 import { API_BASE_URL } from '../../constants';
+import { useAuthSession } from '../../utils/authSession';
 import './ChatWidget.css';
 
 const avatarFallback = (seed) => `https://i.pravatar.cc/150?u=${encodeURIComponent(seed || 'user')}`;
@@ -195,14 +196,13 @@ export default function ChatWidget() {
     const [loadingConvs, setLoadingConvs] = useState(false);
     const [loadingMsgs, setLoadingMsgs] = useState(false);
     const [error, setError] = useState('');
-    const [auth, setAuth] = useState({ userId: '', token: '' });
 
     const socketRef = useRef(null);
     const selectedChatRef = useRef(null);
     const fileInputRef = useRef(null);
+    const previousUserIdRef = useRef('');
 
-    const myUserId = auth.userId;
-    const token = auth.token;
+    const { userId: myUserId, token } = useAuthSession();
     const isAuthenticated = !!myUserId && !!token;
 
     const backendOrigin = useMemo(() => {
@@ -216,22 +216,20 @@ export default function ChatWidget() {
         selectedChatRef.current = selectedChat;
     }, [selectedChat]);
 
-    const syncAuth = useCallback(() => {
-        setAuth({
-            userId: localStorage.getItem('userId') || '',
-            token: localStorage.getItem('token') || '',
-        });
-    }, []);
-
     useEffect(() => {
-        syncAuth();
-        window.addEventListener('storage', syncAuth);
-        window.addEventListener('focus', syncAuth);
-        return () => {
-            window.removeEventListener('storage', syncAuth);
-            window.removeEventListener('focus', syncAuth);
-        };
-    }, [syncAuth]);
+        const previousUserId = previousUserIdRef.current;
+        const hasUserSwitched = previousUserId && previousUserId !== myUserId;
+
+        if (!myUserId || hasUserSwitched) {
+            setSelectedChat(null);
+            setConversations([]);
+            setChatMessages([]);
+            setInputText('');
+            setError('');
+        }
+
+        previousUserIdRef.current = myUserId;
+    }, [myUserId]);
 
     const normalizeUploadsUrl = useCallback((raw, uploadsSubPath = '') => {
         if (!raw) return '';
@@ -373,7 +371,6 @@ export default function ChatWidget() {
         });
 
         const payload = {
-            ID_NguoiGui: myUserId,
             ID_NguoiNhan: selectedChat.id,
             noi_dung: text,
             loai_tin_nhan: 'text',

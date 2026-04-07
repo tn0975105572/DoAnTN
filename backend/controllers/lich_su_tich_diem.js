@@ -1,6 +1,9 @@
 const lich_su_tich_diem = require('../models/lich_su_tich_diem');
 const { v4: uuidv4 } = require('uuid');
 
+const getAuthenticatedUserId = (req) =>
+    String(req.user?.id || req.user?.userId || '');
+
 exports.getAll = async (req, res) => {
     try {
         const data = await lich_su_tich_diem.getAll();
@@ -25,7 +28,7 @@ exports.getById = async (req, res) => {
 
 exports.getByUserId = async (req, res) => {
     try {
-        const userId = req.params.userId;
+        const userId = getAuthenticatedUserId(req);
         const { limit = 50, offset = 0 } = req.query;
         const data = await lich_su_tich_diem.getByUserId(userId, parseInt(limit), parseInt(offset));
         res.json(data);
@@ -99,7 +102,7 @@ exports.delete = async (req, res) => {
 
 exports.getUserStats = async (req, res) => {
     try {
-        const userId = req.params.userId;
+        const userId = getAuthenticatedUserId(req);
         const data = await lich_su_tich_diem.getUserStats(userId);
         res.json(data);
     } catch (error) {
@@ -109,7 +112,7 @@ exports.getUserStats = async (req, res) => {
 
 exports.getCurrentPoints = async (req, res) => {
     try {
-        const userId = req.params.userId;
+        const userId = getAuthenticatedUserId(req);
         const currentPoints = await lich_su_tich_diem.getCurrentPoints(userId);
         res.json({ currentPoints });
     } catch (error) {
@@ -129,7 +132,8 @@ exports.getOverallStats = async (req, res) => {
 // API để thêm điểm cho người dùng (sử dụng stored procedure)
 exports.addPoints = async (req, res) => {
     try {
-        const { userId, pointChange, transactionType, description, referenceId } = req.body;
+        const userId = getAuthenticatedUserId(req);
+        const { pointChange, transactionType, description, referenceId } = req.body;
         
         if (!userId || pointChange === undefined || !transactionType) {
             return res.status(400).json({ message: 'Thiếu thông tin bắt buộc' });

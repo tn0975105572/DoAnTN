@@ -3,6 +3,11 @@ const thongbao = require('../models/thongbao');
 const { v4: uuidv4 } = require("uuid");
 const pool = require("../config/database");
 
+const getAuthenticatedUserId = (req) =>
+  String(req.user?.id || req.user?.userId || '').trim();
+
+const isAdminRequest = (req) => req.user?.Role === 'admin';
+
 exports.getAll = async (req, res) => {
     try {
         const data = await likebaidang.getAll();
@@ -16,7 +21,9 @@ exports.getById = async (req, res) => {
     try {
         const id = req.params.id;
         const data = await likebaidang.getById(id);
-       
+        if (!data) {
+            return res.status(404).json({ message: 'likebaidang không tồn tại' });
+        }
         res.json(data);
     } catch (error) {
         res.status(500).json({ message: 'Lỗi máy chủ', error });
@@ -25,9 +32,15 @@ exports.getById = async (req, res) => {
 
 exports.insert = async (req, res) => {
   try {
-    const newData = req.body;
-    const userId = newData.ID_NguoiDung;
+    const userId = getAuthenticatedUserId(req);
+    const newData = { ...req.body, ID_NguoiDung: userId };
     const postId = newData.ID_BaiDang;
+
+    if (!userId || !postId) {
+      return res.status(400).json({
+        message: "Thiếu phiên đăng nhập hoặc ID_BaiDang",
+      });
+    }
 
     // Kiểm tra đã like chưa
     const existingLike = await likebaidang.checkUserLiked(postId, userId);
@@ -95,11 +108,27 @@ exports.insert = async (req, res) => {
 exports.update = async (req, res) => {
     try {
         const id = req.params.id;
-        const updatedData = req.body;
-        const affectedRows = await likebaidang.update(id, updatedData);
-        if (affectedRows === 0) {
+        const actorId = getAuthenticatedUserId(req);
+        const existingLike = await likebaidang.getById(id);
+
+        if (!actorId) {
+            return res.status(401).json({ message: 'Bạn cần đăng nhập để cập nhật lượt thích' });
+        }
+
+        if (!existingLike) {
             return res.status(404).json({ message: 'likebaidang không tồn tại' });
         }
+
+        if (!isAdminRequest(req) && String(existingLike.ID_NguoiDung) !== actorId) {
+            return res.status(403).json({ message: 'Bạn không có quyền cập nhật lượt thích này' });
+        }
+
+        const updatedData = {
+            ...req.body,
+            ID_NguoiDung: existingLike.ID_NguoiDung,
+            ID_BaiDang: existingLike.ID_BaiDang,
+        };
+        const affectedRows = await likebaidang.update(id, updatedData);
         res.json({ message: 'Cập nhật thành công' });
     } catch (error) {
         res.status(500).json({ message: 'Lỗi máy chủ', error });
@@ -109,10 +138,22 @@ exports.update = async (req, res) => {
 exports.delete = async (req, res) => {
     try {
         const id = req.params.id;
-        const affectedRows = await likebaidang.delete(id);
-        if (affectedRows === 0) {
+        const actorId = getAuthenticatedUserId(req);
+        const existingLike = await likebaidang.getById(id);
+
+        if (!actorId) {
+            return res.status(401).json({ message: 'Bạn cần đăng nhập để bỏ thích bài đăng' });
+        }
+
+        if (!existingLike) {
             return res.status(404).json({ message: 'likebaidang không tồn tại' });
         }
+
+        if (!isAdminRequest(req) && String(existingLike.ID_NguoiDung) !== actorId) {
+            return res.status(403).json({ message: 'Bạn không có quyền xóa lượt thích này' });
+        }
+
+        const affectedRows = await likebaidang.delete(id);
         res.json({ message: 'Xóa thành công' });
     } catch (error) {
         res.status(500).json({ message: 'Lỗi máy chủ', error });
@@ -187,7 +228,12 @@ exports.getLikeCountByPostId = async (req, res) => {
 // Kiểm tra người dùng đã like bài đăng chưa
 exports.checkUserLiked = async (req, res) => {
     try {
-        const { postId, userId } = req.params;
+        const { postId } = req.params;
+        const authenticatedUserId = getAuthenticatedUserId(req);
+        const requestedUserId = String(req.params.userId || '').trim();
+        const userId = isAdminRequest(req) && requestedUserId
+            ? requestedUserId
+            : authenticatedUserId;
         
         if (!postId || !userId) {
             return res.status(400).json({

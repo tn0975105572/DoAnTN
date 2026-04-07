@@ -147,10 +147,12 @@ profile.getListingStats = async (userId) => {
     `
       SELECT
         COUNT(*) AS total_listings,
-        SUM(CASE WHEN trang_thai = 'dang_ban' THEN 1 ELSE 0 END) AS active_listings,
-        SUM(CASE WHEN trang_thai = 'da_ban' THEN 1 ELSE 0 END) AS sold_listings,
-        SUM(CASE WHEN trang_thai = 'da_trao_doi' THEN 1 ELSE 0 END) AS exchanged_listings,
-        SUM(CASE WHEN trang_thai = 'da_tang' THEN 1 ELSE 0 END) AS gifted_listings
+        COALESCE(SUM(CASE WHEN trang_thai IN ('dang_ban', 'dang_giu_cho', 'dang_giao_dich') THEN 1 ELSE 0 END), 0) AS active_listings,
+        COALESCE(SUM(CASE WHEN trang_thai = 'dang_giu_cho' THEN 1 ELSE 0 END), 0) AS reserved_listings,
+        COALESCE(SUM(CASE WHEN trang_thai = 'dang_giao_dich' THEN 1 ELSE 0 END), 0) AS in_transaction_listings,
+        COALESCE(SUM(CASE WHEN trang_thai = 'da_ban' THEN 1 ELSE 0 END), 0) AS sold_listings,
+        COALESCE(SUM(CASE WHEN trang_thai = 'da_trao_doi' THEN 1 ELSE 0 END), 0) AS exchanged_listings,
+        COALESCE(SUM(CASE WHEN trang_thai = 'da_tang' THEN 1 ELSE 0 END), 0) AS gifted_listings
       FROM baidang
       WHERE ID_NguoiDung = ?
     `,
@@ -205,8 +207,6 @@ profile.getListings = async (userId, limit = 24) => {
         b.trang_thai,
         b.thoi_gian_tao,
         b.thoi_gian_cap_nhat,
-        tk.ID_TonKho,
-        tk.so_luong_con_lai,
         lb.ten AS ten_loai_bai_dang,
         dm.ten AS ten_danh_muc,
         (
@@ -227,14 +227,6 @@ profile.getListings = async (userId, limit = 24) => {
       FROM baidang b
       LEFT JOIN loaibaidang lb ON lb.ID_LoaiBaiDang = b.ID_LoaiBaiDang
       LEFT JOIN danhmuc dm ON dm.ID_DanhMuc = b.ID_DanhMuc
-      LEFT JOIN (
-        SELECT
-          ID_BaiDang,
-          MIN(ID_TonKho) AS ID_TonKho,
-          COALESCE(SUM(so_luong_con_lai), 0) AS so_luong_con_lai
-        FROM tonkho
-        GROUP BY ID_BaiDang
-      ) tk ON tk.ID_BaiDang = b.ID_BaiDang
       WHERE b.ID_NguoiDung = ?
       ORDER BY b.thoi_gian_cap_nhat DESC, b.thoi_gian_tao DESC
       LIMIT ?
@@ -260,8 +252,6 @@ profile.getAllListings = async (userId) => {
         b.trang_thai,
         b.thoi_gian_tao,
         b.thoi_gian_cap_nhat,
-        tk.ID_TonKho,
-        tk.so_luong_con_lai,
         lb.ten AS ten_loai_bai_dang,
         dm.ten AS ten_danh_muc,
         (
@@ -282,14 +272,6 @@ profile.getAllListings = async (userId) => {
       FROM baidang b
       LEFT JOIN loaibaidang lb ON lb.ID_LoaiBaiDang = b.ID_LoaiBaiDang
       LEFT JOIN danhmuc dm ON dm.ID_DanhMuc = b.ID_DanhMuc
-      LEFT JOIN (
-        SELECT
-          ID_BaiDang,
-          MIN(ID_TonKho) AS ID_TonKho,
-          COALESCE(SUM(so_luong_con_lai), 0) AS so_luong_con_lai
-        FROM tonkho
-        GROUP BY ID_BaiDang
-      ) tk ON tk.ID_BaiDang = b.ID_BaiDang
       WHERE b.ID_NguoiDung = ?
       ORDER BY b.thoi_gian_cap_nhat DESC, b.thoi_gian_tao DESC
     `,

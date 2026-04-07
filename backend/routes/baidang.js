@@ -4,6 +4,7 @@ const multer = require("multer");
 const path = require("path");
 const { v4: uuidv4 } = require("uuid");
 const baidangController = require("../controllers/baidang");
+const authMiddleware = require("../middleware/baoVe");
 
 // Cấu hình multer cho upload nhiều ảnh
 const storage = multer.diskStorage({
@@ -40,17 +41,17 @@ router.get("/getByIdWithDetails/:id", baidangController.getByIdWithDetails);
 router.get("/getByCategory/:categoryId", baidangController.getByCategory);
 router.get("/getByType/:typeId", baidangController.getByType);
 router.get("/search", baidangController.search);
-router.get("/getByUserId/:userId", baidangController.getByUserId);
+router.get("/getByUserId/:userId", authMiddleware.authenticateToken, baidangController.getByUserId);
 
 // Routes cũ (giữ nguyên)
 router.get("/getAll", baidangController.getAll);
 router.get("/getById/:id", baidangController.getById);
-router.post("/create", baidangController.insert);
-router.put("/update/:id", baidangController.update);
-router.delete("/delete/:id", baidangController.delete);
+router.post("/create", authMiddleware.authenticateToken, baidangController.insert);
+router.put("/update/:id", authMiddleware.authenticateToken, baidangController.update);
+router.delete("/delete/:id", authMiddleware.authenticateToken, baidangController.delete);
 
 // Route mới: Xóa tất cả bài đăng và ảnh của người dùng
-router.delete("/deleteAllByUserId/:userId", baidangController.deleteAllByUserId);
+router.delete("/deleteAllByUserId/:userId", authMiddleware.authenticateToken, baidangController.deleteAllByUserId);
 
 
 

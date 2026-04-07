@@ -1,5 +1,8 @@
 const thongbao = require('../models/thongbao');
 
+const getAuthenticatedUserId = (req) =>
+    String(req.user?.id || req.user?.userId || '');
+
 exports.getAll = async (req, res) => {
     try {
         const data = await thongbao.getAll();
@@ -12,9 +15,13 @@ exports.getAll = async (req, res) => {
 exports.getById = async (req, res) => {
     try {
         const id = req.params.id;
+        const userId = getAuthenticatedUserId(req);
         const data = await thongbao.getById(id);
         if (!data) {
             return res.status(404).json({ success: false, message: 'Thông báo không tồn tại' });
+        }
+        if (String(data.ID_NguoiDung) !== userId) {
+            return res.status(403).json({ success: false, message: 'Bạn không có quyền xem thông báo này' });
         }
         res.json({ success: true, data });
     } catch (error) {
@@ -25,7 +32,7 @@ exports.getById = async (req, res) => {
 // Lấy thông báo theo user ID
 exports.getByUserId = async (req, res) => {
     try {
-        const userId = req.params.userId;
+        const userId = getAuthenticatedUserId(req);
         const rawLimit = req.query.limit;
         const limit = Number.isNaN(parseInt(rawLimit, 10)) ? 50 : parseInt(rawLimit, 10);
         const data = await thongbao.getByUserId(userId, limit);
@@ -38,7 +45,7 @@ exports.getByUserId = async (req, res) => {
 // Đếm thông báo chưa đọc
 exports.countUnread = async (req, res) => {
     try {
-        const userId = req.params.userId;
+        const userId = getAuthenticatedUserId(req);
         const count = await thongbao.countUnread(userId);
         res.json({ success: true, unread_count: count });
     } catch (error) {
@@ -50,6 +57,14 @@ exports.countUnread = async (req, res) => {
 exports.markAsRead = async (req, res) => {
     try {
         const id = req.params.id;
+        const userId = getAuthenticatedUserId(req);
+        const notification = await thongbao.getById(id);
+        if (!notification) {
+            return res.status(404).json({ success: false, message: 'Thông báo không tồn tại' });
+        }
+        if (String(notification.ID_NguoiDung) !== userId) {
+            return res.status(403).json({ success: false, message: 'Bạn không có quyền cập nhật thông báo này' });
+        }
         const affectedRows = await thongbao.markAsRead(id);
         if (affectedRows === 0) {
             return res.status(404).json({ success: false, message: 'Thông báo không tồn tại' });
@@ -63,7 +78,7 @@ exports.markAsRead = async (req, res) => {
 // Đánh dấu tất cả thông báo đã đọc
 exports.markAllAsRead = async (req, res) => {
     try {
-        const userId = req.params.userId;
+        const userId = getAuthenticatedUserId(req);
         const affectedRows = await thongbao.markAllAsRead(userId);
         res.json({ success: true, message: 'Đã đánh dấu tất cả đọc', count: affectedRows });
     } catch (error) {
@@ -98,6 +113,14 @@ exports.update = async (req, res) => {
 exports.delete = async (req, res) => {
     try {
         const id = req.params.id;
+        const userId = getAuthenticatedUserId(req);
+        const notification = await thongbao.getById(id);
+        if (!notification) {
+            return res.status(404).json({ success: false, message: 'Thông báo không tồn tại' });
+        }
+        if (String(notification.ID_NguoiDung) !== userId) {
+            return res.status(403).json({ success: false, message: 'Bạn không có quyền xóa thông báo này' });
+        }
         const affectedRows = await thongbao.delete(id);
         if (affectedRows === 0) {
             return res.status(404).json({ success: false, message: 'Thông báo không tồn tại' });

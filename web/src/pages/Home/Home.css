@@ -2212,6 +2212,12 @@
   color: #1a202c;
 }
 
+.msg-preview-meta {
+  font-size: 13px;
+  color: #64748b;
+  font-weight: 600;
+}
+
 .msg-preview-price {
   font-size: 14px;
   font-weight: 800;

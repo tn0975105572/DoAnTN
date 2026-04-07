@@ -67,11 +67,16 @@ class ChatSocket {
   // Xử lý đăng nhập
   async handleUserLogin(socket, data) {
     try {
-      const { userId } = data;
+      const userId = socket.userId;
+      const requestedUserId = data?.userId;
       
       if (!userId) {
         socket.emit('error', { message: 'Thiếu userId' });
         return;
+      }
+
+      if (requestedUserId && String(requestedUserId) !== String(userId)) {
+        console.warn(`Socket ${socket.id} gửi user_login lệch token: token=${userId}, payload=${requestedUserId}`);
       }
 
       // Lưu mapping socket và user
@@ -163,7 +168,8 @@ class ChatSocket {
   // Tham gia room chat
   async handleJoinChat(socket, data) {
     try {
-      const { userId, chatType, chatId } = data; // chatType: 'private' hoặc 'group'
+      const { chatType, chatId } = data; // chatType: 'private' hoặc 'group'
+      const userId = socket.userId;
       
       if (!userId || !chatType || !chatId) {
         socket.emit('error', { message: 'Thiếu thông tin chat' });
@@ -202,7 +208,9 @@ class ChatSocket {
   handleLeaveChat(socket, data) {
     try {
       const { chatType, chatId } = data;
-      const roomName = chatType === 'private' ? `private_${chatId}` : `group_${chatId}`;
+      const roomName = chatType === 'private'
+        ? `private_${[socket.userId, chatId].sort().join('_')}`
+        : `group_${chatId}`;
       
       socket.leave(roomName);
       
@@ -223,11 +231,16 @@ class ChatSocket {
         file_dinh_kem = null,
         tin_nhan_phu_thuoc = null
       } = data;
+      const authenticatedUserId = socket.userId;
 
       // Validation
-      if (!ID_NguoiGui) {
+      if (!authenticatedUserId) {
         socket.emit('error', { message: 'Thiếu thông tin người gửi' });
         return;
+      }
+
+      if (ID_NguoiGui && String(ID_NguoiGui) !== String(authenticatedUserId)) {
+        console.warn(`Socket ${socket.id} gửi send_message lệch token: token=${authenticatedUserId}, payload=${ID_NguoiGui}`);
       }
 
       // Kiểm tra nếu không có nội dung và không có file đính kèm
@@ -244,7 +257,7 @@ class ChatSocket {
       // Tạo tin nhắn mới
       const messageData = {
         ID_TinNhan: uuidv4(),
-        ID_NguoiGui,
+        ID_NguoiGui: authenticatedUserId,
         ID_NguoiNhan,
         ID_GroupChat,
         noi_dung: noi_dung || '', // Đảm bảo noi_dung không null
@@ -264,7 +277,7 @@ class ChatSocket {
         try {
           await thongbao.createMessageNotification(
             ID_NguoiNhan,  // người nhận
-            ID_NguoiGui,   // người gửi
+            authenticatedUserId,   // người gửi
             this.io        // Socket.IO instance
           );
         } catch (notifError) {
@@ -298,22 +311,22 @@ class ChatSocket {
         });
 
         // Gửi notification cho thành viên không online
-        await this.notifyGroupMembers(ID_GroupChat, ID_NguoiGui, message);
+        await this.notifyGroupMembers(ID_GroupChat, authenticatedUserId, message);
       } else {
         // Private chat - sử dụng room name đã được sort
-        const roomName = `private_${[ID_NguoiGui, ID_NguoiNhan].sort().join('_')}`;
+        const roomName = `private_${[authenticatedUserId, ID_NguoiNhan].sort().join('_')}`;
         this.io.to(roomName).emit('new_message', {
           type: 'private',
           message,
           receiverId: ID_NguoiNhan,
-          senderId: ID_NguoiGui
+          senderId: authenticatedUserId
         });
 
         // Gửi notification cho người nhận
         await this.notifyUser(ID_NguoiNhan, {
           type: 'new_message',
           message,
-          senderId: ID_NguoiGui
+          senderId: authenticatedUserId
         });
       }
 
@@ -329,7 +342,8 @@ class ChatSocket {
   // Đánh dấu đã đọc
   async handleMarkRead(socket, data) {
     try {
-      const { userId, chatType, chatId } = data;
+      const { chatType, chatId } = data;
+      const userId = socket.userId;
 
       if (chatType === 'private') {
         // Chat 1-1
@@ -369,8 +383,11 @@ class ChatSocket {
   // Typing indicator
   handleTypingStart(socket, data) {
     try {
-      const { chatType, chatId, userId } = data;
-      const roomName = chatType === 'private' ? `private_${chatId}` : `group_${chatId}`;
+      const { chatType, chatId } = data;
+      const userId = socket.userId;
+      const roomName = chatType === 'private'
+        ? `private_${[userId, chatId].sort().join('_')}`
+        : `group_${chatId}`;
       
       socket.to(roomName).emit('typing_start', {
         userId,
@@ -384,8 +401,11 @@ class ChatSocket {
 
   handleTypingStop(socket, data) {
     try {
-      const { chatType, chatId, userId } = data;
-      const roomName = chatType === 'private' ? `private_${chatId}` : `group_${chatId}`;
+      const { chatType, chatId } = data;
+      const userId = socket.userId;
+      const roomName = chatType === 'private'
+        ? `private_${[userId, chatId].sort().join('_')}`
+        : `group_${chatId}`;
       
       socket.to(roomName).emit('typing_stop', {
         userId,
