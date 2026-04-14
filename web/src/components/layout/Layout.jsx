@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useLayoutEffect } from 'react';
 import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
-  Heart, Bell, MessageCircle, User, Menu, X, ShoppingBag, LogOut
+  Heart, Bell, MessageCircle, Menu, X, ShoppingBag, LogOut
 } from 'lucide-react';
 import ChatWidget from '../ChatWidget/ChatWidget';
 import { clearAuthSession, useAuthSession } from '../../utils/authSession';
@@ -75,6 +75,7 @@ const Layout = () => {
   const handleLogout = () => {
     clearAuthSession();
     setCurrentUser(null);
+    navigate('/login', { replace: true });
   };
 
   return (
@@ -114,18 +115,6 @@ const Layout = () => {
 
             {currentUser ? (
               <>
-                <button
-                  type="button"
-                  className="btn-profile"
-                  onClick={() => {
-                    navigate('/profile');
-                    setMenuOpen(false);
-                  }}
-                  aria-label="Trang cá nhân"
-                >
-                  <User size={16} />
-                  <span>Trang cá nhân</span>
-                </button>
                 <button className="header-icon-btn" aria-label="Yêu thích">
                   <Heart size={20} />
                 </button>
@@ -133,10 +122,20 @@ const Layout = () => {
                   <MessageCircle size={20} />
                 </button>
                 <div className="user-menu-group">
-                  <div className="user-avatar-header">
-                    <img src={currentUser.avatar || DEFAULT_AVATAR} alt={currentUser.name || 'User'} />
-                  </div>
-                  <span className="user-name-header">{currentUser.name}</span>
+                  <button
+                    type="button"
+                    className="user-profile-trigger"
+                    onClick={() => {
+                      navigate('/profile');
+                      setMenuOpen(false);
+                    }}
+                    aria-label="Mở trang cá nhân"
+                  >
+                    <div className="user-avatar-header">
+                      <img src={currentUser.avatar || DEFAULT_AVATAR} alt={currentUser.name || 'User'} />
+                    </div>
+                    <span className="user-name-header">{currentUser.name}</span>
+                  </button>
                   <button onClick={handleLogout} className="logout-btn" aria-label="Đăng xuất">
                     <LogOut size={16} />
                   </button>

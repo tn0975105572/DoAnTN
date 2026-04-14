@@ -1,0 +1,12 @@
+.profile-avatar-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.profile-avatar-link:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 4px rgba(127, 0, 31, 0.14);
+  border-radius: inherit;
+}

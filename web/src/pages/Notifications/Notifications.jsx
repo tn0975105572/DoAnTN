@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
     Search, MoreHorizontal, Settings, Bell, Check, CheckCheck,
     ShoppingBag, MessageSquare, UserPlus, Shield, Tag, Heart,
     Clock, Trash2, Eye, ExternalLink, ChevronLeft
 } from 'lucide-react';
+import io from 'socket.io-client';
 import './Notifications.css';
 import axios from 'axios';
 import { API_BASE_URL } from '../../constants';
 import { useAuthSession } from '../../utils/authSession';
+import ProfileAvatarLink from '../../components/profile/ProfileAvatarLink';
 
 /* ════════ MAP BACKEND → UI MODEL ════════ */
 const mapApiNotification = (n) => {
@@ -16,10 +19,13 @@ const mapApiNotification = (n) => {
     else if (n.loai === 'phan_hoi_bai_dang') type = 'comment';
     else if (n.loai === 'thanh_toan') type = 'order';
     else if (n.loai === 'voucher_moi') type = 'promo';
+    else if (n.loai === 'like_bai_dang') type = 'like';
+    else if (n.loai === 'yeu_cau_mua_hang' || n.loai === 'cap_nhat_giao_dich') type = 'order';
 
     return {
         id: n.ID_ThongBao,
         type,
+        senderId: n.ID_NguoiGui || '',
         avatar: n.nguoi_gui_avatar || '',
         sender: n.nguoi_gui_ten || 'Hệ thống',
         text: n.noi_dung,
@@ -51,6 +57,7 @@ const TABS = [
 
 /* ════════ MAIN COMPONENT ════════ */
 export default function Notifications() {
+    const navigate = useNavigate();
     const { userId, token } = useAuthSession();
     const [notifications, setNotifications] = useState([]);
     const [selected, setSelected] = useState(null);
@@ -62,6 +69,8 @@ export default function Notifications() {
     const backendOrigin = useMemo(() => {
         try { return new URL(API_BASE_URL).origin; } catch { return 'http://localhost:3000'; }
     }, []);
+
+    const socketUrl = useMemo(() => backendOrigin, [backendOrigin]);
 
     const normalizeUploadsUrl = useCallback((raw) => {
         if (!raw) return '';
@@ -106,6 +115,47 @@ export default function Notifications() {
 
         fetchNotifications();
     }, [token, userId]);
+
+    useEffect(() => {
+        if (!userId || !token) return undefined;
+
+        const socket = io(socketUrl, {
+            transports: ['websocket'],
+            auth: { token },
+        });
+
+        socket.on('connect', () => {
+            socket.emit('user_login', { userId });
+        });
+
+        socket.on('notification', (payload) => {
+            const rawNotification = payload?.notification || payload?.data || null;
+            if (!rawNotification?.ID_ThongBao) return;
+
+            const mapped = mapApiNotification(rawNotification);
+
+            setNotifications((prev) => {
+                const existingIndex = prev.findIndex((item) => String(item.id) === String(mapped.id));
+                if (existingIndex !== -1) {
+                    const next = [...prev];
+                    next[existingIndex] = {
+                        ...next[existingIndex],
+                        ...mapped,
+                    };
+                    return next;
+                }
+                return [{ ...mapped, unread: true }, ...prev];
+            });
+        });
+
+        socket.on('connect_error', () => {
+            // Không hiện lỗi cứng ở UI, vẫn để page chạy bằng fetch thường
+        });
+
+        return () => {
+            socket.disconnect();
+        };
+    }, [socketUrl, token, userId]);
 
     const unreadCount = notifications.filter(n => n.unread).length;
 
@@ -171,28 +221,37 @@ export default function Notifications() {
         const avatarSrc = normalizeUploadsUrl(notif.avatar);
         if (avatarSrc) {
             return (
-                <div className="notif-avatar-wrap">
-                    <img className="notif-avatar" src={avatarSrc} alt={notif.sender} />
-                    <span className={`notif-avatar-icon ${notif.type}`}>
-                        {renderIcon(notif.type, 11)}
-                    </span>
-                </div>
+                <ProfileAvatarLink userId={notif.senderId} className="notif-avatar-link">
+                    <div className="notif-avatar-wrap">
+                        <img className="notif-avatar" src={avatarSrc} alt={notif.sender} />
+                        <span className={`notif-avatar-icon ${notif.type}`}>
+                            {renderIcon(notif.type, 11)}
+                        </span>
+                    </div>
+                </ProfileAvatarLink>
             );
         }
         return (
-            <div className="notif-avatar-wrap">
-                <div
-                    className="notif-avatar"
-                    style={{
-                        background: `linear-gradient(135deg, ${config?.color || '#ccc'}22, ${config?.color || '#ccc'}44)`,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        color: config?.color || '#ccc'
-                    }}
-                >
-                    {renderIcon(notif.type, 22)}
+            <ProfileAvatarLink userId={notif.senderId} className="notif-avatar-link">
+                <div className="notif-avatar-wrap">
+                    <div
+                        className="notif-avatar"
+                        style={{
+                            background: `linear-gradient(135deg, ${config?.color || '#ccc'}22, ${config?.color || '#ccc'}44)`,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            color: config?.color || '#ccc'
+                        }}
+                    >
+                        {renderIcon(notif.type, 22)}
+                    </div>
                 </div>
-            </div>
+            </ProfileAvatarLink>
         );
+    };
+
+    const openSelectedSenderProfile = () => {
+        if (!selected?.senderId) return;
+        navigate(`/profile/${selected.senderId}`);
     };
 
     const renderSection = (label, items) => {
@@ -311,20 +370,22 @@ export default function Notifications() {
                             >
                                 <ChevronLeft size={18} />
                             </button>
-                            {selected.avatar ? (
-                                <img className="notif-detail-avatar" src={selected.avatar} alt={selected.sender} />
-                            ) : (
-                                <div
-                                    className="notif-detail-avatar"
-                                    style={{
-                                        background: `linear-gradient(135deg, ${TYPE_CONFIG[selected.type]?.color || '#ccc'}22, ${TYPE_CONFIG[selected.type]?.color || '#ccc'}44)`,
-                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                        color: TYPE_CONFIG[selected.type]?.color || '#ccc'
-                                    }}
-                                >
-                                    {renderIcon(selected.type, 22)}
-                                </div>
-                            )}
+                            <ProfileAvatarLink userId={selected.senderId} className="notif-detail-avatar-link" stopPropagation={false}>
+                                {selected.avatar ? (
+                                    <img className="notif-detail-avatar" src={selected.avatar} alt={selected.sender} />
+                                ) : (
+                                    <div
+                                        className="notif-detail-avatar"
+                                        style={{
+                                            background: `linear-gradient(135deg, ${TYPE_CONFIG[selected.type]?.color || '#ccc'}22, ${TYPE_CONFIG[selected.type]?.color || '#ccc'}44)`,
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                            color: TYPE_CONFIG[selected.type]?.color || '#ccc'
+                                        }}
+                                    >
+                                        {renderIcon(selected.type, 22)}
+                                    </div>
+                                )}
+                            </ProfileAvatarLink>
                             <div className="notif-detail-info">
                                 <div className="notif-detail-name">{selected.sender}</div>
                                 <div className="notif-detail-type">
@@ -368,6 +429,9 @@ export default function Notifications() {
                                 )}
 
                                 <div className="notif-detail-cta">
+                                    {selected.senderId && (
+                                        <button className="notif-cta-btn secondary" onClick={openSelectedSenderProfile}>Xem hồ sơ</button>
+                                    )}
                                     {selected.type === 'order' && (
                                         <>
                                             <button className="notif-cta-btn primary">Xem đơn hàng</button>

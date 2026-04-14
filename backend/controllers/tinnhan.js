@@ -165,14 +165,15 @@ exports.sendMessage = async (req, res) => {
                     groupId: messageData.ID_GroupChat
                 });
             } else {
-                // Private chat
-                const roomName = `private_${[messageData.ID_NguoiGui, messageData.ID_NguoiNhan].sort().join('_')}`;
-                req.io.to(roomName).emit('new_message', {
+                // Private chat - emit vào room user để cuộc trò chuyện mới cũng realtime
+                const privatePayload = {
                     type: 'private',
                     message: fullMessage,
                     receiverId: messageData.ID_NguoiNhan,
                     senderId: messageData.ID_NguoiGui
-                });
+                };
+                req.io.to(`user_${messageData.ID_NguoiGui}`).emit('new_message', privatePayload);
+                req.io.to(`user_${messageData.ID_NguoiNhan}`).emit('new_message', privatePayload);
             }
         }
         
@@ -431,14 +432,15 @@ exports.uploadAndSendMessage = async (req, res) => {
                     groupId: messageData.ID_GroupChat
                 });
             } else {
-                // Private chat
-                const roomName = `private_${[messageData.ID_NguoiGui, messageData.ID_NguoiNhan].sort().join('_')}`;
-                req.io.to(roomName).emit('new_message', {
+                // Private chat - emit vào room user để cuộc trò chuyện mới cũng realtime
+                const privatePayload = {
                     type: 'private',
                     message: fullMessage,
                     receiverId: messageData.ID_NguoiNhan,
                     senderId: messageData.ID_NguoiGui
-                });
+                };
+                req.io.to(`user_${messageData.ID_NguoiGui}`).emit('new_message', privatePayload);
+                req.io.to(`user_${messageData.ID_NguoiNhan}`).emit('new_message', privatePayload);
             }
         }
         

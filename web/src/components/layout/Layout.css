@@ -112,37 +112,6 @@
   flex-shrink: 0;
 }
 
-/* Profile button (premium pill) */
-.btn-profile {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  height: 40px;
-  padding: 0 14px;
-  border-radius: var(--radius-full);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  background: rgba(255, 255, 255, 0.1);
-  color: rgba(255, 252, 239, 0.92);
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: background var(--transition-fast), transform var(--transition-fast),
-    box-shadow var(--transition-fast), border-color var(--transition-fast);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
-  white-space: nowrap;
-}
-
-.btn-profile:hover {
-  background: rgba(255, 255, 255, 0.16);
-  border-color: rgba(255, 255, 255, 0.28);
-  transform: translateY(-1px);
-  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.22);
-}
-
-.btn-profile svg {
-  opacity: 0.95;
-}
-
 /* Icon Buttons */
 .header-icon-btn {
   position: relative;
@@ -197,6 +166,24 @@
   align-items: center;
   gap: 8px;
   margin-left: 4px;
+}
+
+.user-profile-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 6px 2px 2px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-full);
+  background: transparent;
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast);
+}
+
+.user-profile-trigger:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.18);
+  transform: translateY(-1px);
 }
 
 .user-avatar-header {
@@ -402,7 +389,7 @@
 }
 
 :root[data-theme='dark'] .nav-link:hover,
-:root[data-theme='dark'] .btn-profile:hover,
+:root[data-theme='dark'] .user-profile-trigger:hover,
 :root[data-theme='dark'] .header-icon-btn:hover,
 :root[data-theme='dark'] .login-btn:hover,
 :root[data-theme='dark'] .logout-btn:hover {
@@ -473,12 +460,6 @@
     height: 34px;
   }
 
-  .btn-profile {
-    height: 34px;
-    padding: 0 10px;
-    font-size: 12px;
-  }
-
   .user-name-header {
     display: none;
   }
@@ -503,14 +484,10 @@
     display: none;
   }
 
-  .btn-profile span {
-    display: none;
-  }
-
-  .btn-profile {
-    width: 34px;
+  .user-profile-trigger {
     padding: 0;
-    justify-content: center;
+    border: none;
+    background: transparent;
   }
 
   .btn-dang-tin {

@@ -5,6 +5,7 @@ import {
     ChevronDown, ChevronUp, Reply, MoreHorizontal, Smile,
 } from 'lucide-react';
 import { useAuthSession } from '../../utils/authSession';
+import ProfileAvatarLink from '../../components/profile/ProfileAvatarLink';
 import './PostComments.css';
 
 /* ════════ API CONFIG ════════ */
@@ -80,7 +81,9 @@ function CommentItem({ comment, userMap, depth = 0, onReply, onLike, replyingTo,
             {depth > 0 && <div className="thread-line" />}
             <div className="comment-item">
                 <div className="comment-left">
-                    <img src={avatarUrl} alt={authorName} className="comment-avatar" />
+                    <ProfileAvatarLink userId={comment.ID_NguoiDung}>
+                        <img src={avatarUrl} alt={authorName} className="comment-avatar" />
+                    </ProfileAvatarLink>
                     {hasReplies && !collapsed && <div className="avatar-connector" />}
                 </div>
                 <div className="comment-body">
@@ -120,7 +123,13 @@ function CommentItem({ comment, userMap, depth = 0, onReply, onLike, replyingTo,
                         )}
                     </div>
                     {isReplying && (
-                        <ReplyInput parentId={comment.ID_BinhLuan} onReply={onReply} myAvatar={myAvatar} replyingTo={authorName} />
+                        <ReplyInput
+                            parentId={comment.ID_BinhLuan}
+                            onReply={onReply}
+                            myAvatar={myAvatar}
+                            replyingTo={authorName}
+                            currentUserId={currentUserId}
+                        />
                     )}
                 </div>
             </div>
@@ -146,7 +155,7 @@ function CommentItem({ comment, userMap, depth = 0, onReply, onLike, replyingTo,
 }
 
 // ─── ReplyInput ──────────────────────────────────────────────────────────
-function ReplyInput({ parentId, onReply, myAvatar, replyingTo }) {
+function ReplyInput({ parentId, onReply, myAvatar, replyingTo, currentUserId }) {
     const [text, setText] = useState('');
     const inputRef = useRef(null);
     useEffect(() => { inputRef.current?.focus(); }, []);
@@ -158,7 +167,9 @@ function ReplyInput({ parentId, onReply, myAvatar, replyingTo }) {
     };
     return (
         <form className="inline-reply-form" onSubmit={handleSubmit}>
-            <img src={myAvatar} alt="Bạn" className="reply-avatar" />
+            <ProfileAvatarLink userId={currentUserId} stopPropagation={false}>
+                <img src={myAvatar} alt="Bạn" className="reply-avatar" />
+            </ProfileAvatarLink>
             <div className="reply-input-wrap">
                 <span className="replying-hint">Đang trả lời <strong>@{replyingTo}</strong></span>
                 <div className="reply-row">
@@ -442,7 +453,9 @@ export default function PostComments() {
 
             {/* Input sticky */}
             <form className="comments-form" onSubmit={handleSubmitComment} onClick={(e) => e.stopPropagation()}>
-                <img src={myAvatar} alt="Bạn" className="form-my-avatar" />
+                <ProfileAvatarLink userId={userId} stopPropagation={false}>
+                    <img src={myAvatar} alt="Bạn" className="form-my-avatar" />
+                </ProfileAvatarLink>
                 <div className="comments-input-wrap">
                     <input
                         type="text" className="comments-input"

@@ -1553,12 +1553,23 @@
   gap: 12px;
   padding: 14px 16px;
   border: 1px solid #f0ede6;
+  border-radius: 18px;
+  background: #fff;
   cursor: pointer;
-  transition: box-shadow 0.2s;
+  transition: box-shadow 0.2s, transform 0.2s, border-color 0.2s;
+  width: 100%;
+  text-align: left;
 }
 
 .user-mini-card:hover {
   box-shadow: 0 4px 18px rgba(127, 0, 31, 0.08);
+  transform: translateY(-1px);
+  border-color: rgba(127, 0, 31, 0.12);
+}
+
+.user-mini-card:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 4px rgba(127, 0, 31, 0.12);
 }
 
 .user-mini-avatar {

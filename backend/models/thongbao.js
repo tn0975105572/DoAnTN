@@ -15,6 +15,20 @@ thongbao.getById = async (id) => {
   return rows[0];
 };
 
+thongbao.getDetailedById = async (id) => {
+  const [rows] = await pool.query(
+    `SELECT tb.*, 
+      nd.ho_ten as nguoi_gui_ten,
+      nd.anh_dai_dien as nguoi_gui_avatar
+     FROM thongbao tb
+     LEFT JOIN nguoidung nd ON tb.ID_NguoiGui = nd.ID_NguoiDung
+     WHERE tb.ID_ThongBao = ?
+     LIMIT 1`,
+    [id]
+  );
+  return rows[0] || null;
+};
+
 // Lấy thông báo theo user ID
 thongbao.getByUserId = async (userId, limit = 50) => {
   const [rows] = await pool.query(
@@ -69,11 +83,20 @@ thongbao.insert = async (data, io = null) => {
   
   // 🔔 Emit socket event cho người nhận để load ngay
   if (io && data.ID_NguoiDung) {
-    io.emit(`notification_${data.ID_NguoiDung}`, {
-      type: 'new_notification',
-      notification_id: id,
-      message: 'Bạn có thông báo mới'
-    });
+    try {
+      const [notification, unreadCount] = await Promise.all([
+        thongbao.getDetailedById(id),
+        thongbao.countUnread(data.ID_NguoiDung),
+      ]);
+
+      io.to(`user_${data.ID_NguoiDung}`).emit('notification', {
+        type: 'notification_created',
+        notification: notification || insertData,
+        unreadCount,
+      });
+    } catch (socketError) {
+      console.error('Lỗi emit notification socket:', socketError.message);
+    }
   }
   
   return id;

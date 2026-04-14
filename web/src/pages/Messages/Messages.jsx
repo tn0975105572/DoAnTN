@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+    Circle as LeafletCircle,
+    MapContainer,
+    TileLayer,
+    useMap,
+    useMapEvents,
+} from 'react-leaflet';
+import confetti from 'canvas-confetti';
+import {
     Search, MoreHorizontal, Edit3, Phone, Video, Info,
     Send, Image, Smile, Mic, ChevronDown,
     MessageCircle, User, Bell, Shield, X, Mail, Users, UserCheck, UserX, FileText, Trash2,
@@ -9,7 +17,9 @@ import io from 'socket.io-client';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { API_BASE_URL } from '../../constants';
 import { useAuthSession } from '../../utils/authSession';
+import ProfileAvatarLink from '../../components/profile/ProfileAvatarLink';
 import './Messages.css';
+import 'leaflet/dist/leaflet.css';
 
 const avatarFallback = (seed) => `https://i.pravatar.cc/150?u=${encodeURIComponent(seed || 'user')}`;
 const POST_SHARE_PREFIX = '📱 Bài đăng:';
@@ -17,6 +27,9 @@ const POST_SHARE_ID_PREFIX = '🆔 Post ID:';
 const POST_SHARE_IMAGE_PREFIX = '🖼️ Post Image:';
 const ACTIVE_ACCEPTED_STATUSES = ['nguoi_ban_da_chap_nhan', 'cho_hen_gap', 'cho_xac_nhan_hoan_tat'];
 const OPEN_DEAL_STATUSES = ['cho_nguoi_ban_xac_nhan', 'nguoi_ban_da_chap_nhan', 'cho_hen_gap', 'cho_xac_nhan_hoan_tat'];
+const DEAL_MAP_DEFAULT_CENTER = { lat: 16.047079, lng: 108.20623 };
+const DEAL_MAP_DEFAULT_ZOOM = 6;
+const DEAL_MAP_FOCUS_ZOOM = 16;
 const EMPTY_DEAL_CONTEXT = {
     post: null,
     transactions: [],
@@ -61,8 +74,8 @@ const TRANSACTION_STATUS_META = {
     cho_xac_nhan_hoan_tat: {
         label: 'Chờ xác nhận hoàn tất',
         tone: 'signal',
-        headline: 'Giao dịch đang ở nhịp chốt cuối',
-        description: 'Một bước xác nhận nữa từ người bán là bài đăng sẽ chuyển hẳn sang đã bán.',
+        headline: 'Cả hai bên đang ở bước xác nhận cuối',
+        description: 'Người mua và người bán đều cần xác nhận để bài đăng chuyển hẳn sang đã bán.',
     },
     hoan_tat: {
         label: 'Hoàn tất',
@@ -123,6 +136,8 @@ const POST_STATUS_META = {
     },
 };
 
+const FINAL_POST_STATUSES = ['da_ban', 'da_trao_doi', 'da_tang'];
+
 const DEAL_PROGRESS_STEPS = [
     {
         key: 'request',
@@ -152,10 +167,22 @@ const HISTORY_ACTION_LABELS = {
     nguoi_ban_tu_choi: 'Người bán đã từ chối',
     cap_nhat_diem_hen: 'Đã cập nhật điểm hẹn',
     yeu_cau_hoan_tat: 'Đã gửi yêu cầu hoàn tất',
+    xac_nhan_hoan_tat: 'Đã xác nhận hoàn tất',
     hoan_tat_giao_dich: 'Đã hoàn tất giao dịch',
     nguoi_mua_huy: 'Người mua đã hủy',
     he_thong_huy: 'Hệ thống đã đóng giao dịch',
     het_han_giao_dich: 'Giao dịch đã hết hạn',
+};
+
+const DEAL_SOCKET_NOTICE_LABELS = {
+    request_created: 'Đã có yêu cầu mua mới trong cuộc chat này.',
+    request_accepted: 'Người bán vừa chấp nhận giao dịch.',
+    request_rejected: 'Giao dịch vừa bị từ chối.',
+    request_cancelled: 'Giao dịch vừa được hủy.',
+    meeting_updated: 'Điểm hẹn vừa được cập nhật.',
+    completion_confirmed: 'Một bên vừa xác nhận giao dịch, đang chờ bên còn lại.',
+    complete_requested: 'Đã có yêu cầu hoàn tất giao dịch.',
+    deal_completed: 'Giao dịch vừa được xác nhận hoàn tất.',
 };
 
 function getPostShareMetadataLine(text, prefix) {
@@ -212,6 +239,711 @@ function toDateTimeLocalValue(value) {
 function toMySqlDateTime(value) {
     if (!value) return null;
     return `${value.replace('T', ' ')}:00`;
+}
+
+function buildMapLookupUrl(transaction) {
+    if (!transaction) return '';
+
+    const lat = Number(transaction.vi_do_hen_gap);
+    const lng = Number(transaction.kinh_do_hen_gap);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+        return `https://www.google.com/maps?q=${lat},${lng}`;
+    }
+
+    const address = String(transaction.dia_chi_hen_gap || '').trim();
+    if (!address) return '';
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
+}
+
+function resolveMeetingMapCenter(draft) {
+    const lat = Number(draft?.lat);
+    const lng = Number(draft?.lng);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+        return { lat, lng };
+    }
+    return DEAL_MAP_DEFAULT_CENTER;
+}
+
+async function searchMeetingPlaces(keyword) {
+    const query = String(keyword || '').trim();
+    if (!query) return [];
+
+    const response = await fetch(`${API_BASE_URL}/maps/search?q=${encodeURIComponent(query)}`, {
+        headers: {
+            Accept: 'application/json',
+        },
+    });
+
+    if (!response.ok) {
+        throw new Error('Không thể tìm địa điểm trên bản đồ.');
+    }
+
+    const payload = await response.json();
+    return Array.isArray(payload?.data) ? payload.data : [];
+}
+
+async function reverseLookupMeetingPlace(lat, lng) {
+    const response = await fetch(`${API_BASE_URL}/maps/reverse?lat=${lat}&lng=${lng}`, {
+        headers: {
+            Accept: 'application/json',
+        },
+    });
+
+    if (!response.ok) {
+        throw new Error('Không thể lấy địa chỉ tại điểm vừa chọn.');
+    }
+
+    const payload = await response.json();
+    return payload?.data || null;
+}
+
+function MeetingMapViewportController({ center, zoom }) {
+    const map = useMap();
+
+    useEffect(() => {
+        if (!center) return;
+        map.setView([center.lat, center.lng], zoom, { animate: true });
+    }, [center, map, zoom]);
+
+    return null;
+}
+
+function MeetingMapSizeController() {
+    const map = useMap();
+
+    useEffect(() => {
+        const invalidate = () => {
+            map.invalidateSize({ animate: false });
+        };
+
+        const frameId = window.requestAnimationFrame(invalidate);
+        const timeoutId = window.setTimeout(invalidate, 180);
+
+        let resizeObserver = null;
+        if (typeof window.ResizeObserver === 'function') {
+            resizeObserver = new window.ResizeObserver(() => {
+                invalidate();
+            });
+            resizeObserver.observe(map.getContainer());
+        }
+
+        return () => {
+            window.cancelAnimationFrame(frameId);
+            window.clearTimeout(timeoutId);
+            resizeObserver?.disconnect();
+        };
+    }, [map]);
+
+    return null;
+}
+
+function MeetingMapPickerEvents({ onPick }) {
+    useMapEvents({
+        click(event) {
+            onPick(event.latlng);
+        },
+    });
+
+    return null;
+}
+
+function MeetingLocationPickerModal({
+    draft,
+    onDraftChange,
+    onClose,
+    onSave,
+    isSaving,
+}) {
+    const bodyRef = useRef(null);
+    const [searchQuery, setSearchQuery] = useState(draft?.address || '');
+    const [searchResults, setSearchResults] = useState([]);
+    const [searching, setSearching] = useState(false);
+    const [searchMessage, setSearchMessage] = useState('');
+    const [searchFeedback, setSearchFeedback] = useState('');
+    const [locating, setLocating] = useState(false);
+    const [mapCenter, setMapCenter] = useState(() => resolveMeetingMapCenter(draft));
+    const [mapZoom, setMapZoom] = useState(() => (draft?.lat && draft?.lng ? DEAL_MAP_FOCUS_ZOOM : DEAL_MAP_DEFAULT_ZOOM));
+    const [pendingLocation, setPendingLocation] = useState(() => (
+        draft?.address && draft?.lat && draft?.lng
+            ? {
+                address: draft.address,
+                lat: Number(draft.lat),
+                lng: Number(draft.lng),
+                source: 'draft',
+            }
+            : null
+    ));
+
+    useEffect(() => {
+        setSearchQuery(draft?.address || '');
+        const nextCenter = resolveMeetingMapCenter(draft);
+        setMapCenter(nextCenter);
+        setMapZoom(draft?.lat && draft?.lng ? DEAL_MAP_FOCUS_ZOOM : DEAL_MAP_DEFAULT_ZOOM);
+        setPendingLocation(
+            draft?.address && draft?.lat && draft?.lng
+                ? {
+                    address: draft.address,
+                    lat: Number(draft.lat),
+                    lng: Number(draft.lng),
+                    source: 'draft',
+                }
+                : null,
+        );
+    }, [draft?.address, draft?.lat, draft?.lng]);
+
+    const stageLocationSelection = useCallback(({ lat, lng, address = '', source = 'search' }) => {
+        const numericLat = Number(lat);
+        const numericLng = Number(lng);
+
+        setMapCenter({ lat: numericLat, lng: numericLng });
+        setMapZoom(DEAL_MAP_FOCUS_ZOOM);
+        setPendingLocation({
+            address,
+            lat: numericLat,
+            lng: numericLng,
+            source,
+        });
+
+        if (address) {
+            setSearchQuery(address);
+        }
+    }, []);
+
+    const applyLocationSelection = useCallback(async ({ lat, lng, address = '', source = 'search' }) => {
+        const numericLat = Number(lat);
+        const numericLng = Number(lng);
+
+        setMapCenter({ lat: numericLat, lng: numericLng });
+        setMapZoom(DEAL_MAP_FOCUS_ZOOM);
+
+        if (address) {
+            stageLocationSelection({
+                lat: numericLat,
+                lng: numericLng,
+                address,
+                source,
+            });
+            setSearchResults([]);
+            setSearchFeedback('');
+            setSearchMessage('Địa chỉ đã được chọn nháp. Bấm "Xác nhận địa chỉ" để chốt vào form.');
+            return;
+        }
+
+        setSearchMessage('Đang lấy địa chỉ tại điểm vừa chọn...');
+        try {
+            const reverse = await reverseLookupMeetingPlace(numericLat, numericLng);
+            const resolvedAddress = reverse?.display_name || `${numericLat.toFixed(6)}, ${numericLng.toFixed(6)}`;
+            stageLocationSelection({
+                lat: numericLat,
+                lng: numericLng,
+                address: resolvedAddress,
+                source,
+            });
+            setSearchResults([]);
+            setSearchFeedback('');
+            setSearchMessage('Địa chỉ đã được chọn nháp từ bản đồ. Bấm "Xác nhận địa chỉ" để chốt.');
+        } catch (error) {
+            const fallbackAddress = `${numericLat.toFixed(6)}, ${numericLng.toFixed(6)}`;
+            stageLocationSelection({
+                lat: numericLat,
+                lng: numericLng,
+                address: fallbackAddress,
+                source,
+            });
+            setSearchResults([]);
+            setSearchFeedback('');
+            setSearchMessage(error.message || 'Đã lấy tọa độ nháp. Bấm "Xác nhận địa chỉ" để dùng vị trí này.');
+        }
+    }, [stageLocationSelection]);
+
+    const confirmPendingLocation = useCallback(() => {
+        if (!pendingLocation?.address?.trim()) {
+            setSearchMessage('Hãy chọn một gợi ý hoặc click lên bản đồ trước khi xác nhận địa chỉ.');
+            return;
+        }
+
+        onDraftChange((current) => ({
+            ...current,
+            address: pendingLocation.address.trim(),
+            lat: pendingLocation.lat,
+            lng: pendingLocation.lng,
+        }));
+        setSearchResults([]);
+        setSearchFeedback('');
+        setSearchMessage('Đã xác nhận địa chỉ vào form điểm hẹn.');
+    }, [onDraftChange, pendingLocation]);
+
+    const handleSearch = useCallback(async () => {
+        const query = searchQuery.trim();
+        if (query.length < 2) {
+            setSearchResults([]);
+            setSearchFeedback(query ? 'Gõ thêm vài ký tự để nhận gợi ý địa chỉ.' : '');
+            return;
+        }
+
+        setSearching(true);
+        setSearchFeedback('Đang gợi ý địa chỉ...');
+        try {
+            const results = await searchMeetingPlaces(query);
+            setSearchResults(results);
+            setSearchFeedback(results.length ? '' : 'Không tìm thấy địa điểm phù hợp.');
+        } catch (error) {
+            setSearchResults([]);
+            setSearchFeedback(error.message || 'Không thể tìm địa điểm lúc này.');
+        } finally {
+            setSearching(false);
+        }
+    }, [searchQuery]);
+
+    useEffect(() => {
+        const query = searchQuery.trim();
+        if (query.length < 2) {
+            setSearchResults([]);
+            setSearchFeedback(query ? 'Gõ thêm vài ký tự để nhận gợi ý địa chỉ.' : '');
+            return undefined;
+        }
+
+        const timeoutId = window.setTimeout(() => {
+            handleSearch();
+        }, 280);
+
+        return () => window.clearTimeout(timeoutId);
+    }, [handleSearch, searchQuery]);
+
+    const handleUseCurrentLocation = useCallback(() => {
+        if (!navigator.geolocation) {
+            setSearchMessage('Trình duyệt không hỗ trợ định vị vị trí hiện tại.');
+            return;
+        }
+
+        setLocating(true);
+        setSearchMessage('Đang lấy vị trí hiện tại của bạn...');
+        navigator.geolocation.getCurrentPosition(
+            async (position) => {
+                try {
+                    await applyLocationSelection({
+                        lat: position.coords.latitude,
+                        lng: position.coords.longitude,
+                        source: 'current-location',
+                    });
+                } finally {
+                    setLocating(false);
+                }
+            },
+            (error) => {
+                console.error('Meeting picker geolocation failed', error);
+                setLocating(false);
+                setSearchMessage('Không thể lấy vị trí hiện tại. Hãy chọn trực tiếp trên bản đồ.');
+            },
+            {
+                enableHighAccuracy: true,
+                timeout: 10000,
+                maximumAge: 0,
+            },
+        );
+    }, [applyLocationSelection]);
+
+    const handleSave = useCallback(() => {
+        if (!draft.address?.trim()) {
+            setSearchMessage('Hãy chọn điểm hẹn trên bản đồ hoặc từ ô tìm kiếm.');
+            return;
+        }
+
+        if (!draft.time) {
+            setSearchMessage('Hãy chọn thời gian hẹn gặp trước khi lưu.');
+            return;
+        }
+
+        onSave();
+    }, [draft.address, draft.time, onSave]);
+
+    const handleMapWheelCapture = useCallback((event) => {
+        const container = bodyRef.current;
+        if (!container) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        container.scrollBy({
+            top: event.deltaY,
+            left: 0,
+            behavior: 'auto',
+        });
+    }, []);
+
+    const shouldShowSearchDropdown = searchQuery.trim().length >= 2 && (
+        searching ||
+        searchResults.length > 0 ||
+        Boolean(searchFeedback)
+    );
+
+    return (
+        <div className="msg-modal-overlay msg-map-picker-overlay" onClick={onClose}>
+            <div className="msg-modal msg-map-picker-modal" onClick={(event) => event.stopPropagation()}>
+                <div className="msg-modal-header">
+                    <div>
+                        <h3>Chọn điểm hẹn trên bản đồ</h3>
+                        <p className="msg-map-picker-subtitle">Tìm kiếm địa điểm, click trực tiếp trên bản đồ và chốt luôn thời gian gặp.</p>
+                    </div>
+                    <button type="button" className="msg-modal-clear" onClick={onClose} aria-label="Đóng chọn điểm hẹn">
+                        <X size={14} />
+                    </button>
+                </div>
+
+                <div className="msg-map-picker-body" ref={bodyRef}>
+                    <div className="msg-map-picker-toolbar">
+                        <div className="msg-map-picker-search-stack">
+                            <div className="msg-map-picker-search">
+                                <Search size={16} />
+                                <input
+                                    type="text"
+                                    value={searchQuery}
+                                    placeholder="Tìm trường, quán, địa chỉ, cổng gặp..."
+                                    onChange={(event) => {
+                                        setSearchQuery(event.target.value);
+                                        setSearchFeedback('');
+                                    }}
+                                    onKeyDown={(event) => {
+                                        if (event.key === 'Enter') {
+                                            event.preventDefault();
+                                            handleSearch();
+                                        }
+                                    }}
+                                />
+                                <button
+                                    type="button"
+                                    className="msg-deal-btn primary"
+                                    onClick={handleSearch}
+                                    disabled={searching}
+                                >
+                                    {searching ? 'Đang gợi ý...' : 'Tìm nhanh'}
+                                </button>
+                            </div>
+
+                            {shouldShowSearchDropdown && (
+                                <div className="msg-map-picker-results">
+                                    {searching && searchResults.length === 0 && (
+                                        <div className="msg-map-picker-results-state">
+                                            Đang gợi ý địa chỉ...
+                                        </div>
+                                    )}
+
+                                    {!searching && searchResults.length > 0 && searchResults.map((result) => (
+                                        <button
+                                            key={`${result.place_id}-${result.lat}-${result.lon}`}
+                                            type="button"
+                                            className={`msg-map-picker-result ${
+                                                pendingLocation?.address === result.display_name ? 'active' : ''
+                                            }`}
+                                            onClick={() => applyLocationSelection({
+                                                lat: result.lat,
+                                                lng: result.lon,
+                                                address: result.display_name,
+                                                source: 'search',
+                                            })}
+                                        >
+                                            <MapPin size={15} />
+                                            <div className="msg-map-picker-result-copy">
+                                                <strong>{result.name || 'Địa điểm'}</strong>
+                                                <span>{result.display_name}</span>
+                                            </div>
+                                        </button>
+                                    ))}
+
+                                    {!searching && searchResults.length === 0 && searchFeedback && (
+                                        <div className="msg-map-picker-results-state">
+                                            {searchFeedback}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+
+                        <button
+                            type="button"
+                            className="msg-deal-btn ghost"
+                            onClick={handleUseCurrentLocation}
+                            disabled={locating}
+                        >
+                            <LocateFixed size={16} />
+                            {locating ? 'Đang định vị...' : 'Vị trí của tôi'}
+                        </button>
+                    </div>
+
+                    {searchMessage && <div className="msg-map-picker-status">{searchMessage}</div>}
+
+                    {pendingLocation && (
+                        <div className="msg-map-picker-selection">
+                            <div className="msg-map-picker-selection-copy">
+                                <span>Địa chỉ đang chọn</span>
+                                <strong>{pendingLocation.address}</strong>
+                                <small>
+                                    {pendingLocation.source === 'search'
+                                        ? 'Bạn vừa chọn từ gợi ý tìm kiếm.'
+                                        : pendingLocation.source === 'current-location'
+                                            ? 'Bạn vừa lấy từ vị trí hiện tại.'
+                                            : pendingLocation.source === 'map-click'
+                                                ? 'Bạn vừa chọn trực tiếp trên bản đồ.'
+                                                : 'Địa chỉ đang có trong form.'}
+                                </small>
+                            </div>
+                            <button
+                                type="button"
+                                className="msg-deal-btn primary"
+                                onClick={confirmPendingLocation}
+                            >
+                                Xác nhận địa chỉ
+                            </button>
+                        </div>
+                    )}
+
+                    <div className="msg-map-picker-canvas" onWheelCapture={handleMapWheelCapture}>
+                        <MapContainer
+                            center={[mapCenter.lat, mapCenter.lng]}
+                            zoom={mapZoom}
+                            className="msg-map-picker-leaflet"
+                            scrollWheelZoom={false}
+                        >
+                            <TileLayer
+                                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                                attribution="&copy; OpenStreetMap contributors"
+                            />
+                            <MeetingMapSizeController />
+                            <MeetingMapViewportController center={mapCenter} zoom={mapZoom} />
+                            <MeetingMapPickerEvents
+                                onPick={({ lat, lng }) => applyLocationSelection({ lat, lng, source: 'map-click' })}
+                            />
+                            {Number.isFinite(Number(pendingLocation?.lat)) && Number.isFinite(Number(pendingLocation?.lng)) && (
+                                <LeafletCircle
+                                    center={[Number(pendingLocation.lat), Number(pendingLocation.lng)]}
+                                    radius={28}
+                                    pathOptions={{
+                                        color: '#7f001f',
+                                        fillColor: '#7f001f',
+                                        fillOpacity: 0.28,
+                                        weight: 2,
+                                    }}
+                                />
+                            )}
+                        </MapContainer>
+                    </div>
+
+                    <div className="msg-map-picker-fields">
+                        <div className="msg-map-picker-field">
+                            <span>Địa điểm đã xác nhận</span>
+                            <strong>{draft.address || 'Chưa chọn điểm hẹn trên bản đồ'}</strong>
+                        </div>
+                        <div className="msg-map-picker-grid">
+                            <label className="msg-map-picker-label">
+                                <span>Thời gian hẹn</span>
+                                <input
+                                    className="msg-deal-input"
+                                    type="datetime-local"
+                                    value={draft.time}
+                                    onChange={(event) => onDraftChange((current) => ({ ...current, time: event.target.value }))}
+                                />
+                            </label>
+                            <label className="msg-map-picker-label">
+                                <span>Ghi chú thêm</span>
+                                <textarea
+                                    className="msg-deal-textarea compact"
+                                    placeholder="Ví dụ: gặp ở cổng A, gọi trước 5 phút, mặc áo đen..."
+                                    value={draft.note}
+                                    onChange={(event) => onDraftChange((current) => ({ ...current, note: event.target.value }))}
+                                />
+                            </label>
+                        </div>
+                    </div>
+
+                    <div className="msg-map-picker-actions">
+                        <button type="button" className="msg-deal-btn ghost" onClick={onClose}>
+                            Đóng
+                        </button>
+                        <button
+                            type="button"
+                            className="msg-deal-btn primary"
+                            onClick={handleSave}
+                            disabled={isSaving}
+                        >
+                            {isSaving ? 'Đang lưu...' : 'Lưu điểm hẹn'}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function DealCompletedCelebrationCard({
+    post,
+    transaction,
+    buyer,
+    seller,
+    meetingMapUrl,
+    onViewPost,
+}) {
+    const firedTransactionRef = useRef('');
+
+    useEffect(() => {
+        if (!transaction?.ID_GiaoDich) return undefined;
+        if (firedTransactionRef.current === transaction.ID_GiaoDich) return undefined;
+
+        firedTransactionRef.current = transaction.ID_GiaoDich;
+
+        const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+        if (prefersReducedMotion) {
+            return undefined;
+        }
+
+        const timeouts = [];
+        const defaults = {
+            zIndex: 1200,
+            scalar: 1.08,
+            ticks: 220,
+            gravity: 0.88,
+            drift: 0,
+            disableForReducedMotion: true,
+        };
+
+        const fire = (options) => {
+            confetti({
+                ...defaults,
+                ...options,
+            });
+        };
+
+        fire({
+            particleCount: 110,
+            spread: 82,
+            startVelocity: 55,
+            origin: { x: 0.16, y: 0.62 },
+        });
+        fire({
+            particleCount: 110,
+            spread: 82,
+            startVelocity: 55,
+            origin: { x: 0.84, y: 0.62 },
+        });
+
+        timeouts.push(window.setTimeout(() => {
+            fire({
+                particleCount: 90,
+                spread: 110,
+                startVelocity: 48,
+                origin: { x: 0.5, y: 0.24 },
+            });
+        }, 180));
+
+        timeouts.push(window.setTimeout(() => {
+            fire({
+                particleCount: 70,
+                spread: 72,
+                angle: 58,
+                origin: { x: 0.04, y: 0.7 },
+            });
+            fire({
+                particleCount: 70,
+                spread: 72,
+                angle: 122,
+                origin: { x: 0.96, y: 0.7 },
+            });
+        }, 420));
+
+        return () => {
+            timeouts.forEach((timeoutId) => window.clearTimeout(timeoutId));
+        };
+    }, [transaction?.ID_GiaoDich]);
+
+    return (
+        <div className="msg-deal-celebration-card">
+            <div className="msg-deal-celebration-orb orb-left" aria-hidden="true" />
+            <div className="msg-deal-celebration-orb orb-right" aria-hidden="true" />
+
+            <div className="msg-deal-celebration-shell">
+                <div className="msg-deal-celebration-hero">
+                    <div className="msg-deal-celebration-badge">
+                        <BadgeCheck size={16} />
+                        <span>Giao dịch thành công</span>
+                    </div>
+                    <h4>Hai bạn đã chốt đơn thành công</h4>
+                    <p>
+                        Giao dịch này đã được xác nhận bởi cả người mua lẫn người bán. Deal room giờ chuyển sang chế độ lưu kết quả,
+                        để hai bên vẫn xem lại được món đã chốt, thời điểm hoàn tất và điểm hẹn cuối cùng.
+                    </p>
+                    <div className="msg-deal-celebration-actions">
+                        <button
+                            type="button"
+                            className="msg-deal-btn primary"
+                            onClick={onViewPost}
+                        >
+                            Xem bài đã chốt
+                        </button>
+                        {meetingMapUrl && (
+                            <a
+                                href={meetingMapUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="msg-deal-btn ghost msg-deal-celebration-link"
+                            >
+                                Xem lại điểm hẹn
+                            </a>
+                        )}
+                    </div>
+                </div>
+
+                <div className="msg-deal-celebration-sheet">
+                    <div className="msg-deal-celebration-row">
+                        <span>Trạng thái</span>
+                        <strong>Đã giao dịch thành công</strong>
+                    </div>
+                    <div className="msg-deal-celebration-row">
+                        <span>Sản phẩm</span>
+                        <strong>{post?.title || 'Bài đăng'}</strong>
+                    </div>
+                    <div className="msg-deal-celebration-row">
+                        <span>Mã giao dịch</span>
+                        <strong>{transaction?.ID_GiaoDich ? `#${transaction.ID_GiaoDich.slice(0, 8)}` : 'Đã chốt'}</strong>
+                    </div>
+                    <div className="msg-deal-celebration-row">
+                        <span>Hoàn tất lúc</span>
+                        <strong>{formatDateTime(transaction?.thoi_gian_hoan_tat)}</strong>
+                    </div>
+                    <div className="msg-deal-celebration-row">
+                        <span>Điểm hẹn cuối</span>
+                        <strong>{transaction?.dia_chi_hen_gap || 'Đã xác nhận qua chat'}</strong>
+                    </div>
+                    <div className="msg-deal-celebration-row">
+                        <span>Cặp giao dịch</span>
+                        <strong>{buyer?.name} • {seller?.name}</strong>
+                    </div>
+                </div>
+            </div>
+
+                <div className="msg-deal-celebration-people">
+                    <div className="msg-deal-celebration-party">
+                    <ProfileAvatarLink userId={buyer?.userId}>
+                        <img src={buyer?.avatar} alt={buyer?.name} className="msg-deal-celebration-party-avatar" />
+                    </ProfileAvatarLink>
+                    <div>
+                        <span>Người mua</span>
+                        <strong>{buyer?.name}</strong>
+                    </div>
+                </div>
+                <div className="msg-deal-celebration-divider">
+                    <Handshake size={16} />
+                </div>
+                <div className="msg-deal-celebration-party">
+                    <ProfileAvatarLink userId={seller?.userId}>
+                        <img src={seller?.avatar} alt={seller?.name} className="msg-deal-celebration-party-avatar" />
+                    </ProfileAvatarLink>
+                    <div>
+                        <span>Người bán</span>
+                        <strong>{seller?.name}</strong>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
 }
 
 function getTransactionMeta(status) {
@@ -298,19 +1030,52 @@ function getDealFocusSummary({ transaction, role, activeAcceptedOther }) {
             nextHint: 'Thông tin điểm hẹn càng rõ thì xác suất chốt đơn càng cao.',
         };
     case 'cho_xac_nhan_hoan_tat':
-        return role === 'seller'
-            ? {
-                waitingLabel: 'Đến lượt người bán chốt deal',
-                waitingHint: 'Người mua đã đề nghị hoàn tất giao dịch.',
-                nextLabel: 'Xác nhận đã bán',
-                nextHint: 'Sau thao tác này, bài đăng sẽ chuyển sang đã bán.',
-            }
-            : {
-                waitingLabel: 'Đang chờ người bán xác nhận hoàn tất',
-                waitingHint: 'Yêu cầu kết thúc đã được gửi đi.',
-                nextLabel: 'Theo dõi phản hồi cuối cùng',
-                nextHint: 'Người bán chỉ cần một thao tác nữa để đóng giao dịch.',
+    {
+        const completionState = transaction.completion_confirmation || {
+            sellerConfirmed: false,
+            buyerConfirmed: false,
+        };
+        const sellerDone = completionState.sellerConfirmed;
+        const buyerDone = completionState.buyerConfirmed;
+
+        if (sellerDone && buyerDone) {
+            return {
+                waitingLabel: 'Đang khóa giao dịch để hoàn tất',
+                waitingHint: 'Hai bên đã đủ xác nhận và hệ thống đang ghi nhận trạng thái cuối.',
+                nextLabel: 'Theo dõi mốc hoàn tất',
+                nextHint: 'Bài đăng sẽ được chốt sang đã bán ngay sau khi cập nhật hoàn tất.',
             };
+        }
+
+        if (role === 'seller' && !sellerDone) {
+            return {
+                waitingLabel: 'Đến lượt bạn xác nhận hoàn tất',
+                waitingHint: buyerDone
+                    ? 'Người mua đã xác nhận xong và đang chờ bạn chốt bước cuối.'
+                    : 'Cần thêm xác nhận của người bán để khép giao dịch.',
+                nextLabel: 'Xác nhận giao dịch đã xong',
+                nextHint: 'Sau khi bạn xác nhận, hệ thống sẽ đánh dấu bài đăng đã bán nếu người mua cũng đã xác nhận.',
+            };
+        }
+
+        if (role === 'buyer' && !buyerDone) {
+            return {
+                waitingLabel: 'Đến lượt bạn xác nhận hoàn tất',
+                waitingHint: sellerDone
+                    ? 'Người bán đã xác nhận xong và đang chờ bạn chốt bước cuối.'
+                    : 'Cần thêm xác nhận của người mua để khép giao dịch.',
+                nextLabel: 'Xác nhận đã nhận hàng',
+                nextHint: 'Sau khi bạn xác nhận, hệ thống sẽ hoàn tất giao dịch nếu người bán cũng đã xác nhận.',
+            };
+        }
+
+        return {
+            waitingLabel: 'Bạn đã xác nhận, đang chờ bên còn lại',
+            waitingHint: 'Giao dịch chỉ hoàn tất khi cả người mua và người bán đều đồng ý.',
+            nextLabel: 'Theo dõi xác nhận cuối',
+            nextHint: 'Khi bên còn lại xác nhận, deal room sẽ tự cập nhật sang hoàn tất.',
+        };
+    }
     case 'hoan_tat':
         return {
             waitingLabel: 'Không còn bước chờ xử lý',
@@ -373,9 +1138,11 @@ export default function Messages() {
 
     const messagesEndRef = useRef(null);
     const messagesViewportRef = useRef(null);
-    const buyerRequestComposerRef = useRef(null);
+    const dealActionPanelRef = useRef(null);
     const socketRef = useRef(null);
     const previousUserIdRef = useRef('');
+    const selectedChatRef = useRef(null);
+    const activeDealPostIdRef = useRef(null);
     const listSearchInputRef = useRef(null);
     const pendingSelectedUserRef = useRef(location.state?.selectedUser || null);
     const [focusedPostId, setFocusedPostId] = useState(location.state?.focusPostId || null);
@@ -386,7 +1153,7 @@ export default function Messages() {
     const [purchaseNote, setPurchaseNote] = useState('');
     const [showDealReturnButton, setShowDealReturnButton] = useState(false);
     const [showMeetingComposer, setShowMeetingComposer] = useState(false);
-    const [meetingDraft, setMeetingDraft] = useState({ address: '', time: '', note: '' });
+    const [meetingDraft, setMeetingDraft] = useState({ address: '', time: '', note: '', lat: null, lng: null });
 
     const tabs = [
         { key: 'all', label: 'Tất cả' },
@@ -462,7 +1229,33 @@ export default function Messages() {
 
     const activeDealPostId = focusedPostId || latestSharedPostMessage?.postId || null;
 
+    useEffect(() => {
+        selectedChatRef.current = selectedChat;
+    }, [selectedChat]);
+
+    useEffect(() => {
+        activeDealPostIdRef.current = activeDealPostId;
+    }, [activeDealPostId]);
+
     const currentDealMeta = useMemo(() => {
+        if (!dealContext.currentTransaction && FINAL_POST_STATUSES.includes(dealContext.post?.status)) {
+            return {
+                label: 'Bài đăng đã kết thúc',
+                tone: 'blocked',
+                headline: 'Bài đăng này không còn mở để giao dịch',
+                description: 'Món hàng đã được đánh dấu hoàn tất, nên hệ thống sẽ không hiện các nút yêu cầu mua hoặc xác nhận mua nữa.',
+            };
+        }
+
+        if (!dealContext.currentTransaction && dealContext.role === 'viewer' && dealContext.post) {
+            return {
+                label: 'Chỉ xem thông tin bài đăng',
+                tone: 'muted',
+                headline: 'Cuộc chat này không phải với đúng người bán của bài đăng',
+                description: 'Bạn vẫn xem được thông tin bài chia sẻ, nhưng nút giao dịch chỉ hiện khi đang chat với chủ bài đăng đó.',
+            };
+        }
+
         if (dealContext.activeAcceptedOther && !dealContext.currentTransaction) {
             return {
                 ...TRANSACTION_STATUS_META.he_thong_da_huy,
@@ -474,12 +1267,71 @@ export default function Messages() {
         }
 
         return getTransactionMeta(dealContext.currentTransaction?.trang_thai || 'idle');
-    }, [dealContext.activeAcceptedOther, dealContext.currentTransaction]);
+    }, [dealContext.activeAcceptedOther, dealContext.currentTransaction, dealContext.post, dealContext.role]);
 
     const dealTimeline = useMemo(
         () => [...(dealContext.currentTransaction?.lich_su_json || [])].reverse().slice(0, 4),
         [dealContext.currentTransaction],
     );
+
+    const completionConfirmation = useMemo(() => {
+        const current = dealContext.currentTransaction?.completion_confirmation;
+        if (current) return current;
+
+        return {
+            sellerConfirmed: false,
+            buyerConfirmed: false,
+            confirmedByUserIds: [],
+            pendingUserIds: [],
+            confirmationCount: 0,
+            notesByUserId: {},
+        };
+    }, [dealContext.currentTransaction]);
+
+    const hasCurrentUserConfirmedCompletion = useMemo(
+        () => completionConfirmation.confirmedByUserIds.map(String).includes(String(myUserId || '')),
+        [completionConfirmation.confirmedByUserIds, myUserId],
+    );
+
+    const isWaitingCounterpartyCompletion = Boolean(
+        dealContext.currentTransaction?.trang_thai === 'cho_xac_nhan_hoan_tat'
+        && hasCurrentUserConfirmedCompletion
+        && completionConfirmation.pendingUserIds.length > 0,
+    );
+    const canConfirmDealCompletion = Boolean(
+        dealContext.currentTransaction?.dia_chi_hen_gap
+        && dealContext.currentTransaction?.thoi_gian_hen_gap,
+    );
+
+    const meetingMapUrl = useMemo(
+        () => buildMapLookupUrl(dealContext.currentTransaction),
+        [dealContext.currentTransaction],
+    );
+
+    const meetingUpdatedByLabel = useMemo(() => {
+        const authorId = String(dealContext.currentTransaction?.ID_NguoiTaoHen || '');
+        if (!authorId) return 'Chưa rõ';
+        if (authorId === String(dealContext.sellerId || '')) return 'Người bán';
+        if (authorId === String(dealContext.buyerId || '')) return 'Người mua';
+        return 'Đối tác';
+    }, [dealContext.buyerId, dealContext.currentTransaction?.ID_NguoiTaoHen, dealContext.sellerId]);
+
+    const completionActionLabel = useMemo(() => {
+        if (dealActionLoading === 'requestComplete') return 'Đang ghi nhận...';
+        if (hasCurrentUserConfirmedCompletion) {
+            return isWaitingCounterpartyCompletion ? 'Bạn đã xác nhận' : 'Đã xác nhận';
+        }
+        if (completionConfirmation.confirmationCount > 0) {
+            return 'Xác nhận cuối để hoàn tất';
+        }
+        return dealContext.role === 'seller' ? 'Xác nhận giao dịch đã xong' : 'Xác nhận đã nhận hàng';
+    }, [
+        completionConfirmation.confirmationCount,
+        dealActionLoading,
+        dealContext.role,
+        hasCurrentUserConfirmedCompletion,
+        isWaitingCounterpartyCompletion,
+    ]);
 
     const currentPostStatusMeta = useMemo(
         () => getPostStatusMeta(dealContext.post?.status),
@@ -522,12 +1374,14 @@ export default function Messages() {
                 label: 'Người bán',
                 name: sellerName,
                 avatar: sellerAvatar,
+                userId: dealContext.sellerId,
                 isMe: dealContext.role === 'seller',
             },
             buyer: {
                 label: 'Người mua',
                 name: buyerName,
                 avatar: buyerAvatar,
+                userId: dealContext.buyerId,
                 isMe: dealContext.role === 'buyer',
             },
         };
@@ -546,6 +1400,34 @@ export default function Messages() {
         selectedChat?.avatar,
         selectedChat?.id,
         selectedChat?.name,
+    ]);
+
+    const completionActors = useMemo(() => [
+        {
+            key: 'seller',
+            label: 'Người bán',
+            name: dealParticipantInfo.seller.name,
+            avatar: dealParticipantInfo.seller.avatar,
+            userId: dealContext.sellerId,
+            confirmed: completionConfirmation.sellerConfirmed,
+        },
+        {
+            key: 'buyer',
+            label: 'Người mua',
+            name: dealParticipantInfo.buyer.name,
+            avatar: dealParticipantInfo.buyer.avatar,
+            userId: dealContext.buyerId,
+            confirmed: completionConfirmation.buyerConfirmed,
+        },
+    ], [
+        completionConfirmation.buyerConfirmed,
+        completionConfirmation.sellerConfirmed,
+        dealContext.buyerId,
+        dealContext.sellerId,
+        dealParticipantInfo.buyer.avatar,
+        dealParticipantInfo.buyer.name,
+        dealParticipantInfo.seller.avatar,
+        dealParticipantInfo.seller.name,
     ]);
 
     const competingRequestCount = useMemo(
@@ -613,7 +1495,7 @@ export default function Messages() {
         setDealContext(EMPTY_DEAL_CONTEXT);
         setPurchaseNote('');
         setShowMeetingComposer(false);
-        setMeetingDraft({ address: '', time: '', note: '' });
+        setMeetingDraft({ address: '', time: '', note: '', lat: null, lng: null });
     }, []);
 
     useEffect(() => {
@@ -681,12 +1563,21 @@ export default function Messages() {
                 buyerId = myUserId;
             }
 
-            const currentTransaction = buyerId
-                ? rawTransactions.find(
+            const buyerTransactions = buyerId
+                ? rawTransactions.filter(
                     (transaction) => String(transaction.ID_NguoiBan) === String(sellerId)
                         && String(transaction.ID_NguoiMua) === String(buyerId),
-                ) || null
-                : null;
+                )
+                : [];
+
+            const openTransaction = buyerTransactions.find(
+                (transaction) => OPEN_DEAL_STATUSES.includes(transaction.trang_thai),
+            ) || null;
+            const completedTransaction = buyerTransactions.find(
+                (transaction) => transaction.trang_thai === 'hoan_tat',
+            ) || null;
+            const currentTransaction = openTransaction
+                || (FINAL_POST_STATUSES.includes(post.status) ? completedTransaction : null);
 
             const activeAcceptedOther = rawTransactions.find(
                 (transaction) => ACTIVE_ACCEPTED_STATUSES.includes(transaction.trang_thai)
@@ -707,6 +1598,8 @@ export default function Messages() {
                 address: currentTransaction?.dia_chi_hen_gap || '',
                 time: toDateTimeLocalValue(currentTransaction?.thoi_gian_hen_gap),
                 note: currentTransaction?.ghi_chu_hen_gap || '',
+                lat: currentTransaction?.vi_do_hen_gap ? Number(currentTransaction.vi_do_hen_gap) : null,
+                lng: currentTransaction?.kinh_do_hen_gap ? Number(currentTransaction.kinh_do_hen_gap) : null,
             });
         } catch (loadError) {
             console.error('Load deal context failed', loadError);
@@ -885,8 +1778,9 @@ export default function Messages() {
 
         s.on('connect', () => {
             s.emit('user_login', { userId: myUserId });
-            if (selectedChat?.type === 'private') {
-                s.emit('join_chat', { userId: myUserId, chatType: 'private', chatId: selectedChat.id });
+            const currentChat = selectedChatRef.current;
+            if (currentChat?.type === 'private') {
+                s.emit('join_chat', { userId: myUserId, chatType: 'private', chatId: currentChat.id });
             }
         });
 
@@ -902,6 +1796,8 @@ export default function Messages() {
             if (!m) return;
 
             const otherId = m.ID_NguoiGui === myUserId ? m.ID_NguoiNhan : m.ID_NguoiGui;
+            const currentChat = selectedChatRef.current;
+            const isCurrentChatOpen = currentChat?.type === 'private' && String(currentChat.id) === String(otherId);
             const text = m.noi_dung || '';
             const time = m.thoi_gian_gui
                 ? new Date(m.thoi_gian_gui).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false })
@@ -909,9 +1805,42 @@ export default function Messages() {
             const img = m.file_dinh_kem ? normalizeUploadsUrl(m.file_dinh_kem, 'messages') : '';
             const postShare = isPostShareMessage(text);
             const postImage = postShare ? normalizeUploadsUrl(extractPostShareImage(text)) : '';
+            const lastAt = m.thoi_gian_gui ? new Date(m.thoi_gian_gui) : new Date();
+
+            setConversations((prev) => {
+                const existingIndex = prev.findIndex((conversation) => (
+                    conversation.type === 'private' && String(conversation.id) === String(otherId)
+                ));
+
+                const existingConversation = existingIndex >= 0 ? prev[existingIndex] : null;
+                const nextConversation = {
+                    id: otherId,
+                    type: 'private',
+                    name: existingConversation?.name
+                        || (String(m.ID_NguoiGui) === String(myUserId) ? currentChat?.name : m.ten_nguoi_gui)
+                        || 'Người dùng',
+                    avatar: existingConversation?.avatar
+                        || (String(m.ID_NguoiGui) === String(myUserId) ? currentChat?.avatar : normalizeUploadsUrl(m.anh_nguoi_gui))
+                        || avatarFallback(otherId),
+                    lastMsg: text,
+                    lastAt,
+                    unread: isCurrentChatOpen || String(m.ID_NguoiGui) === String(myUserId)
+                        ? 0
+                        : (existingConversation?.unread || 0) + 1,
+                    online: existingConversation?.online || false,
+                };
+
+                if (existingIndex === -1) {
+                    return [nextConversation, ...prev];
+                }
+
+                const nextList = [...prev];
+                nextList.splice(existingIndex, 1);
+                return [nextConversation, ...nextList];
+            });
 
             // update messages if current chat is open with this user
-            if (selectedChat?.type === 'private' && selectedChat.id === otherId) {
+            if (isCurrentChatOpen) {
                 const msg = {
                     id: m.ID_TinNhan,
                     sender: m.ID_NguoiGui === myUserId ? 'me' : 'them',
@@ -945,10 +1874,45 @@ export default function Messages() {
                     return [...prev, msg];
                 });
                 s.emit('mark_read', { userId: myUserId, chatType: 'private', chatId: otherId });
-            } else {
-                // increment unread
-                setConversations(prev => prev.map(c => (c.type === 'private' && c.id === otherId ? { ...c, unread: (c.unread || 0) + 1, lastMsg: m.noi_dung || '', lastAt: m.thoi_gian_gui ? new Date(m.thoi_gian_gui) : c.lastAt } : c)));
             }
+        });
+
+        s.on('deal_transaction_updated', (payload) => {
+            if (!payload?.postId || !payload?.sellerId || !payload?.buyerId) return;
+
+            const currentChat = selectedChatRef.current;
+            if (!currentChat || currentChat.type !== 'private') return;
+
+            const participantIds = [String(payload.sellerId), String(payload.buyerId)];
+            const isCurrentConversationRelated =
+                participantIds.includes(String(myUserId))
+                && participantIds.includes(String(currentChat.id));
+
+            if (!isCurrentConversationRelated) return;
+
+            const currentDealPostId = activeDealPostIdRef.current;
+            const shouldOpenIncomingDeal = !currentDealPostId;
+            const shouldRefreshCurrentDeal =
+                shouldOpenIncomingDeal || String(currentDealPostId) === String(payload.postId);
+
+            if (!shouldRefreshCurrentDeal) {
+                setDealNotice({
+                    type: 'success',
+                    text: DEAL_SOCKET_NOTICE_LABELS[payload.action] || 'Giao dịch ở bài khác vừa được cập nhật.',
+                });
+                return;
+            }
+
+            if (shouldOpenIncomingDeal) {
+                setFocusedPostId(payload.postId);
+            }
+
+            loadDealContext(payload.postId, currentChat);
+            loadConversations();
+            setDealNotice({
+                type: 'success',
+                text: DEAL_SOCKET_NOTICE_LABELS[payload.action] || 'Trạng thái giao dịch vừa được cập nhật.',
+            });
         });
 
         s.on('connect_error', (e) => {
@@ -958,7 +1922,24 @@ export default function Messages() {
         return () => {
             s.disconnect();
         };
-    }, [myUserId, token, socketUrl, normalizeUploadsUrl, selectedChat]);
+    }, [loadConversations, loadDealContext, myUserId, normalizeUploadsUrl, socketUrl, token]);
+
+    useEffect(() => {
+        if (!myUserId || !selectedChat || selectedChat.type !== 'private' || !socketRef.current?.connected) {
+            return;
+        }
+
+        socketRef.current.emit('join_chat', {
+            userId: myUserId,
+            chatType: 'private',
+            chatId: selectedChat.id,
+        });
+        socketRef.current.emit('mark_read', {
+            userId: myUserId,
+            chatType: 'private',
+            chatId: selectedChat.id,
+        });
+    }, [myUserId, selectedChat]);
 
     // Load friend list on mount (used for both inline search and modal)
     useEffect(() => {
@@ -1244,33 +2225,35 @@ export default function Messages() {
     const handleSubmitMeeting = useCallback(() => {
         if (!dealContext.currentTransaction) return;
         if (!meetingDraft.address.trim()) {
-            setDealNotice({ type: 'error', text: 'Nhập địa chỉ hoặc điểm hẹn trước khi lưu.' });
+            setDealNotice({ type: 'error', text: 'Hãy chọn điểm hẹn trên bản đồ hoặc từ ô tìm kiếm trước khi lưu.' });
+            return;
+        }
+
+        if (!meetingDraft.time) {
+            setDealNotice({ type: 'error', text: 'Chọn thời gian hẹn gặp trước khi lưu điểm hẹn.' });
             return;
         }
 
         runDealAction('meeting', `/giaodich_baidang/${dealContext.currentTransaction.ID_GiaoDich}/meeting`, {
             dia_chi_hen_gap: meetingDraft.address.trim(),
+            vi_do_hen_gap: meetingDraft.lat,
+            kinh_do_hen_gap: meetingDraft.lng,
             ghi_chu_hen_gap: meetingDraft.note.trim() || null,
             thoi_gian_hen_gap: toMySqlDateTime(meetingDraft.time),
         }, { closeMeetingComposer: true });
-    }, [dealContext.currentTransaction, meetingDraft.address, meetingDraft.note, meetingDraft.time, runDealAction]);
+    }, [dealContext.currentTransaction, meetingDraft.address, meetingDraft.lat, meetingDraft.lng, meetingDraft.note, meetingDraft.time, runDealAction]);
 
     const handleRequestComplete = useCallback(() => {
         if (!dealContext.currentTransaction) return;
         runDealAction('requestComplete', `/giaodich_baidang/${dealContext.currentTransaction.ID_GiaoDich}/request-complete`, {
-            note: 'Đề nghị chốt giao dịch ngay trong phòng chat này.',
+            note: dealContext.role === 'seller'
+                ? 'Người bán xác nhận đã giao dịch xong.'
+                : 'Người mua xác nhận đã nhận hàng.',
         });
-    }, [dealContext.currentTransaction, runDealAction]);
+    }, [dealContext.currentTransaction, dealContext.role, runDealAction]);
 
-    const handleCompleteDeal = useCallback(() => {
-        if (!dealContext.currentTransaction) return;
-        runDealAction('complete', `/giaodich_baidang/${dealContext.currentTransaction.ID_GiaoDich}/complete`, {
-            note: 'Người bán đã xác nhận giao dịch hoàn tất.',
-        }, { closeMeetingComposer: true });
-    }, [dealContext.currentTransaction, runDealAction]);
-
-    const scrollToBuyerRequestComposer = useCallback(() => {
-        buyerRequestComposerRef.current?.scrollIntoView({
+    const scrollToDealActionPanel = useCallback(() => {
+        dealActionPanelRef.current?.scrollIntoView({
             behavior: 'smooth',
             block: 'start',
         });
@@ -1279,6 +2262,7 @@ export default function Messages() {
     const showBuyerRequestComposer = dealContext.role === 'buyer'
         && !dealContext.currentTransaction
         && !dealContext.activeAcceptedOther
+        && !FINAL_POST_STATUSES.includes(dealContext.post?.status)
         && Boolean(activeDealPostId);
     const showSellerApprovalActions = dealContext.role === 'seller'
         && dealContext.currentTransaction?.trang_thai === 'cho_nguoi_ban_xac_nhan';
@@ -1286,17 +2270,66 @@ export default function Messages() {
         && dealContext.currentTransaction?.trang_thai === 'cho_nguoi_ban_xac_nhan';
     const showLiveDealActions = Boolean(dealContext.currentTransaction)
         && ACTIVE_ACCEPTED_STATUSES.includes(dealContext.currentTransaction.trang_thai);
-    const canSellerComplete = dealContext.role === 'seller'
-        && dealContext.currentTransaction?.trang_thai === 'cho_xac_nhan_hoan_tat';
+    const showDealCompletedCelebration = dealContext.currentTransaction?.trang_thai === 'hoan_tat';
+    const hasDealActionPanel = showBuyerRequestComposer
+        || showSellerApprovalActions
+        || showBuyerPendingState
+        || showLiveDealActions;
+
+    const dealActionUnavailableMessage = useMemo(() => {
+        if (showDealCompletedCelebration) {
+            return '';
+        }
+
+        if (FINAL_POST_STATUSES.includes(dealContext.post?.status)) {
+            return 'Bài đăng này đã bán hoặc đã xử lý xong, nên sẽ không còn nút yêu cầu mua hay xác nhận mua.';
+        }
+
+        if (dealContext.role === 'viewer' && activeDealPostId && dealContext.post) {
+            return 'Bạn đang chat với một người khác, không phải chủ bài đăng này. Nút giao dịch chỉ hiện khi mở đúng cuộc chat với người bán.';
+        }
+
+        if (dealContext.activeAcceptedOther && !dealContext.currentTransaction) {
+            return 'Bài đăng hiện đang được giữ cho người mua khác, nên cuộc chat này chưa có nút thao tác giao dịch.';
+        }
+
+        return '';
+    }, [activeDealPostId, dealContext.activeAcceptedOther, dealContext.currentTransaction, dealContext.post, dealContext.role, showDealCompletedCelebration]);
+
+    const dealReturnButtonLabel = useMemo(() => {
+        if (showSellerApprovalActions) return 'Mở nút xác nhận mua';
+        if (showBuyerPendingState) return 'Mở trạng thái yêu cầu mua';
+        if (showLiveDealActions) return 'Mở thao tác giao dịch';
+        if (showBuyerRequestComposer) return 'Mở lại form chốt đơn';
+        return 'Mở Deal room';
+    }, [showBuyerPendingState, showBuyerRequestComposer, showLiveDealActions, showSellerApprovalActions]);
+
+    const dealQuickActionAnchorLabel = useMemo(() => {
+        if (showSellerApprovalActions) return 'Tới phần xác nhận mua';
+        if (showBuyerPendingState) return 'Tới trạng thái yêu cầu';
+        if (showLiveDealActions) {
+            return dealContext.currentTransaction?.dia_chi_hen_gap
+                ? 'Tới phần điểm hẹn và xác nhận'
+                : 'Tới phần chốt điểm hẹn';
+        }
+        if (showBuyerRequestComposer) return 'Tới form yêu cầu mua';
+        return 'Tới phần thao tác';
+    }, [
+        dealContext.currentTransaction?.dia_chi_hen_gap,
+        showBuyerPendingState,
+        showBuyerRequestComposer,
+        showLiveDealActions,
+        showSellerApprovalActions,
+    ]);
 
     useEffect(() => {
-        if (!showBuyerRequestComposer) {
+        if (!hasDealActionPanel) {
             setShowDealReturnButton(false);
             return undefined;
         }
 
         const viewport = messagesViewportRef.current;
-        const composer = buyerRequestComposerRef.current;
+        const composer = dealActionPanelRef.current;
 
         if (!viewport || !composer) {
             setShowDealReturnButton(false);
@@ -1317,7 +2350,7 @@ export default function Messages() {
         observer.observe(composer);
 
         return () => observer.disconnect();
-    }, [showBuyerRequestComposer, selectedChat?.id, activeDealPostId, loadingDeal]);
+    }, [hasDealActionPanel, selectedChat?.id, activeDealPostId, loadingDeal]);
 
     return (
         <div className="messages-page">
@@ -1435,10 +2468,12 @@ export default function Messages() {
                                                 handleSelectChat(conv);
                                             }}
                                         >
-                                            <div className="msg-user-avatar-wrap">
-                                                <img className="msg-user-avatar" src={u.avatar} alt={u.name} />
-                                                {u.isFriend && <span className="msg-user-friend-dot" />}
-                                            </div>
+                                            <ProfileAvatarLink userId={u.id}>
+                                                <div className="msg-user-avatar-wrap">
+                                                    <img className="msg-user-avatar" src={u.avatar} alt={u.name} />
+                                                    {u.isFriend && <span className="msg-user-friend-dot" />}
+                                                </div>
+                                            </ProfileAvatarLink>
                                             <div className="msg-user-info">
                                                 <div className="msg-user-name-row">
                                                     <span className="msg-user-name">{u.name}</span>
@@ -1504,10 +2539,12 @@ export default function Messages() {
                                 className={`msg-conv-item ${selectedChat?.id === conv.id ? 'selected' : ''} ${conv.unread > 0 ? 'has-unread' : ''}`}
                                 onClick={() => handleSelectChat(conv)}
                             >
-                                <div className="msg-conv-avatar-wrap">
-                                    <img className="msg-conv-avatar" src={conv.avatar} alt={conv.name} />
-                                    {conv.online && <span className="msg-conv-online-dot" />}
-                                </div>
+                                <ProfileAvatarLink userId={conv.type === 'private' ? conv.id : null}>
+                                    <div className="msg-conv-avatar-wrap">
+                                        <img className="msg-conv-avatar" src={conv.avatar} alt={conv.name} />
+                                        {conv.online && <span className="msg-conv-online-dot" />}
+                                    </div>
+                                </ProfileAvatarLink>
                                 <div className="msg-conv-info">
                                     <div className="msg-conv-name">{conv.name}</div>
                                     <div className="msg-conv-last">
@@ -1530,7 +2567,9 @@ export default function Messages() {
                     <>
                         {/* Header */}
                         <div className="msg-detail-header">
-                            <img className="msg-detail-avatar" src={selectedChat.avatar} alt={selectedChat.name} />
+                            <ProfileAvatarLink userId={selectedChat.type === 'private' ? selectedChat.id : null}>
+                                <img className="msg-detail-avatar" src={selectedChat.avatar} alt={selectedChat.name} />
+                            </ProfileAvatarLink>
                             <div className="msg-detail-info">
                                 <div className="msg-detail-name">{selectedChat.name}</div>
                                 <div className={`msg-detail-status ${selectedChat.online ? '' : 'offline'}`}>
@@ -1571,6 +2610,45 @@ export default function Messages() {
                                             </div>
                                         </div>
 
+                                        {hasDealActionPanel && (
+                                            <div className="msg-deal-quick-actions">
+                                                <div className="msg-deal-quick-head">
+                                                    <strong>Thao tác ngay</strong>
+                                                    <span>Khối này chỉ dẫn bạn tới đúng phần thao tác chính để tránh lặp nút nhiều lần trong cùng một deal room.</span>
+                                                </div>
+                                                <div className="msg-deal-action-row wrap">
+                                                    <button
+                                                        type="button"
+                                                        className="msg-deal-btn primary"
+                                                        onClick={scrollToDealActionPanel}
+                                                    >
+                                                        {dealQuickActionAnchorLabel}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {!hasDealActionPanel && dealActionUnavailableMessage && (
+                                            <div className="msg-deal-unavailable-panel">
+                                                <AlertTriangle size={16} />
+                                                <div>
+                                                    <strong>Hiện chưa có nút thao tác cho deal này</strong>
+                                                    <p>{dealActionUnavailableMessage}</p>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {showDealCompletedCelebration && (
+                                            <DealCompletedCelebrationCard
+                                                post={dealContext.post}
+                                                transaction={dealContext.currentTransaction}
+                                                buyer={dealParticipantInfo.buyer}
+                                                seller={dealParticipantInfo.seller}
+                                                meetingMapUrl={meetingMapUrl}
+                                                onViewPost={() => navigate(`/post/${dealContext.post.id}`)}
+                                            />
+                                        )}
+
                                         <div className="msg-deal-insights">
                                             {dealInsightCards.map((item) => (
                                                 <div key={item.label} className="msg-deal-insight-card">
@@ -1584,7 +2662,9 @@ export default function Messages() {
                                         <div className="msg-deal-actors">
                                             {Object.values(dealParticipantInfo).map((party) => (
                                                 <div key={party.label} className={`msg-deal-actor-card ${party.isMe ? 'is-me' : ''}`}>
-                                                    <img src={party.avatar} alt={party.name} className="msg-deal-actor-avatar" />
+                                                    <ProfileAvatarLink userId={party.userId}>
+                                                        <img src={party.avatar} alt={party.name} className="msg-deal-actor-avatar" />
+                                                    </ProfileAvatarLink>
                                                     <div className="msg-deal-actor-copy">
                                                         <span>{party.label}</span>
                                                         <strong>{party.name}</strong>
@@ -1681,14 +2761,74 @@ export default function Messages() {
                                                     <strong>{formatDateTime(dealContext.currentTransaction.thoi_gian_hen_gap)}</strong>
                                                 </div>
                                                 <div className="msg-deal-meeting-address">{dealContext.currentTransaction.dia_chi_hen_gap}</div>
+                                                <div className="msg-deal-meeting-meta">
+                                                    <span><Clock3 size={14} /> {formatDateTime(dealContext.currentTransaction.thoi_gian_hen_gap)}</span>
+                                                    <span><User size={14} /> {meetingUpdatedByLabel} vừa cập nhật</span>
+                                                </div>
                                                 {dealContext.currentTransaction.ghi_chu_hen_gap && (
-                                                    <div className="msg-deal-meeting-note">{dealContext.currentTransaction.ghi_chu_hen_gap}</div>
+                                                    <div className="msg-deal-meeting-note">
+                                                        <strong>Ghi chú gặp mặt</strong>
+                                                        <p>{dealContext.currentTransaction.ghi_chu_hen_gap}</p>
+                                                    </div>
+                                                )}
+                                                {meetingMapUrl && (
+                                                    <div className="msg-deal-meeting-links">
+                                                        <a
+                                                            href={meetingMapUrl}
+                                                            target="_blank"
+                                                            rel="noreferrer"
+                                                            className="msg-deal-map-link"
+                                                        >
+                                                            <MapPin size={14} />
+                                                            <span>Mở trên bản đồ</span>
+                                                        </a>
+                                                        <button
+                                                            type="button"
+                                                            className="msg-deal-btn ghost"
+                                                            onClick={() => setShowMeetingComposer(true)}
+                                                        >
+                                                            Chỉnh lại điểm hẹn
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {dealContext.currentTransaction && !showDealCompletedCelebration && (
+                                            <div className="msg-deal-completion-card">
+                                                <div className="msg-deal-panel-head">
+                                                    <span><BadgeCheck size={15} /> Xác nhận hoàn tất</span>
+                                                    <strong>{completionConfirmation.confirmationCount}/2 đã xác nhận</strong>
+                                                </div>
+                                                <div className="msg-deal-completion-grid">
+                                                    {completionActors.map((party) => {
+                                                        const note = completionConfirmation.notesByUserId?.[String(party.userId || '')];
+                                                        return (
+                                                            <div key={party.key} className={`msg-deal-completion-party ${party.confirmed ? 'confirmed' : ''}`}>
+                                                                <ProfileAvatarLink userId={party.userId}>
+                                                                    <img src={party.avatar} alt={party.name} className="msg-deal-completion-avatar" />
+                                                                </ProfileAvatarLink>
+                                                                <div className="msg-deal-completion-copy">
+                                                                    <span>{party.label}</span>
+                                                                    <strong>{party.name}</strong>
+                                                                    <small>{party.confirmed ? 'Đã xác nhận hoàn tất' : 'Chưa xác nhận hoàn tất'}</small>
+                                                                    {note && <p>{note}</p>}
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                                {isWaitingCounterpartyCompletion && (
+                                                    <div className="msg-deal-completion-wait">
+                                                        <Clock3 size={15} />
+                                                        <span>Bạn đã xác nhận. Deal room đang chờ bên còn lại xác nhận để chuyển bài sang đã bán.</span>
+                                                    </div>
                                                 )}
                                             </div>
                                         )}
 
                                         {showBuyerRequestComposer && (
-                                            <div ref={buyerRequestComposerRef} className="msg-deal-action-panel standout">
+                                            <div ref={dealActionPanelRef} className="msg-deal-action-panel standout">
                                                 <div className="msg-deal-action-copy">
                                                     <Handshake size={18} />
                                                     <div>
@@ -1716,12 +2856,12 @@ export default function Messages() {
                                         )}
 
                                         {showSellerApprovalActions && (
-                                            <div className="msg-deal-action-panel">
+                                            <div ref={dealActionPanelRef} className="msg-deal-action-panel">
                                                 <div className="msg-deal-action-copy">
                                                     <Sparkles size={18} />
                                                     <div>
                                                         <strong>Người mua đã gõ cửa</strong>
-                                                        <span>Chấp nhận để chuyển bài đăng sang giữ chỗ, hoặc từ chối để đóng yêu cầu này.</span>
+                                                        <span>Xác nhận mua để chuyển bài đăng sang giữ chỗ, hoặc từ chối để đóng yêu cầu này.</span>
                                                     </div>
                                                 </div>
                                                 {dealContext.currentTransaction?.ghi_chu_nguoi_mua && (
@@ -1734,7 +2874,7 @@ export default function Messages() {
                                                         onClick={handleAcceptDeal}
                                                         disabled={dealActionLoading === 'accept'}
                                                     >
-                                                        {dealActionLoading === 'accept' ? 'Đang chấp nhận...' : 'Chấp nhận'}
+                                                        {dealActionLoading === 'accept' ? 'Đang xác nhận...' : 'Xác nhận mua'}
                                                     </button>
                                                     <button
                                                         type="button"
@@ -1749,7 +2889,7 @@ export default function Messages() {
                                         )}
 
                                         {showBuyerPendingState && (
-                                            <div className="msg-deal-action-panel compact">
+                                            <div ref={dealActionPanelRef} className="msg-deal-action-panel compact">
                                                 <div className="msg-deal-action-copy">
                                                     <Clock3 size={18} />
                                                     <div>
@@ -1771,29 +2911,33 @@ export default function Messages() {
                                         )}
 
                                         {showLiveDealActions && (
-                                            <div className="msg-deal-action-panel live">
+                                            <div ref={dealActionPanelRef} className="msg-deal-action-panel live">
                                                 <div className="msg-deal-action-copy">
                                                     <Handshake size={18} />
                                                     <div>
                                                         <strong>Đang ở nhịp chốt đơn</strong>
-                                                        <span>Đẩy giao dịch tiến thêm một bước bằng điểm hẹn, yêu cầu hoàn tất hoặc đóng giao dịch nếu cần.</span>
+                                                        <span>Chọn điểm hẹn trên bản đồ, lưu rõ thời gian và ghi chú, rồi để cả hai bên cùng xác nhận hoàn tất giao dịch.</span>
                                                     </div>
+                                                </div>
+                                                <div className="msg-deal-action-tips">
+                                                    <span><MapPin size={14} /> Điểm hẹn nên được chốt trên bản đồ để cả hai nhìn cùng một vị trí.</span>
+                                                    <span><BadgeCheck size={14} /> Giao dịch chỉ hoàn tất khi cả người mua và người bán đều xác nhận.</span>
                                                 </div>
                                                 <div className="msg-deal-action-row wrap">
                                                     <button
                                                         type="button"
                                                         className="msg-deal-btn primary"
-                                                        onClick={() => setShowMeetingComposer((current) => !current)}
+                                                        onClick={() => setShowMeetingComposer(true)}
                                                     >
-                                                        {showMeetingComposer ? 'Ẩn điểm hẹn' : 'Cập nhật điểm hẹn'}
+                                                        {dealContext.currentTransaction?.dia_chi_hen_gap ? 'Mở lại bản đồ điểm hẹn' : 'Chọn điểm hẹn trên bản đồ'}
                                                     </button>
                                                     <button
                                                         type="button"
-                                                        className="msg-deal-btn ghost"
+                                                        className="msg-deal-btn signal"
                                                         onClick={handleRequestComplete}
-                                                        disabled={dealActionLoading === 'requestComplete'}
+                                                        disabled={!canConfirmDealCompletion || dealActionLoading === 'requestComplete' || hasCurrentUserConfirmedCompletion}
                                                     >
-                                                        {dealActionLoading === 'requestComplete' ? 'Đang gửi...' : 'Yêu cầu hoàn tất'}
+                                                        {completionActionLabel}
                                                     </button>
                                                     <button
                                                         type="button"
@@ -1803,49 +2947,21 @@ export default function Messages() {
                                                     >
                                                         {dealActionLoading === 'cancel' ? 'Đang đóng...' : 'Hủy giao dịch'}
                                                     </button>
-                                                    {canSellerComplete && (
-                                                        <button
-                                                            type="button"
-                                                            className="msg-deal-btn signal"
-                                                            onClick={handleCompleteDeal}
-                                                            disabled={dealActionLoading === 'complete'}
-                                                        >
-                                                            {dealActionLoading === 'complete' ? 'Đang hoàn tất...' : 'Xác nhận đã bán'}
-                                                        </button>
-                                                    )}
                                                 </div>
-
-                                                {showMeetingComposer && (
-                                                    <div className="msg-deal-meeting-form">
-                                                        <input
-                                                            className="msg-deal-input"
-                                                            type="text"
-                                                            placeholder="Điểm hẹn hoặc địa chỉ cụ thể"
-                                                            value={meetingDraft.address}
-                                                            onChange={(event) => setMeetingDraft((current) => ({ ...current, address: event.target.value }))}
-                                                        />
-                                                        <div className="msg-deal-form-split">
-                                                            <input
-                                                                className="msg-deal-input"
-                                                                type="datetime-local"
-                                                                value={meetingDraft.time}
-                                                                onChange={(event) => setMeetingDraft((current) => ({ ...current, time: event.target.value }))}
-                                                            />
-                                                            <button
-                                                                type="button"
-                                                                className="msg-deal-btn primary"
-                                                                onClick={handleSubmitMeeting}
-                                                                disabled={dealActionLoading === 'meeting'}
-                                                            >
-                                                                {dealActionLoading === 'meeting' ? 'Đang lưu...' : 'Lưu điểm hẹn'}
-                                                            </button>
-                                                        </div>
-                                                        <textarea
-                                                            className="msg-deal-textarea compact"
-                                                            placeholder="Ghi chú thêm: cổng nào, mốc nhận diện, số điện thoại phụ..."
-                                                            value={meetingDraft.note}
-                                                            onChange={(event) => setMeetingDraft((current) => ({ ...current, note: event.target.value }))}
-                                                        />
+                                                {dealContext.currentTransaction?.dia_chi_hen_gap && (
+                                                    <div className="msg-deal-action-summary">
+                                                        <strong>Điểm hẹn đang chốt</strong>
+                                                        <p>{dealContext.currentTransaction.dia_chi_hen_gap}</p>
+                                                        <small>
+                                                            {formatDateTime(dealContext.currentTransaction.thoi_gian_hen_gap)}
+                                                            {dealContext.currentTransaction.ghi_chu_hen_gap ? ` · ${dealContext.currentTransaction.ghi_chu_hen_gap}` : ''}
+                                                        </small>
+                                                    </div>
+                                                )}
+                                                {!canConfirmDealCompletion && (
+                                                    <div className="msg-deal-action-summary">
+                                                        <strong>Chưa thể xác nhận hoàn tất</strong>
+                                                        <small>Cần chốt điểm hẹn và thời gian trước khi một trong hai bên được phép xác nhận giao dịch đã xong.</small>
                                                     </div>
                                                 )}
                                             </div>
@@ -1915,15 +3031,15 @@ export default function Messages() {
 
                         {/* Input */}
                         <div className="msg-input-zone">
-                            {showBuyerRequestComposer && showDealReturnButton && (
+                            {hasDealActionPanel && showDealReturnButton && (
                                 <div className="msg-deal-return-row">
                                     <button
                                         type="button"
                                         className="msg-deal-return-btn"
-                                        onClick={scrollToBuyerRequestComposer}
+                                        onClick={scrollToDealActionPanel}
                                     >
                                         <Sparkles size={15} />
-                                        <span>Mở lại form chốt đơn</span>
+                                        <span>{dealReturnButtonLabel}</span>
                                     </button>
                                 </div>
                             )}
@@ -1961,7 +3077,9 @@ export default function Messages() {
                 {selectedChat ? (
                     <>
                         <div className="msg-info-top">
-                            <img className="msg-info-avatar" src={selectedChat.avatar} alt={selectedChat.name} />
+                            <ProfileAvatarLink userId={selectedChat.type === 'private' ? selectedChat.id : null} stopPropagation={false}>
+                                <img className="msg-info-avatar" src={selectedChat.avatar} alt={selectedChat.name} />
+                            </ProfileAvatarLink>
                             <div className="msg-info-name">{selectedChat.name}</div>
                             <div className={`msg-info-status ${selectedChat.online ? '' : 'offline'}`}>
                                 {selectedChat.online ? '● Đang hoạt động' : '○ Ngoại tuyến'}
@@ -2023,6 +3141,28 @@ export default function Messages() {
                                     </div>
                                 )}
 
+                                {dealContext.currentTransaction?.dia_chi_hen_gap && (
+                                    <div className="msg-deal-side-note">
+                                        <span>Điểm hẹn hiện tại</span>
+                                        <p>
+                                            {dealContext.currentTransaction.dia_chi_hen_gap}
+                                            {dealContext.currentTransaction.thoi_gian_hen_gap ? ` · ${formatDateTime(dealContext.currentTransaction.thoi_gian_hen_gap)}` : ''}
+                                            {dealContext.currentTransaction.ghi_chu_hen_gap ? ` · ${dealContext.currentTransaction.ghi_chu_hen_gap}` : ''}
+                                        </p>
+                                    </div>
+                                )}
+
+                                {dealContext.currentTransaction && (
+                                    <div className="msg-deal-side-note">
+                                        <span>Xác nhận hoàn tất</span>
+                                        <p>
+                                            {completionConfirmation.confirmationCount === 2
+                                                ? 'Cả hai bên đã xác nhận hoàn tất giao dịch.'
+                                                : `Đã có ${completionConfirmation.confirmationCount}/2 bên xác nhận. Giao dịch chỉ đóng khi đủ cả người mua và người bán.`}
+                                        </p>
+                                    </div>
+                                )}
+
                                 {dealTimeline.length > 0 ? (
                                     <div className="msg-deal-timeline">
                                         {dealTimeline.map((entry) => (
@@ -2079,6 +3219,16 @@ export default function Messages() {
                     </div>
                 )}
             </div>
+
+            {showMeetingComposer && (
+                <MeetingLocationPickerModal
+                    draft={meetingDraft}
+                    onDraftChange={setMeetingDraft}
+                    onClose={() => setShowMeetingComposer(false)}
+                    onSave={handleSubmitMeeting}
+                    isSaving={dealActionLoading === 'meeting'}
+                />
+            )}
 
             {/* New chat modal */}
             {showNewChat && (() => {
@@ -2169,10 +3319,12 @@ export default function Messages() {
                                             handleSelectChat(conv);
                                         }}
                                     >
-                                        <div className="msg-user-avatar-wrap">
-                                            <img className="msg-user-avatar" src={u.avatar} alt={u.name} />
-                                            {u.isFriend && <span className="msg-user-friend-dot" title="Bạn bè" />}
-                                        </div>
+                                        <ProfileAvatarLink userId={u.id}>
+                                            <div className="msg-user-avatar-wrap">
+                                                <img className="msg-user-avatar" src={u.avatar} alt={u.name} />
+                                                {u.isFriend && <span className="msg-user-friend-dot" title="Bạn bè" />}
+                                            </div>
+                                        </ProfileAvatarLink>
                                         <div className="msg-user-info">
                                             <div className="msg-user-name-row">
                                                 <span className="msg-user-name">{u.name}</span>

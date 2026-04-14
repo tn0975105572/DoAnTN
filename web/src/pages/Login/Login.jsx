@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { QRCodeSVG } from "qrcode.react";
 import io from "socket.io-client";
 import axios from "axios";
@@ -11,6 +11,8 @@ const QR_EXPIRE_SECONDS = 5 * 60; // 5 phút, khớp với backend
 
 export default function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const redirectPath = location.state?.from?.pathname || "/";
 
   // Tab state: 'form' or 'qr'
   const [activeTab, setActiveTab] = useState("form");
@@ -61,7 +63,7 @@ export default function Login() {
           type: "success",
           text: `Chào mừng trở lại, ${user.ho_ten || "bạn"}! 👋`,
         });
-        setTimeout(() => navigate("/"), 1200);
+        setTimeout(() => navigate(redirectPath, { replace: true }), 1200);
       } else {
         setMessage({ type: "error", text: "Đăng nhập thất bại. Vui lòng thử lại." });
       }
@@ -120,7 +122,7 @@ export default function Login() {
           token: data.token,
           user: data.user,
         });
-        navigate("/");
+        navigate(redirectPath, { replace: true });
       });
 
       // Polling fallback mỗi 3s
@@ -134,7 +136,7 @@ export default function Login() {
               token: statusRes.data.token,
               user,
             });
-            navigate("/");
+            navigate(redirectPath, { replace: true });
           }
         } catch (e) {
           // ignore polling errors
@@ -146,7 +148,7 @@ export default function Login() {
     } finally {
       setQrLoading(false);
     }
-  }, [navigate, cleanupQR]);
+  }, [cleanupQR, navigate, redirectPath]);
 
   useEffect(() => {
     if (activeTab === "qr") {

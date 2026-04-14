@@ -14,6 +14,11 @@ const ACTIVE_ACCEPTED_STATUSES = [
   "cho_xac_nhan_hoan_tat",
 ];
 
+const COMPLETION_CONFIRM_ACTIONS = new Set([
+  "xac_nhan_hoan_tat",
+  "hoan_tat_giao_dich",
+]);
+
 const BASE_SELECT = `
   SELECT
     gd.*,
@@ -50,12 +55,57 @@ const parseJsonValue = (value) => {
   }
 };
 
+const getCompletionConfirmationState = (transaction) => {
+  const history = parseJsonValue(transaction?.lich_su_json);
+  const sellerId = String(transaction?.ID_NguoiBan || "");
+  const buyerId = String(transaction?.ID_NguoiMua || "");
+  const confirmedByUserIds = [];
+  const notesByUserId = {};
+
+  history.forEach((entry) => {
+    if (!COMPLETION_CONFIRM_ACTIONS.has(entry?.hanh_dong)) return;
+    const actorId = String(entry?.nguoi_thuc_hien || "");
+    if (!actorId) return;
+
+    if (!confirmedByUserIds.includes(actorId)) {
+      confirmedByUserIds.push(actorId);
+    }
+
+    if (entry?.noi_dung && !notesByUserId[actorId]) {
+      notesByUserId[actorId] = entry.noi_dung;
+    }
+  });
+
+  if (transaction?.trang_thai === "hoan_tat") {
+    [sellerId, buyerId].filter(Boolean).forEach((userId) => {
+      if (!confirmedByUserIds.includes(userId)) {
+        confirmedByUserIds.push(userId);
+      }
+    });
+  }
+
+  return {
+    sellerConfirmed: Boolean(sellerId) && confirmedByUserIds.includes(sellerId),
+    buyerConfirmed: Boolean(buyerId) && confirmedByUserIds.includes(buyerId),
+    confirmedByUserIds,
+    pendingUserIds: [sellerId, buyerId].filter(Boolean).filter((userId) => !confirmedByUserIds.includes(userId)),
+    confirmationCount: confirmedByUserIds.length,
+    notesByUserId,
+  };
+};
+
 const normalizeTransaction = (row) => {
   if (!row) return null;
 
-  return {
+  const lichSu = parseJsonValue(row.lich_su_json);
+  const normalizedRow = {
     ...row,
-    lich_su_json: parseJsonValue(row.lich_su_json),
+    lich_su_json: lichSu,
+  };
+
+  return {
+    ...normalizedRow,
+    completion_confirmation: getCompletionConfirmationState(normalizedRow),
   };
 };
 
@@ -86,6 +136,8 @@ giaodichBaiDang.appendHistory = (currentHistory, newEntry) => {
   const history = parseJsonValue(currentHistory);
   return JSON.stringify([...history, newEntry]);
 };
+
+giaodichBaiDang.getCompletionConfirmationState = getCompletionConfirmationState;
 
 giaodichBaiDang.getById = async (id, connection = pool) => {
   const [rows] = await connection.query(

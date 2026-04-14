@@ -36,6 +36,47 @@ const createNotification = async ({
   }
 };
 
+const emitDealRealtimeUpdate = ({
+  io,
+  action,
+  transaction = null,
+  postId = null,
+  actorId = null,
+  userIds = [],
+  reason = null,
+}) => {
+  if (!io) return;
+
+  const sellerId = transaction?.ID_NguoiBan || null;
+  const buyerId = transaction?.ID_NguoiMua || null;
+  const uniqueUserIds = [...new Set([sellerId, buyerId, ...userIds].filter(Boolean).map(String))];
+
+  if (!uniqueUserIds.length) return;
+
+  const payload = {
+    action,
+    actorId,
+    postId: postId || transaction?.ID_BaiDang || null,
+    transactionId: transaction?.ID_GiaoDich || null,
+    status: transaction?.trang_thai || null,
+    sellerId,
+    buyerId,
+    reason,
+    happenedAt: new Date().toISOString(),
+  };
+
+  uniqueUserIds.forEach((userId) => {
+    io.to(`user_${userId}`).emit("deal_transaction_updated", payload);
+  });
+
+  if (sellerId && buyerId) {
+    io.to(`private_${[sellerId, buyerId].sort().join("_")}`).emit(
+      "deal_transaction_updated",
+      payload
+    );
+  }
+};
+
 const getCounterpartyId = (transaction, actorId) => {
   if (!transaction) return null;
   return transaction.ID_NguoiBan === actorId
@@ -48,6 +89,59 @@ const appendHistoryValue = (transaction, payload) =>
     transaction?.lich_su_json,
     giaodichBaiDang.buildHistoryEntry(payload)
   );
+
+const getCompletionConfirmationState = (transaction) =>
+  giaodichBaiDang.getCompletionConfirmationState(transaction);
+
+const syncPostStatusWithTransactions = async ({
+  connection,
+  postId,
+  preferredOpenStatus = null,
+}) => {
+  if (!connection || !postId) {
+    return null;
+  }
+
+  const post = await giaodichBaiDang.findPostById(postId, connection, {
+    forUpdate: true,
+  });
+
+  if (!post) {
+    return null;
+  }
+
+  if (FINAL_POST_STATUSES.has(post.trang_thai)) {
+    return post.trang_thai;
+  }
+
+  const activeAcceptedTransaction = await giaodichBaiDang.findAcceptedByPostId(
+    postId,
+    connection,
+    { forUpdate: true }
+  );
+
+  let nextStatus = "dang_ban";
+
+  if (activeAcceptedTransaction) {
+    if (preferredOpenStatus === "dang_giao_dich") {
+      nextStatus = "dang_giao_dich";
+    } else {
+      nextStatus =
+        activeAcceptedTransaction.trang_thai === "nguoi_ban_da_chap_nhan"
+          ? "dang_giu_cho"
+          : "dang_giao_dich";
+    }
+  }
+
+  if (post.trang_thai !== nextStatus) {
+    await connection.query(
+      "UPDATE baidang SET trang_thai = ?, thoi_gian_cap_nhat = NOW() WHERE ID_BaiDang = ?",
+      [nextStatus, postId]
+    );
+  }
+
+  return nextStatus;
+};
 
 const getCurrentTransactionForUpdate = async (transactionId, connection) => {
   const [rows] = await connection.query(
@@ -240,12 +334,34 @@ exports.createRequest = async (req, res) => {
       });
     }
 
+    const acceptedTransaction = await giaodichBaiDang.findAcceptedByPostId(
+      ID_BaiDang,
+      connection,
+      { forUpdate: true }
+    );
+
     if (post.trang_thai === "dang_giu_cho" || post.trang_thai === "dang_giao_dich") {
-      await connection.rollback();
-      return res.status(409).json({
-        success: false,
-        message: "Bai dang dang duoc giu cho hoac dang giao dich",
+      const syncedStatus = await syncPostStatusWithTransactions({
+        connection,
+        postId: ID_BaiDang,
       });
+      post.trang_thai = syncedStatus || post.trang_thai;
+
+      if (
+        acceptedTransaction &&
+        (syncedStatus === "dang_giu_cho" || syncedStatus === "dang_giao_dich")
+      ) {
+        await connection.rollback();
+        return res.status(409).json({
+          success: false,
+          message: "Bai dang dang duoc giu cho hoac dang giao dich",
+          data: {
+            transactionId: acceptedTransaction.ID_GiaoDich,
+            transactionStatus: acceptedTransaction.trang_thai,
+            buyerId: acceptedTransaction.ID_NguoiMua,
+          },
+        });
+      }
     }
 
     const buyer = await giaodichBaiDang.findUserById(ID_NguoiMua, connection);
@@ -272,12 +388,6 @@ exports.createRequest = async (req, res) => {
         data: existingOpenRequest,
       });
     }
-
-    const acceptedTransaction = await giaodichBaiDang.findAcceptedByPostId(
-      ID_BaiDang,
-      connection,
-      { forUpdate: true }
-    );
 
     if (acceptedTransaction) {
       await connection.rollback();
@@ -323,6 +433,13 @@ exports.createRequest = async (req, res) => {
       type: "yeu_cau_mua_hang",
       content: `${buyer.ho_ten} da gui yeu cau mua bai dang "${post.tieu_de}"`,
       link: `/messages?postId=${ID_BaiDang}&transactionId=${transactionId}`,
+    });
+
+    emitDealRealtimeUpdate({
+      io: req.io,
+      action: "request_created",
+      transaction: createdTransaction,
+      actorId: ID_NguoiMua,
     });
 
     res.status(201).json({
@@ -502,6 +619,14 @@ exports.accept = async (req, res) => {
       });
     }
 
+    emitDealRealtimeUpdate({
+      io: req.io,
+      action: "request_accepted",
+      transaction: updatedTransaction,
+      actorId,
+      userIds: cancelledBuyerIds,
+    });
+
     res.json({
       success: true,
       data: updatedTransaction,
@@ -584,6 +709,11 @@ exports.reject = async (req, res) => {
       connection
     );
 
+    await syncPostStatusWithTransactions({
+      connection,
+      postId: transaction.ID_BaiDang,
+    });
+
     await connection.commit();
 
     const updatedTransaction = await giaodichBaiDang.getById(transaction.ID_GiaoDich);
@@ -595,6 +725,14 @@ exports.reject = async (req, res) => {
       type: "cap_nhat_giao_dich",
       content: `Nguoi ban da tu choi yeu cau mua bai dang "${transaction.tieu_de}"`,
       link: `/messages?postId=${transaction.ID_BaiDang}&transactionId=${transaction.ID_GiaoDich}`,
+    });
+
+    emitDealRealtimeUpdate({
+      io: req.io,
+      action: "request_rejected",
+      transaction: updatedTransaction,
+      actorId,
+      reason: lyDo,
     });
 
     res.json({
@@ -694,14 +832,10 @@ exports.cancel = async (req, res) => {
       connection
     );
 
-    if (
-      giaodichBaiDang.ACTIVE_ACCEPTED_STATUSES.includes(transaction.trang_thai)
-    ) {
-      await connection.query(
-        "UPDATE baidang SET trang_thai = ? WHERE ID_BaiDang = ?",
-        ["dang_ban", transaction.ID_BaiDang]
-      );
-    }
+    await syncPostStatusWithTransactions({
+      connection,
+      postId: transaction.ID_BaiDang,
+    });
 
     await connection.commit();
 
@@ -715,6 +849,14 @@ exports.cancel = async (req, res) => {
       type: "cap_nhat_giao_dich",
       content: `${isBuyer ? "Nguoi mua" : "Nguoi ban"} da huy giao dich cua bai dang "${transaction.tieu_de}"`,
       link: `/messages?postId=${transaction.ID_BaiDang}&transactionId=${transaction.ID_GiaoDich}`,
+    });
+
+    emitDealRealtimeUpdate({
+      io: req.io,
+      action: "request_cancelled",
+      transaction: updatedTransaction,
+      actorId,
+      reason: cancelReason,
     });
 
     res.json({
@@ -748,10 +890,10 @@ exports.setMeeting = async (req, res) => {
     thoi_gian_hen_gap = null,
   } = req.body;
 
-  if (!actorId || !dia_chi_hen_gap) {
+  if (!actorId || !dia_chi_hen_gap || !thoi_gian_hen_gap) {
     return res.status(400).json({
       success: false,
-      message: "Thieu phien dang nhap hoac dia_chi_hen_gap",
+      message: "Thieu phien dang nhap, dia_chi_hen_gap hoac thoi_gian_hen_gap",
     });
   }
 
@@ -838,6 +980,13 @@ exports.setMeeting = async (req, res) => {
       link: `/messages?postId=${transaction.ID_BaiDang}&transactionId=${transaction.ID_GiaoDich}`,
     });
 
+    emitDealRealtimeUpdate({
+      io: req.io,
+      action: "meeting_updated",
+      transaction: updatedTransaction,
+      actorId,
+    });
+
     res.json({
       success: true,
       data: updatedTransaction,
@@ -908,108 +1057,97 @@ exports.requestComplete = async (req, res) => {
       });
     }
 
-    await giaodichBaiDang.update(
-      transaction.ID_GiaoDich,
-      {
-        trang_thai: "cho_xac_nhan_hoan_tat",
-        lich_su_json: appendHistoryValue(transaction, {
-          hanh_dong: "yeu_cau_hoan_tat",
-          nguoi_thuc_hien: actorId,
-          trang_thai: "cho_xac_nhan_hoan_tat",
-          noi_dung: note || "Da gui yeu cau hoan tat giao dich",
-        }),
-      },
-      connection
-    );
-
-    await connection.query(
-      "UPDATE baidang SET trang_thai = ? WHERE ID_BaiDang = ?",
-      ["dang_giao_dich", transaction.ID_BaiDang]
-    );
-
-    await connection.commit();
-
-    const updatedTransaction = await giaodichBaiDang.getById(transaction.ID_GiaoDich);
-    const receiverId = getCounterpartyId(transaction, actorId);
-
-    await createNotification({
-      io: req.io,
-      receiverId,
-      senderId: actorId,
-      type: "cap_nhat_giao_dich",
-      content: `Da co yeu cau hoan tat giao dich cho bai dang "${transaction.tieu_de}"`,
-      link: `/messages?postId=${transaction.ID_BaiDang}&transactionId=${transaction.ID_GiaoDich}`,
-    });
-
-    res.json({
-      success: true,
-      data: updatedTransaction,
-      message: "Gui yeu cau hoan tat thanh cong",
-    });
-  } catch (error) {
-    if (connection) {
-      await connection.rollback();
-    }
-
-    res.status(500).json({
-      success: false,
-      message: "Loi may chu",
-      error: error.message,
-    });
-  } finally {
-    if (connection) connection.release();
-  }
-};
-
-exports.complete = async (req, res) => {
-  const transactionId = req.params.id;
-  const actorId = getAuthenticatedUserId(req);
-  const { note = null } = req.body;
-
-  if (!actorId) {
-    return res.status(401).json({
-      success: false,
-      message: "Ban can dang nhap de hoan tat giao dich",
-    });
-  }
-
-  let connection;
-
-  try {
-    connection = await pool.getConnection();
-    await connection.beginTransaction();
-
-    const transaction = await getCurrentTransactionForUpdate(transactionId, connection);
-
-    if (!transaction) {
-      await connection.rollback();
-      return res.status(404).json({
-        success: false,
-        message: "Giao dich khong ton tai",
-      });
-    }
-
-    if (transaction.ID_NguoiBan !== actorId) {
-      await connection.rollback();
-      return res.status(403).json({
-        success: false,
-        message: "Chi nguoi ban moi co quyen xac nhan hoan tat",
-      });
-    }
-
-    if (
-      ![
-        "nguoi_ban_da_chap_nhan",
-        "cho_hen_gap",
-        "cho_xac_nhan_hoan_tat",
-      ].includes(transaction.trang_thai)
-    ) {
+    if (!transaction.dia_chi_hen_gap || !transaction.thoi_gian_hen_gap) {
       await connection.rollback();
       return res.status(409).json({
         success: false,
-        message: "Trang thai giao dich hien tai khong the hoan tat",
+        message:
+          "Can chot diem hen va thoi gian truoc khi xac nhan hoan tat giao dich",
       });
     }
+
+    const completionState = getCompletionConfirmationState(transaction);
+    if (completionState.confirmedByUserIds.includes(String(actorId))) {
+      await connection.rollback();
+      return res.status(409).json({
+        success: false,
+        message: "Ban da xac nhan hoan tat giao dich truoc do",
+      });
+    }
+
+    const receiverId = getCounterpartyId(transaction, actorId);
+    const actorRoleLabel =
+      String(transaction.ID_NguoiBan) === String(actorId)
+        ? "Nguoi ban"
+        : "Nguoi mua";
+    const historyAfterConfirmation = appendHistoryValue(transaction, {
+      hanh_dong: "xac_nhan_hoan_tat",
+      nguoi_thuc_hien: actorId,
+      trang_thai: "cho_xac_nhan_hoan_tat",
+      noi_dung: note || `${actorRoleLabel} da xac nhan hoan tat giao dich`,
+    });
+
+    const shouldComplete =
+      String(transaction.ID_NguoiBan || "")
+        && String(transaction.ID_NguoiMua || "")
+        && [transaction.ID_NguoiBan, transaction.ID_NguoiMua]
+          .map((userId) => String(userId))
+          .every((userId) =>
+            completionState.confirmedByUserIds.includes(userId) || userId === String(actorId)
+          );
+
+    if (!shouldComplete) {
+      await giaodichBaiDang.update(
+        transaction.ID_GiaoDich,
+        {
+          trang_thai: "cho_xac_nhan_hoan_tat",
+          lich_su_json: historyAfterConfirmation,
+        },
+        connection
+      );
+
+      await connection.query(
+        "UPDATE baidang SET trang_thai = ? WHERE ID_BaiDang = ?",
+        ["dang_giao_dich", transaction.ID_BaiDang]
+      );
+
+      await connection.commit();
+
+      const updatedTransaction = await giaodichBaiDang.getById(transaction.ID_GiaoDich);
+
+      await createNotification({
+        io: req.io,
+        receiverId,
+        senderId: actorId,
+        type: "cap_nhat_giao_dich",
+        content: `${actorRoleLabel} da xac nhan giao dich cua bai dang "${transaction.tieu_de}". Cho ban xac nhan de hoan tat.`,
+        link: `/messages?postId=${transaction.ID_BaiDang}&transactionId=${transaction.ID_GiaoDich}`,
+      });
+
+      emitDealRealtimeUpdate({
+        io: req.io,
+        action: "completion_confirmed",
+        transaction: updatedTransaction,
+        actorId,
+        reason: note,
+      });
+
+      return res.json({
+        success: true,
+        data: updatedTransaction,
+        message: "Da ghi nhan xac nhan cua ban. Dang cho ben con lai xac nhan.",
+      });
+    }
+
+    const completionHistory = giaodichBaiDang.appendHistory(
+      historyAfterConfirmation,
+      giaodichBaiDang.buildHistoryEntry({
+        hanh_dong: "hoan_tat_giao_dich",
+        nguoi_thuc_hien: actorId,
+        trang_thai: "hoan_tat",
+        noi_dung: note || "Ca hai ben da xac nhan hoan tat giao dich",
+      })
+    );
 
     await giaodichBaiDang.update(
       transaction.ID_GiaoDich,
@@ -1018,12 +1156,7 @@ exports.complete = async (req, res) => {
         ma_khoa_yeu_cau_mo: null,
         ma_khoa_baidang_active: null,
         thoi_gian_hoan_tat: new Date(),
-        lich_su_json: appendHistoryValue(transaction, {
-          hanh_dong: "hoan_tat_giao_dich",
-          nguoi_thuc_hien: actorId,
-          trang_thai: "hoan_tat",
-          noi_dung: note || "Nguoi ban da xac nhan hoan tat giao dich",
-        }),
+        lich_su_json: completionHistory,
       },
       connection
     );
@@ -1042,7 +1175,10 @@ exports.complete = async (req, res) => {
       }
     );
 
+    const cancelledBuyerIds = [];
+
     for (const pending of pendingTransactions) {
+      cancelledBuyerIds.push(pending.ID_NguoiMua);
       await giaodichBaiDang.update(
         pending.ID_GiaoDich,
         {
@@ -1068,17 +1204,26 @@ exports.complete = async (req, res) => {
 
     await createNotification({
       io: req.io,
-      receiverId: transaction.ID_NguoiMua,
+      receiverId,
       senderId: actorId,
       type: "cap_nhat_giao_dich",
-      content: `Nguoi ban da xac nhan hoan tat giao dich cua bai dang "${transaction.tieu_de}"`,
+      content: `Ca hai ben da xac nhan hoan tat giao dich cua bai dang "${transaction.tieu_de}"`,
       link: `/messages?postId=${transaction.ID_BaiDang}&transactionId=${transaction.ID_GiaoDich}`,
     });
 
-    res.json({
+    emitDealRealtimeUpdate({
+      io: req.io,
+      action: "deal_completed",
+      transaction: updatedTransaction,
+      actorId,
+      reason: note,
+      userIds: cancelledBuyerIds,
+    });
+
+    return res.json({
       success: true,
       data: updatedTransaction,
-      message: "Hoan tat giao dich thanh cong",
+      message: "Ca hai ben da xac nhan. Giao dich da hoan tat.",
     });
   } catch (error) {
     if (connection) {
@@ -1093,4 +1238,8 @@ exports.complete = async (req, res) => {
   } finally {
     if (connection) connection.release();
   }
+};
+
+exports.complete = async (req, res) => {
+  return exports.requestComplete(req, res);
 };

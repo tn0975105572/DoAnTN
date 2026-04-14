@@ -7,6 +7,11 @@ const getAuthenticatedUserId = (req) =>
   String(req.user?.id || req.user?.userId || "").trim();
 
 const isAdminRequest = (req) => req.user?.Role === "admin";
+const USER_RESTRICTED_STATUSES = new Set([
+  "dang_giu_cho",
+  "dang_giao_dich",
+  "da_ban",
+]);
 
 // Lấy tất cả bài đăng với thông tin liên quan
 exports.getAllWithDetails = async (req, res) => {
@@ -321,6 +326,19 @@ exports.update = async (req, res) => {
       ...req.body,
       ID_NguoiDung: existingPost.ID_NguoiDung,
     };
+
+    const requestedStatus = String(updatedData.trang_thai || "").trim();
+    if (
+      requestedStatus &&
+      !isAdminRequest(req) &&
+      USER_RESTRICTED_STATUSES.has(requestedStatus)
+    ) {
+      return res.status(409).json({
+        success: false,
+        message:
+          "Nguoi dung khong the tu dat trang thai nay. Trang thai giao dich va da ban phai duoc cap nhat tu dung luong nghiep vu.",
+      });
+    }
 
     // Convert datetime strings to MySQL format if they exist
     if (updatedData.thoi_gian_tao) {

@@ -168,6 +168,7 @@ export default function Settings() {
             clearAuthSession(['cart', 'preferences', 'session', 'notifications']);
             setCurrentUser(null);
             setIsVerified(false);
+            navigate('/login', { replace: true });
         }
     };
 

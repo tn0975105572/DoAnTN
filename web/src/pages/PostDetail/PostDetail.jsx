@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { API_BASE_URL } from '../../constants';
 import { useAuthSession } from '../../utils/authSession';
+import ProfileAvatarLink from '../../components/profile/ProfileAvatarLink';
 import './PostDetail.css';
 
 const DEFAULT_AVATAR = 'https://i.pravatar.cc/200?u=post-detail-user';
@@ -118,6 +119,7 @@ const normalizeStatusLabel = (status) => {
 
 const normalizeCommentPreview = (comment, backendOrigin) => ({
     id: comment?.ID_BinhLuan || '',
+    authorId: comment?.ID_NguoiDung || '',
     author: comment?.TenNguoiDung || 'Người dùng OLODO',
     avatar: normalizeAssetUrl(comment?.anh_dai_dien, backendOrigin) || `https://i.pravatar.cc/80?u=${encodeURIComponent(comment?.ID_NguoiDung || 'comment')}`,
     content: comment?.noi_dung || '',
@@ -604,7 +606,9 @@ export default function PostDetail() {
                                     <div className="pd-comment-list">
                                         {post.commentsPreview.map((comment) => (
                                             <div key={comment.id} className="pd-comment-item">
-                                                <img src={comment.avatar} alt={comment.author} />
+                                                <ProfileAvatarLink userId={comment.authorId}>
+                                                    <img src={comment.avatar} alt={comment.author} />
+                                                </ProfileAvatarLink>
                                                 <div>
                                                     <div className="pd-comment-head">
                                                         <strong>{comment.author}</strong>
@@ -643,7 +647,9 @@ export default function PostDetail() {
                         </div>
 
                         <div className="pd-seller-card">
-                            <img src={post.avatar} alt={post.author} />
+                            <ProfileAvatarLink userId={post.authorId}>
+                                <img src={post.avatar} alt={post.author} />
+                            </ProfileAvatarLink>
                             <div>
                                 <strong>{post.author}</strong>
                                 <span>Người đăng bài</span>

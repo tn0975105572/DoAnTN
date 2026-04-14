@@ -50,12 +50,18 @@ const BADGE_ICONS = {
 
 const MANAGE_STATUSES = [
     { value: 'dang_ban', label: 'Đang bán' },
-    { value: 'dang_giu_cho', label: 'Đang giữ chỗ' },
-    { value: 'dang_giao_dich', label: 'Đang giao dịch' },
-    { value: 'da_ban', label: 'Đã bán' },
     { value: 'da_trao_doi', label: 'Đã trao đổi' },
     { value: 'da_tang', label: 'Đã tặng' },
 ];
+
+const MANAGE_STATUS_LABELS = {
+    dang_ban: 'Đang bán',
+    dang_giu_cho: 'Đang giữ chỗ',
+    dang_giao_dich: 'Đang giao dịch',
+    da_ban: 'Đã bán',
+    da_trao_doi: 'Đã trao đổi',
+    da_tang: 'Đã tặng',
+};
 
 const getBackendOrigin = () => {
     try {
@@ -572,6 +578,21 @@ export default function Profile() {
         { key: 'activity', label: 'Hoạt động' },
         ...(isOwner ? [{ key: 'manage', label: 'Quản lý' }] : []),
     ];
+
+    const getManageStatusOptions = useCallback((currentStatus) => {
+        const normalized = String(currentStatus || '').trim();
+        if (!normalized || MANAGE_STATUSES.some((option) => option.value === normalized)) {
+            return MANAGE_STATUSES;
+        }
+
+        return [
+            {
+                value: normalized,
+                label: MANAGE_STATUS_LABELS[normalized] || normalized,
+            },
+            ...MANAGE_STATUSES,
+        ];
+    }, []);
 
     if (loading) {
         return (
@@ -1392,7 +1413,7 @@ export default function Profile() {
                                                             onChange={(event) => handleListingStatusChange(listing.id, event.target.value)}
                                                             disabled={listingBusyId === String(listing.id)}
                                                         >
-                                                            {MANAGE_STATUSES.map((option) => (
+                                                            {getManageStatusOptions(listing.status).map((option) => (
                                                                 <option key={option.value} value={option.value}>
                                                                     {option.label}
                                                                 </option>

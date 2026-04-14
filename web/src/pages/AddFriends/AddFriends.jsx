@@ -6,6 +6,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { API_BASE_URL } from '../../constants';
 import { useAuthSession } from '../../utils/authSession';
+import ProfileAvatarLink from '../../components/profile/ProfileAvatarLink';
 import './AddFriends.css';
 
 /* ════════ COVER IMAGES ════════ */
@@ -51,7 +52,7 @@ function TabBar({ activeTab, onTabChange, requestCount, sentCount, friendsCount,
 }
 
 /* ── Suggestion Card (Grid) ── */
-function SuggestionCard({ user, coverIndex, onAdd }) {
+function SuggestionCard({ user, coverIndex, onAdd, onViewProfile }) {
     let actionBtn;
     if (user.status === 'sent') {
         actionBtn = (
@@ -77,9 +78,11 @@ function SuggestionCard({ user, coverIndex, onAdd }) {
         <div className="af-suggestion-card">
             <div className="af-card-cover">
                 <img src={COVERS[coverIndex % COVERS.length]} alt="" />
-                <div className="af-card-avatar-wrap">
-                    <img className="af-card-avatar" src={user.avatar} alt={user.name} />
-                </div>
+                <ProfileAvatarLink userId={user.id}>
+                    <div className="af-card-avatar-wrap">
+                        <img className="af-card-avatar" src={user.avatar} alt={user.name} />
+                    </div>
+                </ProfileAvatarLink>
             </div>
             <div className="af-card-body">
                 <div className="af-card-name">{user.name}</div>
@@ -98,10 +101,12 @@ function SuggestionCard({ user, coverIndex, onAdd }) {
 }
 
 /* ── Request Card (List) ── */
-function RequestCard({ user, onAccept, onDecline }) {
+function RequestCard({ user, onAccept, onDecline, onViewProfile }) {
     return (
         <div className="af-user-card">
-            <img className="af-list-avatar" src={user.avatar} alt={user.name} />
+            <ProfileAvatarLink userId={user.id}>
+                <img className="af-list-avatar" src={user.avatar} alt={user.name} />
+            </ProfileAvatarLink>
             <div className="af-user-info">
                 <div className="af-user-name">{user.name}</div>
                 <div className="af-user-subtitle">Lời mời kết bạn</div>
@@ -121,10 +126,12 @@ function RequestCard({ user, onAccept, onDecline }) {
 }
 
 /* ── Sent Card (List) ── */
-function SentCard({ user, onCancel }) {
+function SentCard({ user, onCancel, onViewProfile }) {
     return (
         <div className="af-user-card">
-            <img className="af-list-avatar" src={user.avatar} alt={user.name} />
+            <ProfileAvatarLink userId={user.id}>
+                <img className="af-list-avatar" src={user.avatar} alt={user.name} />
+            </ProfileAvatarLink>
             <div className="af-user-info">
                 <div className="af-user-name">{user.name}</div>
                 <div className="af-user-subtitle">Đã gửi lời mời</div>

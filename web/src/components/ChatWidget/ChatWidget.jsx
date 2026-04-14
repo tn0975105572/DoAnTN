@@ -6,6 +6,7 @@ import {
 import io from 'socket.io-client';
 import { API_BASE_URL } from '../../constants';
 import { useAuthSession } from '../../utils/authSession';
+import ProfileAvatarLink from '../profile/ProfileAvatarLink';
 import './ChatWidget.css';
 
 const avatarFallback = (seed) => `https://i.pravatar.cc/150?u=${encodeURIComponent(seed || 'user')}`;
@@ -103,7 +104,9 @@ function ChatListView({
                 ) : (
                     filtered.map(conv => (
                         <button key={conv.id} className="cw-chat-item" onClick={() => onSelectChat(conv)}>
-                            <img className="cw-chat-avatar" src={conv.avatar} alt={conv.name} />
+                            <ProfileAvatarLink userId={conv.type === 'private' ? conv.id : null}>
+                                <img className="cw-chat-avatar" src={conv.avatar} alt={conv.name} />
+                            </ProfileAvatarLink>
                             <div className="cw-chat-info">
                                 <div className="cw-chat-name">{conv.name}</div>
                                 <div className="cw-chat-last">{conv.lastMsg || 'Chưa có tin nhắn'}</div>
@@ -141,7 +144,9 @@ function ChatDetailView({
         <>
             <div className="cd-header">
                 <button className="cd-back-btn" onClick={onBack}><ArrowLeft size={18} /></button>
-                <img className="cd-header-avatar" src={chat.avatar} alt={chat.name} />
+                <ProfileAvatarLink userId={chat.type === 'private' ? chat.id : null}>
+                    <img className="cd-header-avatar" src={chat.avatar} alt={chat.name} />
+                </ProfileAvatarLink>
                 <div className="cd-header-info">
                     <div className="cd-header-name">{chat.name}</div>
                     <div className="cd-header-status">{chat.online ? 'Online' : 'Offline'}</div>

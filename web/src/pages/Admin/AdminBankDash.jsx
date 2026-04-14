@@ -42,9 +42,6 @@ const DEFAULT_AVATAR = 'https://i.pravatar.cc/200?u=admin-user';
 
 const MANAGE_STATUSES = [
     { value: 'dang_ban', label: 'Đang bán' },
-    { value: 'dang_giu_cho', label: 'Đang giữ chỗ' },
-    { value: 'dang_giao_dich', label: 'Đang giao dịch' },
-    { value: 'da_ban', label: 'Đã bán' },
     { value: 'da_trao_doi', label: 'Đã trao đổi' },
     { value: 'da_tang', label: 'Đã tặng' },
 ];

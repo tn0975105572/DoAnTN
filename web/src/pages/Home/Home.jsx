@@ -1,6 +1,7 @@
 'use no memo';
 import { createElement, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import io from 'socket.io-client';
 import {
     Home as HomeIcon, Map as MapIcon, UserPlus, MessageCircle, Bell, Settings,
     Search, Heart, MessageSquare, Share2, Send, MoreHorizontal,
@@ -12,6 +13,7 @@ import {
 import './Home.css';
 import PostMediaGallery from '../../components/post/PostMediaGallery';
 import { useAuthSession } from '../../utils/authSession';
+import ProfileAvatarLink from '../../components/profile/ProfileAvatarLink';
 
 const API_BASE = 'http://localhost:3000';
 const API_URLS = {
@@ -636,7 +638,9 @@ function LikeTooltip({ postId, show, token }) {
                     <div className="like-tooltip-list">
                         {likers.map((liker) => (
                             <div key={liker.id} className="like-tooltip-item">
-                                <img src={liker.avatar} alt={liker.name} className="like-tooltip-avatar" />
+                                <ProfileAvatarLink userId={liker.id} className="like-tooltip-avatar-link">
+                                    <img src={liker.avatar} alt={liker.name} className="like-tooltip-avatar" />
+                                </ProfileAvatarLink>
                                 <div className="like-tooltip-info">
                                     <span className="like-tooltip-name">{liker.name}</span>
                                     {liker.time && <span className="like-tooltip-time">{formatTime(liker.time)}</span>}
@@ -717,10 +721,12 @@ function PostCard({ post, onCommentClick, onShareClick, onMessageClick, onLike, 
             {/* Header */}
             <div className="post-header">
                 <div className="post-author-wrap">
-                    <div className="post-avatar-wrap">
-                        <img src={post.avatar} alt={post.author} className="post-avatar" />
-                        {post.verified && <span className="verified-badge">✓</span>}
-                    </div>
+                    <ProfileAvatarLink userId={post.authorId} className="post-avatar-nav">
+                        <div className="post-avatar-wrap">
+                            <img src={post.avatar} alt={post.author} className="post-avatar" />
+                            {post.verified && <span className="verified-badge">✓</span>}
+                        </div>
+                    </ProfileAvatarLink>
                     <div className="post-meta">
                         <div className="post-author-row">
                             <span className="post-author">{post.author}</span>
@@ -1369,12 +1375,8 @@ export default function Home() {
     }, [authUser]);
 
     // ── Badge counts & user info ──
-    useEffect(() => {
-        if (!isAuthenticated) {
-            setBadgeCounts({ friends: 0, messages: 0, notifications: 0 });
-            setCurrentUser({ name: 'Khách', avatar: DEFAULT_AVATAR });
-            return;
-        }
+    const fetchBadgesAndUser = useCallback(async () => {
+        if (!isAuthenticated) return;
 
         const headers = { Authorization: `Bearer ${token}` };
         const buildAvatar = (raw) => normalizeUrl(
@@ -1383,54 +1385,100 @@ export default function Home() {
                 : DEFAULT_AVATAR
         );
 
-        const fetchBadgesAndUser = async () => {
-            try {
-                const [notiRes, msgRes, friendRes, userRes] = await Promise.all([
-                    fetch(`${API_URLS.UNREAD_NOTIFICATIONS}${userId}`, { headers }),
-                    fetch(`${API_URLS.UNREAD_MESSAGES}${userId}`, { headers }),
-                    fetch(`${API_URLS.PENDING_FRIEND_REQUESTS}${userId}`, { headers }),
-                    fetch(`${API_URLS.GET_USER_INFO}${userId}`, { headers }),
-                ]);
+        try {
+            const [notiRes, msgRes, friendRes, userRes] = await Promise.all([
+                fetch(`${API_URLS.UNREAD_NOTIFICATIONS}${userId}`, { headers }),
+                fetch(`${API_URLS.UNREAD_MESSAGES}${userId}`, { headers }),
+                fetch(`${API_URLS.PENDING_FRIEND_REQUESTS}${userId}`, { headers }),
+                fetch(`${API_URLS.GET_USER_INFO}${userId}`, { headers }),
+            ]);
 
-                let notifications = 0;
-                if (notiRes.ok) {
-                    const data = await notiRes.json();
-                    notifications = data?.unread_count ?? data?.data?.unread_count ?? 0;
-                }
-
-                let messages = 0;
-                if (msgRes.ok) {
-                    const data = await msgRes.json();
-                    const payload = data?.data ?? data;
-                    messages = payload?.total_unread ?? payload?.totalUnread ?? 0;
-                }
-
-                let friends = 0;
-                if (friendRes.ok) {
-                    const data = await friendRes.json();
-                    friends = data?.count ?? (Array.isArray(data?.data) ? data.data.length : 0);
-                }
-
-                if (userRes.ok) {
-                    const data = await userRes.json();
-                    const u = data?.user || {};
-                    setCurrentUser({
-                        name: u.ho_ten || 'Bạn',
-                        avatar: buildAvatar(u.anh_dai_dien),
-                    });
-                } else {
-                    setCurrentUser({ name: 'Bạn', avatar: DEFAULT_AVATAR });
-                }
-
-                setBadgeCounts({ friends, messages, notifications });
-            } catch (err) {
-                console.error('Badge/user fetch failed', err);
-                setBadgeCounts({ friends: 0, messages: 0, notifications: 0 });
+            let notifications = 0;
+            if (notiRes.ok) {
+                const data = await notiRes.json();
+                notifications = data?.unread_count ?? data?.data?.unread_count ?? 0;
             }
-        };
+
+            let messages = 0;
+            if (msgRes.ok) {
+                const data = await msgRes.json();
+                const payload = data?.data ?? data;
+                messages = payload?.total_unread ?? payload?.totalUnread ?? 0;
+            }
+
+            let friends = 0;
+            if (friendRes.ok) {
+                const data = await friendRes.json();
+                friends = data?.count ?? (Array.isArray(data?.data) ? data.data.length : 0);
+            }
+
+            if (userRes.ok) {
+                const data = await userRes.json();
+                const u = data?.user || {};
+                setCurrentUser({
+                    name: u.ho_ten || 'Bạn',
+                    avatar: buildAvatar(u.anh_dai_dien),
+                });
+            } else {
+                setCurrentUser({ name: 'Bạn', avatar: DEFAULT_AVATAR });
+            }
+
+            setBadgeCounts({ friends, messages, notifications });
+        } catch (err) {
+            console.error('Badge/user fetch failed', err);
+            setBadgeCounts({ friends: 0, messages: 0, notifications: 0 });
+        }
+    }, [isAuthenticated, token, userId]);
+
+    useEffect(() => {
+        if (!isAuthenticated) {
+            setBadgeCounts({ friends: 0, messages: 0, notifications: 0 });
+            setCurrentUser({ name: 'Khách', avatar: DEFAULT_AVATAR });
+            return;
+        }
 
         fetchBadgesAndUser();
-    }, [isAuthenticated, token, userId]);
+    }, [fetchBadgesAndUser, isAuthenticated]);
+
+    useEffect(() => {
+        if (!isAuthenticated || !token || !userId) return undefined;
+
+        const socket = io(API_BASE, {
+            transports: ['websocket'],
+            auth: { token },
+        });
+
+        socket.on('connect', () => {
+            socket.emit('user_login', { userId });
+        });
+
+        socket.on('notification', (payload) => {
+            setBadgeCounts((prev) => ({
+                ...prev,
+                notifications: Number.isFinite(Number(payload?.unreadCount))
+                    ? Number(payload.unreadCount)
+                    : prev.notifications + 1,
+            }));
+        });
+
+        socket.on('new_message', (payload) => {
+            const senderId = payload?.message?.ID_NguoiGui;
+            if (!senderId || String(senderId) === String(userId)) return;
+
+            setBadgeCounts((prev) => ({
+                ...prev,
+                messages: prev.messages + 1,
+            }));
+        });
+
+        socket.on('relationship_updated', () => {
+            fetchBadgesAndUser();
+        });
+
+        return () => {
+            socket.disconnect();
+        };
+    }, [fetchBadgesAndUser, isAuthenticated, token, userId]);
 
     const navBadges = {
         messages: badgeCounts.messages,
@@ -1638,7 +1686,9 @@ export default function Home() {
                 {/* Create Post */}
                 <div className="create-post">
                     <div className="create-top">
-                        <img src={currentUser.avatar} alt="You" className="create-avatar" />
+                        <ProfileAvatarLink userId={userId} className="create-avatar-nav" stopPropagation={false}>
+                            <img src={currentUser.avatar} alt="You" className="create-avatar" />
+                        </ProfileAvatarLink>
                         <div className="create-fake-input">
                             <span>Bạn muốn bán gì hôm nay? 🛒</span>
                         </div>
@@ -1751,10 +1801,12 @@ export default function Home() {
                                         <div className="people-row-horizontal" ref={inlineRailRef}>
                                             {inlineSuggestions.map(person => (
                                                 <div key={person.id} className="person-card-small">
-                                                    <div className="person-avatar-wrap">
-                                                        <img src={person.avatar} alt={person.name} className="person-avatar" />
-                                                        {person.verified && <span className="person-verified">✓</span>}
-                                                    </div>
+                                                    <ProfileAvatarLink userId={person.id} className="person-avatar-nav">
+                                                        <div className="person-avatar-wrap">
+                                                            <img src={person.avatar} alt={person.name} className="person-avatar" />
+                                                            {person.verified && <span className="person-verified">✓</span>}
+                                                        </div>
+                                                    </ProfileAvatarLink>
                                                     <span className="person-name">{person.name}</span>
                                                     <span className="person-mutual">{person.mutual} bạn chung</span>
                                                     <button
@@ -1825,13 +1877,18 @@ export default function Home() {
             <aside className="sidebar-right">
 
                 {/* User Mini Card */}
-                <div className="user-mini-card">
+                <button
+                    type="button"
+                    className="user-mini-card"
+                    onClick={() => navigate('/profile')}
+                    aria-label="Mở trang cá nhân"
+                >
                     <img src={currentUser.avatar} alt="You" className="user-mini-avatar" />
                     <div className="user-mini-info">
                         <span className="user-mini-name">{currentUser.name || 'Bạn'}</span>
                         <span className="user-mini-sub">Xem hồ sơ →</span>
                     </div>
-                </div>
+                </button>
 
                 {/* People You May Know */}
                 <div className="widget">
@@ -1842,10 +1899,12 @@ export default function Home() {
                     <div className="people-list">
                         {sidebarSuggestions.map(p => (
                             <div key={p.id} className="person-row">
-                                <div className="person-avatar-wrap">
-                                    <img src={p.avatar} alt={p.name} className="person-avatar" />
-                                    {p.verified && <span className="person-verified">✓</span>}
-                                </div>
+                                <ProfileAvatarLink userId={p.id} className="person-avatar-nav">
+                                    <div className="person-avatar-wrap">
+                                        <img src={p.avatar} alt={p.name} className="person-avatar" />
+                                        {p.verified && <span className="person-verified">✓</span>}
+                                    </div>
+                                </ProfileAvatarLink>
                                 <div className="person-info">
                                     <span className="person-name">{p.name}</span>
                                     <span className="person-mutual">

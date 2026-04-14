@@ -313,21 +313,16 @@ class ChatSocket {
         // Gửi notification cho thành viên không online
         await this.notifyGroupMembers(ID_GroupChat, authenticatedUserId, message);
       } else {
-        // Private chat - sử dụng room name đã được sort
-        const roomName = `private_${[authenticatedUserId, ID_NguoiNhan].sort().join('_')}`;
-        this.io.to(roomName).emit('new_message', {
+        // Private chat - emit vào room của từng user để tin nhắn đầu tiên vẫn realtime
+        const privatePayload = {
           type: 'private',
           message,
           receiverId: ID_NguoiNhan,
           senderId: authenticatedUserId
-        });
+        };
 
-        // Gửi notification cho người nhận
-        await this.notifyUser(ID_NguoiNhan, {
-          type: 'new_message',
-          message,
-          senderId: authenticatedUserId
-        });
+        this.io.to(`user_${authenticatedUserId}`).emit('new_message', privatePayload);
+        this.io.to(`user_${ID_NguoiNhan}`).emit('new_message', privatePayload);
       }
 
       // Xác nhận gửi thành công
@@ -517,7 +512,7 @@ class ChatSocket {
     try {
       const socketId = this.userSockets.get(userId);
       if (socketId) {
-        this.io.to(socketId).emit('notification', notification);
+        this.io.to(socketId).emit('user_notification', notification);
       }
     } catch (error) {
       console.error('Error in notifyUser:', error);

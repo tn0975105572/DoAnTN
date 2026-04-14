@@ -1,5 +1,5 @@
 import { Suspense, lazy } from 'react';
-import { createBrowserRouter } from 'react-router-dom';
+import { Navigate, createBrowserRouter, useLocation } from 'react-router-dom';
 import Layout from '../components/layout/Layout';
 import Home from '../pages/Home/Home';
 import MapPage from '../pages/Map/Map';
@@ -16,21 +16,55 @@ import PostComments from '../pages/PostComments/PostComments';
 import Profile from '../pages/Profile/Profile';
 import CreatePost from '../pages/CreatePost/CreatePost';
 import PostDetail from '../pages/PostDetail/PostDetail';
+import { useAuthSession } from '../utils/authSession';
 
 const AdminBankDash = lazy(() => import('../pages/Admin/AdminBankDash'));
+
+function RequireAuth({ children }) {
+    const location = useLocation();
+    const { token, userId } = useAuthSession();
+
+    if (!token || !userId) {
+        return <Navigate to="/login" replace state={{ from: location }} />;
+    }
+
+    return children;
+}
+
+function RedirectIfAuthenticated({ children }) {
+    const { token, userId } = useAuthSession();
+
+    if (token && userId) {
+        return <Navigate to="/" replace />;
+    }
+
+    return children;
+}
 
 const router = createBrowserRouter([
     {
         path: '/login',
-        element: <Login />,
+        element: (
+            <RedirectIfAuthenticated>
+                <Login />
+            </RedirectIfAuthenticated>
+        ),
     },
     {
         path: '/register',
-        element: <Register />,
+        element: (
+            <RedirectIfAuthenticated>
+                <Register />
+            </RedirectIfAuthenticated>
+        ),
     },
     {
         path: '/',
-        element: <Layout />,
+        element: (
+            <RequireAuth>
+                <Layout />
+            </RequireAuth>
+        ),
         children: [
             {
                 index: true,
