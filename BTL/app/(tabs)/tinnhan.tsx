@@ -17,6 +17,7 @@ import { router, useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { chatService } from '../../services/chatService';
 import SearchUsers from '../components/TinNhan/timkiem';
+import { normalizeBackendMediaUrl } from '../../utils/mediaUrl';
 
 // Lấy User ID từ AsyncStorage
 const getUserId = async (): Promise<string> => {
@@ -66,7 +67,7 @@ const ChatItem = ({ item, onPress, onLongPress }: ChatItemProps) => (
       activeOpacity={0.8}
     >
       <Image
-        source={{ uri: item.conversation_avatar || 'https://i.pravatar.cc/150?img=1' }}
+        source={{ uri: normalizeBackendMediaUrl(item.conversation_avatar) || 'https://i.pravatar.cc/150?img=1' }}
         style={styles.avatar}
       />
     </TouchableOpacity>
@@ -159,23 +160,16 @@ const ChatListScreen = () => {
 
       const response = await chatService.getConversations(userId);
 
-      if (response.success && response.data && response.data.length > 0) {
-        setChatsData(response.data);
-      } else {
-        setChatsData([]);
-      }
-    } catch {
-      setChatsData([
-        {
-          conversation_id: 'demo-1',
-          conversation_type: 'private',
-          conversation_name: 'Bà Lâm Dương',
-          conversation_avatar: 'https://i.pravatar.cc/150?img=11',
-          last_message: 'Xin chào, bạn khỏe không?',
-          last_message_time: '2025-01-07T07:24:32.000Z',
-          unread_count: 1,
-        },
-      ]);
+      const rows = Array.isArray(response?.data)
+        ? response.data
+        : Array.isArray(response)
+          ? response
+          : [];
+
+      setChatsData(rows);
+    } catch (error) {
+      console.error('❌ Load conversations failed:', error);
+      setChatsData([]);
     } finally {
       setLoading(false);
     }

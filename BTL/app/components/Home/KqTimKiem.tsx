@@ -5,6 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import { Ionicons } from '@expo/vector-icons';
 import FeedPost, { HydratedPost } from '../FeedPost';
+import { normalizeBackendMediaUrl } from '../../../utils/mediaUrl';
 
 const API_BASE_URL = Constants.expoConfig?.extra?.apiUrl as string;
 const API_URLS = {
@@ -100,13 +101,9 @@ export default function KetQuaTimKiemScreen() {
             );
             const postImages = imageResponse.ok ? await imageResponse.json() : [];
             
-            const uploadBaseUrl = API_BASE_URL.replace('/api', '');
             const limitedImageUrls = postImages.slice(0, 5).map((img: any) => {
               const linkAnh = img.LinkAnh;
-              if (linkAnh.startsWith('http://') || linkAnh.startsWith('https://')) {
-                return linkAnh;
-              }
-              return `${uploadBaseUrl}/uploads/${linkAnh}`;
+              return normalizeBackendMediaUrl(linkAnh);
             });
 
  
@@ -132,7 +129,7 @@ export default function KetQuaTimKiemScreen() {
               ID_BaiDang: postDetail.ID_BaiDang,
               ID_NguoiDung: postDetail.ID_NguoiDung,
               authorName: authorProfile.ho_ten || 'Người dùng OLODO',
-              authorAvatar: authorProfile.anh_dai_dien || 'https://i.pravatar.cc/50',
+              authorAvatar: normalizeBackendMediaUrl(authorProfile.anh_dai_dien) || 'https://i.pravatar.cc/50',
               title: postDetail.tieu_de,
               description: postDetail.mo_ta || '',
               price: formattedPrice,

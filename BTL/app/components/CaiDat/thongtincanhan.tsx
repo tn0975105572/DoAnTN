@@ -17,6 +17,7 @@ import { router, useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import Constants from 'expo-constants';
+import { normalizeBackendMediaUrl } from '../../../utils/mediaUrl';
 
 const API_BASE_URL = Constants.expoConfig!.extra!.apiUrl as string;
 
@@ -61,7 +62,7 @@ export default function ThongTinCaNhanScreen() {
               setHoTen(userData.ho_ten || '');
               setTruongHoc(userData.truong_hoc || '');
               setViTri(userData.vi_tri || '');
-              setAvatar(userData.anh_dai_dien || null);
+              setAvatar(normalizeBackendMediaUrl(userData.anh_dai_dien) || null);
             }
           }
         } catch (error) {
@@ -190,7 +191,7 @@ export default function ThongTinCaNhanScreen() {
         setHoTen(updatedUserObject.ho_ten || '');
         setTruongHoc(updatedUserObject.truong_hoc || '');
         setViTri(updatedUserObject.vi_tri || '');
-        setAvatar(updatedUserObject.anh_dai_dien || null);
+        setAvatar(normalizeBackendMediaUrl(updatedUserObject.anh_dai_dien) || null);
         setAvatarFile(null);
       } else {
         Alert.alert('Cập nhật thất bại', responseData.message || 'Đã có lỗi xảy ra.');

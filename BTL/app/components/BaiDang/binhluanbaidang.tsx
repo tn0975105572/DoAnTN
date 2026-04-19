@@ -17,6 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, router } from 'expo-router';
 import Constants from 'expo-constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { normalizeBackendMediaUrl } from '../../../utils/mediaUrl';
 
 // --- API Config ---
 const API_BASE_URL = Constants.expoConfig?.extra?.apiUrl;
@@ -64,7 +65,7 @@ const CommentItem = ({
           activeOpacity={0.8}
         >
           <Image
-            source={{ uri: user.anh_dai_dien || 'https://i.pravatar.cc/50' }}
+            source={{ uri: normalizeBackendMediaUrl(user.anh_dai_dien) || 'https://i.pravatar.cc/50' }}
             style={styles.avatar}
           />
         </TouchableOpacity>

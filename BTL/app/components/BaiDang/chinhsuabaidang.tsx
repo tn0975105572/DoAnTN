@@ -17,6 +17,7 @@ import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import Toast from 'react-native-toast-message';
+import { normalizeBackendMediaUrl } from '../../../utils/mediaUrl';
 
 const API_BASE_URL = Constants.expoConfig?.extra?.apiUrl as string;
 
@@ -103,10 +104,7 @@ const ChinhSuaBaiDangScreen: React.FC = () => {
               // Replace temp data with real data
               const realImages = realImageData.map((img: any) => {
                 let linkAnh = img.LinkAnh;
-                if (!linkAnh.startsWith('http://') && !linkAnh.startsWith('https://')) {
-                  const baseUrl = API_BASE_URL.replace('/api', '');
-                  linkAnh = `${baseUrl}/uploads/${linkAnh}`;
-                }
+                linkAnh = normalizeBackendMediaUrl(linkAnh);
                 return {
                   ID: img.ID,
                   ID_BaiDang: img.ID_BaiDang,
@@ -156,10 +154,7 @@ const ChinhSuaBaiDangScreen: React.FC = () => {
         const imageData = await imageResponse.json();
         images = imageData.map((img: any) => {
           let linkAnh = img.LinkAnh;
-          if (!linkAnh.startsWith('http://') && !linkAnh.startsWith('https://')) {
-            const baseUrl = API_BASE_URL.replace('/api', '');
-            linkAnh = `${baseUrl}/uploads/${linkAnh}`;
-          }
+          linkAnh = normalizeBackendMediaUrl(linkAnh);
           const imageObj = {
             ID: img.ID,
             ID_BaiDang: img.ID_BaiDang,

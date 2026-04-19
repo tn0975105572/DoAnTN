@@ -15,6 +15,7 @@ import { Ionicons, FontAwesome } from '@expo/vector-icons';
 import { useLocalSearchParams, Stack, Link, router } from 'expo-router';
 import Constants from 'expo-constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { normalizeBackendMediaUrl } from '../../../utils/mediaUrl';
 
 const API_BASE_URL = Constants.expoConfig?.extra?.apiUrl as string;
 
@@ -40,7 +41,7 @@ const FriendListItem = ({ user }: { user: Friend }) => (
   >
     <TouchableOpacity style={styles.userCard}>
       {user.anh_dai_dien ? (
-        <Image style={styles.avatar} source={{ uri: user.anh_dai_dien }} />
+        <Image style={styles.avatar} source={{ uri: normalizeBackendMediaUrl(user.anh_dai_dien) }} />
       ) : (
         <View style={[styles.avatar, styles.avatarPlaceholder]}>
           <FontAwesome name="user" size={24} color="#ccc" />

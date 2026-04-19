@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import Constants from 'expo-constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { normalizeBackendMediaUrl } from '../../../utils/mediaUrl';
 
 const API_BASE_URL = Constants.expoConfig?.extra?.apiUrl as string;
 
@@ -223,7 +224,9 @@ const SearchUsers: React.FC<SearchUsersProps> = ({ onClose }) => {
           <Image
             style={styles.avatar}
             source={{
-              uri: item.anh_dai_dien || `https://i.pravatar.cc/150?u=${item.ID_NguoiDung}`,
+              uri:
+                normalizeBackendMediaUrl(item.anh_dai_dien) ||
+                `https://i.pravatar.cc/150?u=${item.ID_NguoiDung}`,
             }}
           />
           {isFriend && (

@@ -43,6 +43,11 @@ class ChatSocket {
         this.handleMarkRead(socket, data);
       });
 
+      // Mở deal room theo bài đăng đang được chia sẻ trong chat
+      socket.on('open_deal_room', (data) => {
+        this.handleOpenDealRoom(socket, data);
+      });
+
       // Typing indicator
       socket.on('typing_start', (data) => {
         this.handleTypingStart(socket, data);
@@ -372,6 +377,33 @@ class ChatSocket {
     } catch (error) {
       console.error('Error in handleMarkRead:', error);
       socket.emit('error', { message: 'Lỗi đánh dấu đã đọc' });
+    }
+  }
+
+  handleOpenDealRoom(socket, data) {
+    try {
+      const userId = socket.userId;
+      const { chatType = 'private', chatId, postId } = data || {};
+
+      if (!userId || chatType !== 'private' || !chatId || !postId) {
+        socket.emit('error', { message: 'Thiếu thông tin để mở deal room' });
+        return;
+      }
+
+      const receiverId = String(chatId);
+      const payload = {
+        postId: String(postId),
+        actorId: String(userId),
+        senderId: String(userId),
+        receiverId,
+        happenedAt: new Date().toISOString(),
+      };
+
+      this.io.to(`user_${userId}`).emit('deal_room_opened', payload);
+      this.io.to(`user_${receiverId}`).emit('deal_room_opened', payload);
+    } catch (error) {
+      console.error('Error in handleOpenDealRoom:', error);
+      socket.emit('error', { message: 'Lỗi mở deal room' });
     }
   }
 

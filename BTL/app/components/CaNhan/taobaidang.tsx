@@ -50,7 +50,7 @@ interface PostData {
 }
 
 const CreatePostScreen: React.FC = () => {
-  const baseUrl = Constants.expoConfig?.extra?.apiUrl || 'http://192.168.0.108:3000';
+  const baseUrl = Constants.expoConfig?.extra?.apiUrl || 'http://localhost:3000';
   const API_BASE_URL = baseUrl.endsWith('/api') ? baseUrl : `${baseUrl}/api`;
 
   const [currentStep, setCurrentStep] = useState<number>(1);

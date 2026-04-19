@@ -21,6 +21,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import Toast from 'react-native-toast-message';
 import { io } from 'socket.io-client';
+import { normalizeBackendMediaUrl } from '../../utils/mediaUrl';
+import FeedPost, { HydratedPost } from '../components/FeedPost';
+import Chatbot from '../components/Home/Chatbot';
 
 const API_BASE_URL = Constants.expoConfig?.extra?.apiUrl as string;
 const API_URLS = {
@@ -90,9 +93,6 @@ interface PeopleYouMayKnow {
 type FeedItem = HydratedPost | PeopleYouMayKnow;
 
 const MOCK_PEOPLE_YOU_MAY_KNOW: FeedItem = { type: 'people_you_may_know' };
-
-import FeedPost, { HydratedPost } from '../components/FeedPost';
-import Chatbot from '../components/Home/Chatbot';
 
 const AppHeader = () => {
   const navigation = useNavigation<any>();
@@ -652,7 +652,7 @@ const HomeScreen = () => {
           const userProfile: UserProfile = {
             ID_NguoiDung: user.ID_NguoiDung || id,
             ho_ten: user.ho_ten || 'Người dùng OLODO',
-            anh_dai_dien: user.anh_dai_dien || `https://i.pravatar.cc/50?u=${id}`,
+            anh_dai_dien: normalizeBackendMediaUrl(user.anh_dai_dien) || `https://i.pravatar.cc/50?u=${id}`,
             email: user.email,
           };
 
@@ -794,16 +794,9 @@ const HomeScreen = () => {
             if (imageUrlCache.has(imageCacheKey)) {
               limitedImageUrls = imageUrlCache.get(imageCacheKey);
             } else {
-              const baseUrl = Constants.expoConfig?.extra?.apiUrl || 'http://192.168.0.108:3000';
-              const API_BASE_URL = baseUrl.endsWith('/api') ? baseUrl : `${baseUrl}/api`;
-              const uploadBaseUrl = API_BASE_URL.replace('/api', '');
-
               limitedImageUrls = postImages.slice(0, 5).map((img) => {
                 const linkAnh = img.LinkAnh;
-                if (linkAnh.startsWith('http://') || linkAnh.startsWith('https://')) {
-                  return linkAnh;
-                }
-                return `${uploadBaseUrl}/uploads/${linkAnh}`;
+                return normalizeBackendMediaUrl(linkAnh);
               });
 
               // Cache processed image URLs
@@ -815,7 +808,7 @@ const HomeScreen = () => {
               ID_BaiDang: postDetail.ID_BaiDang,
               ID_NguoiDung: postDetail.ID_NguoiDung,
               authorName: authorProfile.ho_ten || 'Người dùng OLODO',
-              authorAvatar: authorProfile.anh_dai_dien || 'https://i.pravatar.cc/50',
+              authorAvatar: normalizeBackendMediaUrl(authorProfile.anh_dai_dien) || 'https://i.pravatar.cc/50',
               title: postDetail.tieu_de,
               description: postDetail.mo_ta || '',
               price: formattedPrice,

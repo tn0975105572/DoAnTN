@@ -17,6 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
+import { normalizeBackendMediaUrl } from '../../utils/mediaUrl';
 
 const API_BASE_URL = Constants.expoConfig!.extra!.apiUrl as string;
 
@@ -296,7 +297,7 @@ const AccountScreen = () => {
           <UserProfile
             name={userInfo.ho_ten || userInfo.name || 'Người dùng'}
             email={userInfo.email || userInfo.ten_dang_nhap || 'Không có email'}
-            avatar={userInfo.anh_dai_dien || 'https://i.pravatar.cc/150'}
+            avatar={normalizeBackendMediaUrl(userInfo.anh_dai_dien) || 'https://i.pravatar.cc/150'}
             isVerified={isVerified}
             isVip={userInfo.la_vip === 1}
             vipExpiry={userInfo.ngay_het_han_vip}

@@ -22,6 +22,7 @@ import {
   FontAwesome,
 } from '@expo/vector-icons';
 import BaiDangCanHan from './baidangcanhan';
+import { normalizeBackendMediaUrl } from '../../../utils/mediaUrl';
 
 const API_BASE_URL = Constants.expoConfig?.extra?.apiUrl as string;
 
@@ -55,7 +56,7 @@ const FriendItem = ({ name, image }: { name: string; image?: string }) => {
   return (
     <View className="overflow-hidden border border-gray-200 rounded-lg">
       {image ? (
-        <Image source={{ uri: image }} className="w-full h-28" />
+        <Image source={{ uri: normalizeBackendMediaUrl(image) }} className="w-full h-28" />
       ) : (
         <View className="items-center justify-center w-full h-28 bg-gray-200">
           <FontAwesome name="user" size={40} color="#ccc" />
@@ -346,7 +347,7 @@ const UserProfileScreen = () => {
           <View style={modalStyles.card}>
             {/* Avatar */}
             <Image
-              source={{ uri: userData?.anh_dai_dien || 'https://via.placeholder.com/100.png' }}
+              source={{ uri: normalizeBackendMediaUrl(userData?.anh_dai_dien) || 'https://via.placeholder.com/100.png' }}
               style={modalStyles.avatar}
             />
             {/* Title */}
@@ -389,12 +390,12 @@ const UserProfileScreen = () => {
       <ScrollView className="flex-1 bg-white">
         <View className="mb-20">
           <Image
-            source={{ uri: userData.anh_bia || 'https://via.placeholder.com/600x250.png' }}
+            source={{ uri: normalizeBackendMediaUrl(userData.anh_bia) || 'https://via.placeholder.com/600x250.png' }}
             className="w-full h-56 bg-gray-200 rounded-b-lg"
           />
           <View className="absolute p-1 bg-white rounded-full shadow-lg top-36 left-1/2 -ml-20">
             <Image
-              source={{ uri: userData.anh_dai_dien || 'https://via.placeholder.com/150.png' }}
+              source={{ uri: normalizeBackendMediaUrl(userData.anh_dai_dien) || 'https://via.placeholder.com/150.png' }}
               className="w-40 h-40 rounded-full bg-gray-300"
             />
           </View>
@@ -516,7 +517,7 @@ const UserProfileScreen = () => {
 
         <View className="w-full h-2 my-5 bg-gray-200" />
 
-        <BaiDangCanHan userData={userData} />
+        <BaiDangCanHan key={userData.ID_NguoiDung} userData={userData} />
       </ScrollView>
     </>
   );

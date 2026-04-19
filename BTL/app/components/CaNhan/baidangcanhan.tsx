@@ -1,11 +1,12 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, Image, TouchableOpacity, ActivityIndicator } from 'react-native';
-import { MaterialCommunityIcons, AntDesign, FontAwesome5 } from '@expo/vector-icons';
+import { MaterialCommunityIcons, AntDesign, FontAwesome5, Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import { router } from 'expo-router';
 import Toast from 'react-native-toast-message';
 import PostMenu from '../BaiDang/PostMenu';
+import { normalizeBackendMediaUrl } from '../../../utils/mediaUrl';
 
 const API_BASE_URL = Constants.expoConfig?.extra?.apiUrl as string;
 
@@ -61,6 +62,7 @@ const BaiDangCanHan: React.FC<BaiDangCanHanProps> = ({ userData }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string>('');
+  const activeProfileIdRef = useRef<string>('');
 
   // Load persisted like states from AsyncStorage
   const loadPersistedLikeStates = useCallback(async () => {
@@ -95,6 +97,17 @@ const BaiDangCanHan: React.FC<BaiDangCanHanProps> = ({ userData }) => {
   // }, []);
 
   const fetchBaiDang = useCallback(async () => {
+    const targetUserId = String(userData.ID_NguoiDung || '').trim();
+
+    if (!targetUserId) {
+      setBaiDang([]);
+      setError('Không tìm thấy người dùng để tải bài đăng.');
+      setIsLoading(false);
+      return;
+    }
+
+    activeProfileIdRef.current = targetUserId;
+
     try {
       const token = await AsyncStorage.getItem('userToken');
       const userInfoString = await AsyncStorage.getItem('userInfo');
@@ -107,7 +120,7 @@ const BaiDangCanHan: React.FC<BaiDangCanHanProps> = ({ userData }) => {
       // Load persisted like states first
       const persistedLikes = await loadPersistedLikeStates();
 
-      const baiDangApiUrl = `${API_BASE_URL}/api/baidang/getByUserId/${userData.ID_NguoiDung}`;
+      const baiDangApiUrl = `${API_BASE_URL}/api/baidang/getByUserId/${targetUserId}`;
 
       const response = await fetch(baiDangApiUrl, {
         headers: {
@@ -121,10 +134,14 @@ const BaiDangCanHan: React.FC<BaiDangCanHanProps> = ({ userData }) => {
       }
 
       const data = await response.json();
+      const rawPosts = Array.isArray(data.data) ? data.data : [];
+      const ownerPosts = rawPosts.filter(
+        (item: any) => String(item?.ID_NguoiDung || '').trim() === targetUserId,
+      );
 
       // Process images and fetch like status for each post
       const processedData = await Promise.all(
-        (data.data || []).map(async (item: any, index: number) => {
+        ownerPosts.map(async (item: any) => {
           // Validate ID_BaiDang
           if (!item.ID_BaiDang) {
             return null;
@@ -132,17 +149,7 @@ const BaiDangCanHan: React.FC<BaiDangCanHanProps> = ({ userData }) => {
 
           const processedImages =
             item.DanhSachAnh?.map((img: string) => {
-              // If it's already a full URL (contains https://cdn.chotot.com/), use it directly
-              if (
-                img.includes('https://cdn.chotot.com/') ||
-                img.startsWith('http://') ||
-                img.startsWith('https://')
-              ) {
-                return img;
-              }
-              // Otherwise, construct the full URL
-              const baseUrl = API_BASE_URL.replace('/api', '');
-              return `${baseUrl}/uploads/${img}`;
+              return normalizeBackendMediaUrl(img);
             }) || [];
 
           // Fetch like status for current user
@@ -197,11 +204,17 @@ const BaiDangCanHan: React.FC<BaiDangCanHanProps> = ({ userData }) => {
       // Filter out null items (posts without ID_BaiDang)
       const validData = processedData.filter((item) => item !== null);
 
-      setBaiDang(validData);
+      if (activeProfileIdRef.current === targetUserId) {
+        setBaiDang(validData);
+      }
     } catch (err: any) {
-      setError(err.message);
+      if (activeProfileIdRef.current === targetUserId) {
+        setError(err.message);
+      }
     } finally {
-      setIsLoading(false);
+      if (activeProfileIdRef.current === targetUserId) {
+        setIsLoading(false);
+      }
     }
   }, [userData.ID_NguoiDung, loadPersistedLikeStates]);
 
@@ -267,6 +280,9 @@ const BaiDangCanHan: React.FC<BaiDangCanHanProps> = ({ userData }) => {
       }
     };
 
+    setBaiDang([]);
+    setError(null);
+    setIsLoading(true);
     loadCurrentUser();
     fetchBaiDang();
   }, [userData.ID_NguoiDung, fetchBaiDang]);
@@ -568,6 +584,34 @@ const BaiDangCanHan: React.FC<BaiDangCanHanProps> = ({ userData }) => {
     }
   }, []);
 
+  const handleMessageSeller = useCallback(
+    (post: BaiDang) => {
+      try {
+        if (!post?.ID_BaiDang || !userData?.ID_NguoiDung) {
+          Toast.show({ type: 'error', text1: 'Không tìm thấy thông tin bài đăng' });
+          return;
+        }
+
+        router.push({
+          pathname: '/components/TinNhan/chitiettinnhan',
+          params: {
+            userId: userData.ID_NguoiDung,
+            userName: userData.ho_ten,
+            userAvatar: userData.anh_dai_dien || '',
+            hasExistingConversation: 'false',
+            sharePost: 'true',
+            postId: post.ID_BaiDang,
+            postTitle: post.tieu_de || 'Bài đăng',
+            postImage: post.images?.[0] || '',
+          },
+        });
+      } catch {
+        Toast.show({ type: 'error', text1: 'Lỗi điều hướng' });
+      }
+    },
+    [userData],
+  );
+
   // Handle post deletion
   const handlePostDelete = useCallback((deletedPostId: string) => {
     setBaiDang((prev) => prev.filter((post) => post.ID_BaiDang !== deletedPostId));
@@ -611,11 +655,13 @@ const BaiDangCanHan: React.FC<BaiDangCanHanProps> = ({ userData }) => {
           return null;
         }
 
+        const isOwnProfilePost = String(currentUserId) === String(userData.ID_NguoiDung);
+
         return (
           <View key={baiDangItem.ID_BaiDang} className="mb-6">
             <View className="flex-row items-center px-4">
               <Image
-                source={{ uri: userData.anh_dai_dien || 'https://via.placeholder.com/150.png' }}
+                source={{ uri: normalizeBackendMediaUrl(userData.anh_dai_dien) || 'https://via.placeholder.com/150.png' }}
                 className="w-10 h-10 rounded-full"
               />
               <View className="ml-3">
@@ -846,6 +892,15 @@ const BaiDangCanHan: React.FC<BaiDangCanHanProps> = ({ userData }) => {
                 <MaterialCommunityIcons name="share-outline" size={20} color="gray" />
                 <Text className="ml-2 font-semibold text-gray-600">Chia sẻ</Text>
               </TouchableOpacity>
+              {!isOwnProfilePost && (
+                <TouchableOpacity
+                  className="flex-row items-center justify-center flex-1 py-2"
+                  onPress={() => handleMessageSeller(baiDangItem)}
+                >
+                  <Ionicons name="chatbox-outline" size={20} color="#7f001f" />
+                  <Text className="ml-2 font-semibold text-[#7f001f]">Nhắn tin</Text>
+                </TouchableOpacity>
+              )}
             </View>
           </View>
         );

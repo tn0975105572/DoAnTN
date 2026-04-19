@@ -1,22 +1,26 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
     ArrowRight,
     BarChart3,
+    BadgeCheck,
+    Clock3,
+    ExternalLink,
     Heart,
     LayoutDashboard,
     Loader2,
+    MapPin,
     MessageCircle,
     PlusCircle,
     RefreshCw,
     Search,
+    ShoppingBag,
     Sparkles,
     Star,
     Store,
-    Trash2,
     TrendingUp,
+    Trash2,
     UserRound,
-    ExternalLink,
     Settings,
 } from 'lucide-react';
 import {
@@ -66,6 +70,59 @@ const STATUS_TONES = {
     cho_duyet: 'muted',
 };
 
+const ORDER_STATUS_OPTIONS = [
+    { value: 'cho_nguoi_ban_xac_nhan', label: 'Chờ người bán xác nhận' },
+    { value: 'nguoi_ban_da_chap_nhan', label: 'Đã chấp nhận' },
+    { value: 'cho_hen_gap', label: 'Đang chốt điểm hẹn' },
+    { value: 'cho_xac_nhan_hoan_tat', label: 'Chờ xác nhận hoàn tất' },
+    { value: 'hoan_tat', label: 'Hoàn tất' },
+    { value: 'nguoi_mua_da_huy', label: 'Người mua đã hủy' },
+    { value: 'nguoi_ban_da_tu_choi', label: 'Người bán từ chối' },
+    { value: 'he_thong_da_huy', label: 'Hệ thống đã đóng' },
+    { value: 'het_han', label: 'Đã hết hạn' },
+];
+
+const ORDER_STATUS_LABELS = Object.fromEntries(ORDER_STATUS_OPTIONS.map((item) => [item.value, item.label]));
+
+const ORDER_STATUS_TONES = {
+    cho_nguoi_ban_xac_nhan: 'gold',
+    nguoi_ban_da_chap_nhan: 'brand',
+    cho_hen_gap: 'success',
+    cho_xac_nhan_hoan_tat: 'gold',
+    hoan_tat: 'success',
+    nguoi_mua_da_huy: 'danger',
+    nguoi_ban_da_tu_choi: 'danger',
+    he_thong_da_huy: 'muted',
+    het_han: 'muted',
+};
+
+const ORDER_HISTORY_ACTION_LABELS = {
+    tao_yeu_cau_mua: 'Tạo yêu cầu mua',
+    nguoi_ban_chap_nhan: 'Người bán chấp nhận',
+    nguoi_ban_tu_choi: 'Người bán từ chối',
+    cap_nhat_diem_hen: 'Cập nhật điểm hẹn',
+    yeu_cau_hoan_tat: 'Gửi yêu cầu hoàn tất',
+    xac_nhan_hoan_tat: 'Đã xác nhận hoàn tất',
+    hoan_tat_giao_dich: 'Giao dịch hoàn tất',
+    nguoi_mua_huy: 'Người mua hủy',
+    he_thong_huy: 'Hệ thống đóng giao dịch',
+    het_han_giao_dich: 'Giao dịch hết hạn',
+};
+
+const ORDER_OPEN_STATUSES = [
+    'cho_nguoi_ban_xac_nhan',
+    'nguoi_ban_da_chap_nhan',
+    'cho_hen_gap',
+    'cho_xac_nhan_hoan_tat',
+];
+
+const ORDER_VIEW_FILTERS = [
+    { value: 'all', label: 'Tất cả' },
+    { value: 'needs_action', label: 'Cần tôi xử lý' },
+    { value: 'open', label: 'Đang mở' },
+    { value: 'completed', label: 'Hoàn tất' },
+];
+
 const ADMIN_SECTIONS = [
     {
         id: 'overview',
@@ -84,6 +141,15 @@ const ADMIN_SECTIONS = [
         description: 'Khu thao tác chính để bạn cập nhật trạng thái, mở chi tiết và xử lý bình luận của từng bài.',
         kicker: 'Điều hành nội dung',
         icon: Store,
+    },
+    {
+        id: 'orders',
+        label: 'Đơn hàng',
+        helper: 'Theo dõi deal từ tin nhắn chốt đơn',
+        title: 'Khu vực quản lý đơn hàng',
+        description: 'Các đơn hàng ở đây được đồng bộ trực tiếp từ deal room trong Tin nhắn, để bạn nhìn được trạng thái, đối tác, điểm hẹn và mốc hoàn tất ở cùng một chỗ.',
+        kicker: 'Đơn hàng và giao dịch',
+        icon: ShoppingBag,
     },
     {
         id: 'analytics',
@@ -243,6 +309,103 @@ const normalizeProfilePayload = (payload, origin) => ({
     },
     activity: payload?.activity || [],
 });
+
+const buildMeetingMapUrl = (order) => {
+    const lat = Number(order?.meetingLat);
+    const lng = Number(order?.meetingLng);
+
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+        return `https://www.google.com/maps?q=${lat},${lng}`;
+    }
+
+    const address = String(order?.meetingAddress || '').trim();
+    if (!address) return '';
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
+};
+
+const normalizeOrder = (item, origin, viewerId) => {
+    const sellerId = String(item?.ID_NguoiBan || '');
+    const buyerId = String(item?.ID_NguoiMua || '');
+    const viewerKey = String(viewerId || '');
+    const role = viewerKey && viewerKey === sellerId
+        ? 'seller'
+        : viewerKey && viewerKey === buyerId
+            ? 'buyer'
+            : 'viewer';
+
+    const seller = {
+        id: sellerId,
+        name: item?.ten_nguoi_ban || 'Người bán',
+        avatar: normalizeAssetUrl(item?.anh_nguoi_ban, origin) || `https://i.pravatar.cc/90?u=${encodeURIComponent(sellerId || 'seller')}`,
+    };
+
+    const buyer = {
+        id: buyerId,
+        name: item?.ten_nguoi_mua || 'Người mua',
+        avatar: normalizeAssetUrl(item?.anh_nguoi_mua, origin) || `https://i.pravatar.cc/90?u=${encodeURIComponent(buyerId || 'buyer')}`,
+    };
+
+    const history = Array.isArray(item?.lich_su_json) ? item.lich_su_json : [];
+    const completion = item?.completion_confirmation || {};
+    const confirmedByUserIds = Array.isArray(completion?.confirmedByUserIds)
+        ? completion.confirmedByUserIds.map((userId) => String(userId))
+        : [];
+    const meConfirmed = viewerKey ? confirmedByUserIds.includes(viewerKey) : false;
+    const status = item?.trang_thai || '';
+    const waitingForMe = (
+        (role === 'seller' && status === 'cho_nguoi_ban_xac_nhan')
+        || (status === 'cho_xac_nhan_hoan_tat' && viewerKey && !meConfirmed && [sellerId, buyerId].includes(viewerKey))
+    );
+
+    const counterparty = role === 'seller' ? buyer : seller;
+
+    const normalized = {
+        id: item?.ID_GiaoDich || '',
+        shortCode: item?.ID_GiaoDich ? `#${String(item.ID_GiaoDich).slice(0, 8)}` : 'Đơn giao dịch',
+        status,
+        statusLabel: ORDER_STATUS_LABELS[status] || status || 'Chưa rõ',
+        statusTone: ORDER_STATUS_TONES[status] || 'muted',
+        isOpen: ORDER_OPEN_STATUSES.includes(status),
+        isCompleted: status === 'hoan_tat',
+        waitingForMe,
+        role,
+        roleLabel: role === 'seller' ? 'Bạn là người bán' : role === 'buyer' ? 'Bạn là người mua' : 'Bạn là người theo dõi',
+        seller,
+        buyer,
+        counterparty,
+        postId: item?.ID_BaiDang || '',
+        postTitle: item?.tieu_de || 'Bài đăng',
+        postImage: normalizeAssetUrl(item?.anh_bai_dang, origin) || DEFAULT_AVATAR,
+        postPrice: Number(item?.gia || 0),
+        postLocation: item?.vi_tri || '',
+        postStatus: item?.trang_thai_baidang || '',
+        postStatusLabel: STATUS_LABELS[item?.trang_thai_baidang] || item?.trang_thai_baidang || 'Chưa rõ',
+        postStatusTone: STATUS_TONES[item?.trang_thai_baidang] || 'muted',
+        createdAt: item?.thoi_gian_tao || item?.thoi_gian_yeu_cau || '',
+        requestedAt: item?.thoi_gian_yeu_cau || item?.thoi_gian_tao || '',
+        acceptedAt: item?.thoi_gian_nguoi_ban_xac_nhan || '',
+        meetingTime: item?.thoi_gian_hen_gap || '',
+        completedAt: item?.thoi_gian_hoan_tat || '',
+        cancelledAt: item?.thoi_gian_huy || '',
+        buyerNote: item?.ghi_chu_nguoi_mua || '',
+        meetingAddress: item?.dia_chi_hen_gap || '',
+        meetingNote: item?.ghi_chu_hen_gap || '',
+        meetingLat: item?.vi_do_hen_gap,
+        meetingLng: item?.kinh_do_hen_gap,
+        history,
+        historyPreview: [...history].reverse().slice(0, 5),
+        completion: {
+            ...completion,
+            confirmedByUserIds,
+            meConfirmed,
+        },
+    };
+
+    return {
+        ...normalized,
+        meetingMapUrl: buildMeetingMapUrl(normalized),
+    };
+};
 
 const getEngagementScore = (listing) => Number(listing.likeCount || 0) * 3 + Number(listing.commentCount || 0) * 2;
 
@@ -474,6 +637,7 @@ function SidebarNavItem({ icon: Icon, label, helper, active, onClick }) {
 
 export default function AdminBankDash() {
     const navigate = useNavigate();
+    const location = useLocation();
     const { userId: viewerId, token } = useAuthSession();
     const origin = useMemo(() => getBackendOrigin(), []);
     const chartPalette = useMemo(() => CHART_PALETTE, []);
@@ -495,6 +659,12 @@ export default function AdminBankDash() {
     const [pointHistory, setPointHistory] = useState([]);
     const [pointUsageHistory, setPointUsageHistory] = useState([]);
     const [pointsError, setPointsError] = useState('');
+    const [orders, setOrders] = useState([]);
+    const [ordersError, setOrdersError] = useState('');
+    const [orderSearch, setOrderSearch] = useState('');
+    const [orderRoleFilter, setOrderRoleFilter] = useState('all');
+    const [orderViewFilter, setOrderViewFilter] = useState('needs_action');
+    const [selectedOrderId, setSelectedOrderId] = useState('');
 
     const apiFetch = useCallback(async (path, options = {}) => {
         const headers = {
@@ -519,6 +689,33 @@ export default function AdminBankDash() {
         setError('');
 
         try {
+            const loadOrdersData = async () => {
+                try {
+                    const orderResult = await apiFetch(`/giaodich_baidang/user/${viewerId}`);
+                    const rawOrders = Array.isArray(orderResult?.data)
+                        ? orderResult.data
+                        : (Array.isArray(orderResult) ? orderResult : []);
+                    const normalizedOrders = rawOrders.map((item) => normalizeOrder(item, origin, viewerId));
+                    setOrders(normalizedOrders);
+                    setSelectedOrderId((current) => {
+                        if (current && normalizedOrders.some((item) => String(item.id) === String(current))) {
+                            return current;
+                        }
+
+                        const priorityOrder = normalizedOrders.find((item) => item.waitingForMe)
+                            || normalizedOrders.find((item) => item.isOpen)
+                            || normalizedOrders[0];
+
+                        return priorityOrder?.id || '';
+                    });
+                    setOrdersError('');
+                } catch (orderError) {
+                    console.error('Load orders for admin workspace failed', orderError);
+                    setOrders([]);
+                    setOrdersError(orderError.message || 'Không thể nạp đơn hàng ở thời điểm hiện tại.');
+                }
+            };
+
             try {
                 const dashboardResult = await apiFetch(`/admin/dashboard/${viewerId}`);
                 const dashboardData = dashboardResult?.data || dashboardResult || {};
@@ -543,6 +740,7 @@ export default function AdminBankDash() {
                 const usageArr = Array.isArray(dashboardData?.pointUsageHistory) ? dashboardData.pointUsageHistory : [];
                 setPointUsageHistory(usageArr.map(normalizePointUsageItem));
                 setPointsError('');
+                await loadOrdersData();
                 return;
             } catch (dashboardError) {
                 console.warn('Load dedicated admin dashboard failed, fallback to legacy sources.', dashboardError);
@@ -593,6 +791,7 @@ export default function AdminBankDash() {
                     ? 'Không thể tải lịch sử điểm ở thời điểm hiện tại.'
                     : '',
             );
+            await loadOrdersData();
         } catch (requestError) {
             console.error('Load admin dashboard failed', requestError);
             setError(requestError.message || 'Không thể tải trang Admin.');
@@ -610,6 +809,22 @@ export default function AdminBankDash() {
         const timer = window.setTimeout(() => setFeedback(null), 3000);
         return () => window.clearTimeout(timer);
     }, [feedback]);
+
+    useEffect(() => {
+        const incomingSection = location.state?.section;
+        const incomingOrderId = location.state?.orderId;
+        if (!incomingSection && !incomingOrderId) return;
+
+        if (incomingSection || incomingOrderId) {
+            setActiveSection(incomingSection || 'orders');
+        }
+
+        if (incomingOrderId) {
+            setSelectedOrderId(String(incomingOrderId));
+        }
+
+        navigate(location.pathname, { replace: true, state: {} });
+    }, [location.pathname, location.state, navigate]);
 
     const listings = profile?.listings?.items || [];
     const activities = profile?.activity || [];
@@ -686,6 +901,84 @@ export default function AdminBankDash() {
             averagePosts: monthlySeries.length ? (totalPosts / monthlySeries.length) : 0,
         };
     }, [listings]);
+
+    const orderAnalytics = useMemo(() => {
+        const total = orders.length;
+        const open = orders.filter((item) => item.isOpen).length;
+        const completed = orders.filter((item) => item.isCompleted).length;
+        const waitingForMe = orders.filter((item) => item.waitingForMe).length;
+        const asSeller = orders.filter((item) => item.role === 'seller').length;
+        const asBuyer = orders.filter((item) => item.role === 'buyer').length;
+        const withMeeting = orders.filter((item) => item.meetingAddress || item.meetingTime).length;
+        const completedValue = orders
+            .filter((item) => item.isCompleted)
+            .reduce((sum, item) => sum + Number(item.postPrice || 0), 0);
+        const recentCompleted = [...orders]
+            .filter((item) => item.isCompleted && item.completedAt)
+            .sort((left, right) => new Date(right.completedAt).getTime() - new Date(left.completedAt).getTime())[0] || null;
+
+        const statusRows = ORDER_STATUS_OPTIONS.map((status) => {
+            const count = orders.filter((item) => item.status === status.value).length;
+            const percent = total ? Math.round((count / total) * 100) : 0;
+            return {
+                ...status,
+                count,
+                percent,
+                tone: ORDER_STATUS_TONES[status.value] || 'muted',
+            };
+        }).filter((item) => item.count > 0);
+
+        return {
+            total,
+            open,
+            completed,
+            waitingForMe,
+            asSeller,
+            asBuyer,
+            withMeeting,
+            completedValue,
+            recentCompleted,
+            statusRows,
+        };
+    }, [orders]);
+
+    const filteredOrders = useMemo(() => {
+        const keyword = orderSearch.trim().toLowerCase();
+        return [...orders]
+            .filter((order) => {
+                if (orderRoleFilter !== 'all' && order.role !== orderRoleFilter) return false;
+                if (orderViewFilter === 'needs_action' && !order.waitingForMe) return false;
+                if (orderViewFilter === 'open' && !order.isOpen) return false;
+                if (orderViewFilter === 'completed' && !order.isCompleted) return false;
+                if (!keyword) return true;
+
+                return [
+                    order.shortCode,
+                    order.postTitle,
+                    order.counterparty?.name,
+                    order.meetingAddress,
+                    order.meetingNote,
+                ]
+                    .filter(Boolean)
+                    .some((value) => String(value).toLowerCase().includes(keyword));
+            })
+            .sort((left, right) => {
+                if (left.waitingForMe !== right.waitingForMe) return Number(right.waitingForMe) - Number(left.waitingForMe);
+                if (left.isOpen !== right.isOpen) return Number(right.isOpen) - Number(left.isOpen);
+                return new Date(right.createdAt || 0).getTime() - new Date(left.createdAt || 0).getTime();
+            });
+    }, [orderRoleFilter, orderSearch, orderViewFilter, orders]);
+
+    const selectedOrder = useMemo(
+        () => filteredOrders.find((item) => String(item.id) === String(selectedOrderId)) || filteredOrders[0] || null,
+        [filteredOrders, selectedOrderId],
+    );
+
+    useEffect(() => {
+        if (!filteredOrders.length) return;
+        if (filteredOrders.some((item) => String(item.id) === String(selectedOrderId))) return;
+        setSelectedOrderId(filteredOrders[0].id);
+    }, [filteredOrders, selectedOrderId]);
 
     const pointsAnalytics = useMemo(() => {
         const currentPoints = Number(profile?.user?.points || 0);
@@ -768,6 +1061,26 @@ export default function AdminBankDash() {
         }
     }, [listings, navigate, openPostComments, openPostDetail]);
 
+    const openOrderPost = useCallback((order) => {
+        if (!order?.postId) return;
+        navigate(`/post/${order.postId}`);
+    }, [navigate]);
+
+    const openOrderChat = useCallback((order) => {
+        if (!order?.counterparty?.id || !order?.postId) return;
+
+        navigate('/messages', {
+            state: {
+                selectedUser: {
+                    id: order.counterparty.id,
+                    name: order.counterparty.name,
+                    avatar: order.counterparty.avatar,
+                },
+                focusPostId: order.postId,
+            },
+        });
+    }, [navigate]);
+
     const handleStatusChange = useCallback(async (listingId, nextStatus) => {
         if (!listingId) return;
         setListingBusyId(String(listingId));
@@ -808,6 +1121,15 @@ export default function AdminBankDash() {
             <MetricCard icon={Heart} label="Tổng quan tâm" value={formatNumber(analytics.totalLikes + analytics.totalComments)} helper={`${formatNumber(analytics.totalLikes)} thích - ${formatNumber(analytics.totalComments)} bình luận`} tone="success" delay={80} />
             <MetricCard icon={TrendingUp} label="Tiếp cận ước tính" value={formatNumber(analytics.estimatedTraffic)} helper="Tính từ tương tác và trạng thái bài đăng" tone="gold" delay={160} />
             <MetricCard icon={MessageCircle} label="Bài nổi bật" value={formatNumber(analytics.topListings.length)} helper="Mở nhanh để xem chi tiết hoặc bình luận" tone="danger" delay={240} />
+        </section>
+    );
+
+    const renderOrderMetrics = () => (
+        <section className="admin-metrics-grid">
+            <MetricCard icon={ShoppingBag} label="Đơn đang mở" value={formatNumber(orderAnalytics.open)} helper={`${formatNumber(orderAnalytics.total)} đơn đã vào khu làm việc`} tone="brand" delay={0} />
+            <MetricCard icon={BadgeCheck} label="Chờ bạn xử lý" value={formatNumber(orderAnalytics.waitingForMe)} helper="Ưu tiên phản hồi hoặc xác nhận ngay trong hôm nay" tone="danger" delay={80} />
+            <MetricCard icon={Clock3} label="Đã chốt điểm hẹn" value={formatNumber(orderAnalytics.withMeeting)} helper="Đã có địa chỉ hoặc thời gian giao nhận" tone="gold" delay={160} />
+            <MetricCard icon={TrendingUp} label="Giá trị đã chốt" value={orderAnalytics.completedValue > 0 ? formatCurrency(orderAnalytics.completedValue) : '0 ₫'} helper={`${formatNumber(orderAnalytics.completed)} đơn đã hoàn tất`} tone="success" delay={240} />
         </section>
     );
 
@@ -1005,6 +1327,334 @@ export default function AdminBankDash() {
                 )}
             </div>
         </section>
+    );
+
+    const renderOrdersBoard = () => (
+        <>
+            <section className="admin-card">
+                <div className="admin-card-head">
+                    <div>
+                        <span className="admin-section-tag">Danh sách đơn</span>
+                        <h2>Đơn hàng từ tin nhắn chốt đơn</h2>
+                        <p>Mỗi dòng là một deal thật phát sinh trong chat. Bạn chỉ cần chọn một dòng là phần chi tiết bên dưới sẽ đổi theo đúng đơn đó.</p>
+                    </div>
+                    <div className="admin-section-chip">{formatNumber(filteredOrders.length)} đơn</div>
+                </div>
+
+                <div className="admin-orders-toolbar">
+                    <label className="admin-search" htmlFor="admin-order-search">
+                        <Search size={16} />
+                        <input
+                            id="admin-order-search"
+                            type="text"
+                            value={orderSearch}
+                            onChange={(event) => setOrderSearch(event.target.value)}
+                            placeholder="Tìm theo mã đơn, món hàng hoặc người liên quan"
+                        />
+                    </label>
+
+                    <select value={orderRoleFilter} onChange={(event) => setOrderRoleFilter(event.target.value)}>
+                        <option value="all">Mọi vai trò</option>
+                        <option value="seller">Tôi đang bán</option>
+                        <option value="buyer">Tôi đang mua</option>
+                    </select>
+                </div>
+
+                <div className="admin-orders-filter-pills">
+                    {ORDER_VIEW_FILTERS.map((filter) => (
+                        <button
+                            key={filter.value}
+                            type="button"
+                            className={`admin-orders-filter-pill${orderViewFilter === filter.value ? ' active' : ''}`}
+                            onClick={() => setOrderViewFilter(filter.value)}
+                        >
+                            {filter.label}
+                        </button>
+                    ))}
+                </div>
+
+                {ordersError && <div className="admin-empty-note compact">{ordersError}</div>}
+
+                <div className="admin-order-list">
+                    {filteredOrders.length > 0 ? (
+                        filteredOrders.map((order, index) => (
+                            <article
+                                key={order.id}
+                                className={`admin-order-row${String(selectedOrder?.id) === String(order.id) ? ' active' : ''}`}
+                                style={{ '--delay': `${index * 40}ms` }}
+                            >
+                                <button type="button" className="admin-order-row-main" onClick={() => setSelectedOrderId(order.id)}>
+                                    <img src={order.postImage} alt={order.postTitle} className="admin-order-compact-thumb" />
+
+                                    <div className="admin-order-compact-body">
+                                        <div className="admin-order-compact-head">
+                                            <div className="admin-inline-badges">
+                                                <span className={`admin-pill tone-${order.statusTone}`}>{order.statusLabel}</span>
+                                                {order.waitingForMe && <span className="admin-pill tone-danger">Cần bạn xử lý</span>}
+                                            </div>
+                                            <strong>{order.shortCode}</strong>
+                                        </div>
+
+                                        <h3>{order.postTitle}</h3>
+
+                                        <div className="admin-order-compact-meta">
+                                            <span>{formatCurrency(order.postPrice)}</span>
+                                            <span>{order.counterparty?.name || 'Đối tác giao dịch'}</span>
+                                            <span>{order.meetingTime ? formatDate(order.meetingTime, true) : 'Chưa hẹn giờ'}</span>
+                                        </div>
+
+                                        <p>{order.meetingAddress || order.postLocation || 'Chưa có điểm hẹn cụ thể'}</p>
+                                    </div>
+                                </button>
+
+                                <div className="admin-order-row-side">
+                                    <div className="admin-order-row-side-meta">
+                                        <span>{order.role === 'seller' ? 'Bạn đang bán' : order.role === 'buyer' ? 'Bạn đang mua' : 'Đơn liên quan'}</span>
+                                        <strong>{formatRelativeTime(order.requestedAt)}</strong>
+                                    </div>
+
+                                    <div className="admin-order-actions compact">
+                                        <button type="button" className="admin-btn admin-btn-soft" onClick={() => openOrderPost(order)}>
+                                            <ExternalLink size={16} />
+                                            Xem bài
+                                        </button>
+                                        <button type="button" className="admin-btn admin-btn-primary" onClick={() => openOrderChat(order)}>
+                                            <MessageCircle size={16} />
+                                            Mở chat
+                                        </button>
+                                    </div>
+                                </div>
+                            </article>
+                        ))
+                    ) : (
+                        <div className="admin-empty-note">Không có đơn hàng nào khớp với bộ lọc hiện tại.</div>
+                    )}
+                </div>
+            </section>
+
+            <div className="admin-main-grid">
+                <section className="admin-card admin-order-detail-card">
+                    <div className="admin-card-head">
+                        <div>
+                            <span className="admin-section-tag">Đơn đang chọn</span>
+                            <h2>Chi tiết đơn đang chọn</h2>
+                            <p>Phần này chỉ tập trung vào đúng một đơn: trạng thái hiện tại, hai bên giao dịch, điểm hẹn và lịch sử xử lý gần nhất.</p>
+                        </div>
+                        {selectedOrder && (
+                            <div className="admin-inline-actions">
+                                <button type="button" className="admin-btn admin-btn-soft" onClick={() => openOrderPost(selectedOrder)}>
+                                    <ExternalLink size={16} />
+                                    Xem bài
+                                </button>
+                                <button type="button" className="admin-btn admin-btn-primary" onClick={() => openOrderChat(selectedOrder)}>
+                                    <MessageCircle size={16} />
+                                    Mở chat
+                                </button>
+                            </div>
+                        )}
+                    </div>
+
+                    {selectedOrder ? (
+                        <div className="admin-order-detail-grid">
+                            <div className="admin-order-hero">
+                                <img src={selectedOrder.postImage} alt={selectedOrder.postTitle} className="admin-order-hero-image" />
+                                <div className="admin-order-hero-copy">
+                                    <div className="admin-inline-badges">
+                                        <span className={`admin-pill tone-${selectedOrder.statusTone}`}>{selectedOrder.statusLabel}</span>
+                                        <span className="admin-pill tone-ghost">{selectedOrder.roleLabel}</span>
+                                        <span className={`admin-pill tone-${selectedOrder.postStatusTone}`}>{selectedOrder.postStatusLabel}</span>
+                                    </div>
+                                    <h2>{selectedOrder.postTitle}</h2>
+                                    <div className="admin-price">{formatCurrency(selectedOrder.postPrice)}</div>
+                                    <p>
+                                        {selectedOrder.waitingForMe
+                                            ? 'Đơn này đang chờ đúng thao tác từ bạn. Bạn có thể mở lại cuộc chat để xử lý ngay đúng deal.'
+                                            : 'Đơn này được đồng bộ từ tin nhắn chốt đơn, nên mọi mốc quan trọng ở đây đều bám theo giao dịch thật trong chat.'}
+                                    </p>
+
+                                    <div className="admin-focus-stats">
+                                        <div>
+                                            <span>Mã đơn</span>
+                                            <strong>{selectedOrder.shortCode}</strong>
+                                        </div>
+                                        <div>
+                                            <span>Mở đơn lúc</span>
+                                            <strong>{formatDate(selectedOrder.requestedAt, true)}</strong>
+                                        </div>
+                                        <div>
+                                            <span>Điểm hẹn</span>
+                                            <strong>{selectedOrder.meetingAddress || 'Chưa chốt địa chỉ'}</strong>
+                                        </div>
+                                        <div>
+                                            <span>Giờ hẹn</span>
+                                            <strong>{selectedOrder.meetingTime ? formatDate(selectedOrder.meetingTime, true) : 'Chưa đặt thời gian'}</strong>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="admin-order-party-grid">
+                                {[{
+                                    label: 'Người bán',
+                                    person: selectedOrder.seller,
+                                }, {
+                                    label: 'Người mua',
+                                    person: selectedOrder.buyer,
+                                }].map((item) => (
+                                    <div key={item.label} className="admin-order-party-card">
+                                        <img src={item.person.avatar} alt={item.person.name} />
+                                        <div>
+                                            <span>{item.label}</span>
+                                            <strong>{item.person.name}</strong>
+                                            <small>{String(item.person.id) === String(viewerId) ? 'Đây là bạn trong giao dịch này.' : 'Đối tác liên quan trực tiếp tới đơn hàng.'}</small>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div className="admin-meta-grid">
+                                <div>
+                                    <span>Vị trí bài đăng</span>
+                                    <strong>{selectedOrder.postLocation || 'Chưa có vị trí'}</strong>
+                                </div>
+                                <div>
+                                    <span>Mốc hoàn tất</span>
+                                    <strong>{selectedOrder.completedAt ? formatDate(selectedOrder.completedAt, true) : 'Chưa hoàn tất'}</strong>
+                                </div>
+                                <div>
+                                    <span>Xác nhận người bán</span>
+                                    <strong>{selectedOrder.completion?.sellerConfirmed ? 'Đã xác nhận' : 'Chưa xác nhận'}</strong>
+                                </div>
+                                <div>
+                                    <span>Xác nhận người mua</span>
+                                    <strong>{selectedOrder.completion?.buyerConfirmed ? 'Đã xác nhận' : 'Chưa xác nhận'}</strong>
+                                </div>
+                            </div>
+
+                            {(selectedOrder.buyerNote || selectedOrder.meetingNote) && (
+                                <div className="admin-order-note-grid">
+                                    {selectedOrder.buyerNote && (
+                                        <div className="admin-order-note-card">
+                                            <span>Ghi chú lúc mở đơn</span>
+                                            <strong>{selectedOrder.buyerNote}</strong>
+                                        </div>
+                                    )}
+                                    {selectedOrder.meetingNote && (
+                                        <div className="admin-order-note-card">
+                                            <span>Ghi chú điểm hẹn</span>
+                                            <strong>{selectedOrder.meetingNote}</strong>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            <div className="admin-card-head">
+                                <div>
+                                    <span className="admin-section-tag">Dòng sự kiện</span>
+                                    <h2>Lịch sử xử lý đơn</h2>
+                                    <p>Những bước gần nhất được ghi lại để bạn biết đơn này đang đi đến đâu.</p>
+                                </div>
+                            </div>
+
+                            {selectedOrder.historyPreview.length > 0 ? (
+                                <div className="admin-order-history-list">
+                                    {selectedOrder.historyPreview.map((entry) => (
+                                        <div key={entry.id || `${entry.hanh_dong}-${entry.thoi_gian}`} className="admin-order-history-item">
+                                            <div>
+                                                <strong>{ORDER_HISTORY_ACTION_LABELS[entry.hanh_dong] || entry.hanh_dong || 'Cập nhật giao dịch'}</strong>
+                                                <span>{entry.noi_dung || 'Hệ thống đã ghi nhận thao tác cho đơn hàng này.'}</span>
+                                            </div>
+                                            <small>{formatRelativeTime(entry.thoi_gian)}</small>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="admin-empty-note compact">Đơn này chưa có lịch sử chi tiết để hiển thị thêm.</div>
+                            )}
+
+                            <div className="admin-inline-actions">
+                                <button type="button" className="admin-btn admin-btn-primary" onClick={() => openOrderChat(selectedOrder)}>
+                                    <MessageCircle size={16} />
+                                    Đi tới chat xử lý đơn
+                                </button>
+                                <button type="button" className="admin-btn admin-btn-soft" onClick={() => openOrderPost(selectedOrder)}>
+                                    <ExternalLink size={16} />
+                                    Mở bài đăng
+                                </button>
+                                {selectedOrder.meetingMapUrl && (
+                                    <a href={selectedOrder.meetingMapUrl} target="_blank" rel="noreferrer" className="admin-btn admin-btn-soft admin-order-link-btn">
+                                        <MapPin size={16} />
+                                        Xem bản đồ
+                                    </a>
+                                )}
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="admin-empty-note">
+                            Chưa có đơn hàng nào được đồng bộ từ phần tin nhắn chốt đơn. Khi có giao dịch, khu này sẽ hiện mã đơn, người liên quan, điểm hẹn và mốc hoàn tất.
+                        </div>
+                    )}
+                </section>
+
+                <aside className="admin-side-column">
+                    <section className="admin-card">
+                        <div className="admin-card-head">
+                            <div>
+                                <span className="admin-section-tag">Đọc nhanh</span>
+                                <h2>Nhịp đơn hàng hiện tại</h2>
+                                <p>Các số này giúp bạn biết hôm nay nên ưu tiên xử lý loại đơn nào trước.</p>
+                            </div>
+                        </div>
+
+                        <div className="admin-status-list">
+                            <div className="admin-status-row">
+                                <div className="admin-status-copy">
+                                    <strong>Đơn bán ra</strong>
+                                    <span>{formatNumber(orderAnalytics.asSeller)} đơn</span>
+                                </div>
+                            </div>
+                            <div className="admin-status-row">
+                                <div className="admin-status-copy">
+                                    <strong>Đơn bạn mua</strong>
+                                    <span>{formatNumber(orderAnalytics.asBuyer)} đơn</span>
+                                </div>
+                            </div>
+                            <div className="admin-status-row">
+                                <div className="admin-status-copy">
+                                    <strong>Chờ bạn xử lý</strong>
+                                    <span>{formatNumber(orderAnalytics.waitingForMe)} đơn</span>
+                                </div>
+                            </div>
+                            <div className="admin-status-row">
+                                <div className="admin-status-copy">
+                                    <strong>Hoàn tất gần nhất</strong>
+                                    <span>{orderAnalytics.recentCompleted ? formatRelativeTime(orderAnalytics.recentCompleted.completedAt) : 'Chưa có'}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {orderAnalytics.statusRows.length > 0 ? (
+                            <div className="admin-status-list">
+                                {orderAnalytics.statusRows.map((row) => (
+                                    <div key={row.value} className="admin-status-row">
+                                        <div className="admin-status-copy">
+                                            <strong>{row.label}</strong>
+                                            <span>{formatNumber(row.count)} đơn</span>
+                                        </div>
+                                        <div className="admin-status-bar">
+                                            <div className={`tone-${row.tone}`} style={{ width: `${row.percent}%` }} />
+                                        </div>
+                                        <small>{row.percent}%</small>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="admin-empty-note compact">Khi có đơn hàng, tỷ trọng theo trạng thái sẽ hiện ở đây.</div>
+                        )}
+                    </section>
+                </aside>
+            </div>
+        </>
     );
 
     const renderPostingTimelineCard = () => (
@@ -1281,7 +1931,7 @@ export default function AdminBankDash() {
                         <div className="admin-brand-mark"><Store size={22} /></div>
                         <div className="admin-brand-copy">
                             <strong>OLODO Admin</strong>
-                            <span>Trung tâm quản lý bài đăng</span>
+                            <span>Trung tâm bài đăng và đơn hàng</span>
                         </div>
                     </div>
 
@@ -1289,7 +1939,7 @@ export default function AdminBankDash() {
                         <img src={profile?.user?.avatar || DEFAULT_AVATAR} alt={profileDisplayName} />
                         <div>
                             <strong>{profileDisplayName}</strong>
-                            <span>{profile?.user?.email || 'Trung tâm điều hành bài đăng'}</span>
+                            <span>{profile?.user?.email || 'Trung tâm điều hành bài đăng và giao dịch'}</span>
                         </div>
                         <button type="button" className="admin-btn admin-btn-soft" onClick={() => navigate('/profile')}>
                             <UserRound size={16} />
@@ -1349,6 +1999,10 @@ export default function AdminBankDash() {
                                         placeholder="Tìm bài đăng, danh mục hoặc vị trí"
                                     />
                                 </label>
+                            ) : activeSection === 'orders' ? (
+                                <div className="admin-topbar-badge">
+                                    Đơn hàng ở đây được đồng bộ trực tiếp từ phần chốt đơn trong Tin nhắn.
+                                </div>
                             ) : (
                                 <div className="admin-topbar-badge">
                                     Chuyển khu vực ở thanh bên để làm việc gọn và tập trung hơn.
@@ -1364,6 +2018,7 @@ export default function AdminBankDash() {
                     {feedback?.text && <div className={`admin-feedback ${feedback.type || 'info'}`}>{feedback.text}</div>}
 
                     {['overview', 'manage', 'analytics'].includes(activeSection) && renderPrimaryMetrics()}
+                    {activeSection === 'orders' && renderOrderMetrics()}
 
                     {activeSection === 'overview' && (
                         <div className="admin-main-grid">
@@ -1423,6 +2078,8 @@ export default function AdminBankDash() {
                     )}
 
                     {activeSection === 'manage' && renderManageBoard()}
+
+                    {activeSection === 'orders' && renderOrdersBoard()}
 
                     {activeSection === 'analytics' && (
                         <div className="admin-main-grid">

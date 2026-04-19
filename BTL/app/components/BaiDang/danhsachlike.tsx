@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import Constants from 'expo-constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { normalizeBackendMediaUrl } from '../../../utils/mediaUrl';
 
 // --- API Config ---
 const API_BASE_URL = Constants.expoConfig?.extra?.apiUrl;
@@ -106,11 +107,7 @@ const DanhSachLikeScreen = () => {
 
   // Render like item
   const renderLikeItem = ({ item }: { item: LikeUser }) => {
-    const imageUrl = item.anh_dai_dien
-      ? item.anh_dai_dien.startsWith('http')
-        ? item.anh_dai_dien
-        : `${API_BASE_URL?.replace('/api', '')}/uploads/${item.anh_dai_dien}`
-      : 'https://i.pravatar.cc/50';
+    const imageUrl = normalizeBackendMediaUrl(item.anh_dai_dien) || 'https://i.pravatar.cc/50';
 
     return (
       <View style={styles.likeItem}>

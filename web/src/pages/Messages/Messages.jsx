@@ -9,7 +9,7 @@ import {
 import confetti from 'canvas-confetti';
 import {
     Search, MoreHorizontal, Edit3, Phone, Video, Info,
-    Send, Image, Smile, Mic, ChevronDown,
+    Send, Image, ChevronDown,
     MessageCircle, User, Bell, Shield, X, Mail, Users, UserCheck, UserX, FileText, Trash2,
     Sparkles, Handshake, ShoppingBag, MapPin, Clock3, BadgeCheck, AlertTriangle, LocateFixed
 } from 'lucide-react';
@@ -25,6 +25,8 @@ const avatarFallback = (seed) => `https://i.pravatar.cc/150?u=${encodeURICompone
 const POST_SHARE_PREFIX = '📱 Bài đăng:';
 const POST_SHARE_ID_PREFIX = '🆔 Post ID:';
 const POST_SHARE_IMAGE_PREFIX = '🖼️ Post Image:';
+const POST_SHARE_META_PREFIX = '__OLODO_POST_META__';
+const DEAL_ROOM_STORAGE_PREFIX = 'olodo_deal_room';
 const ACTIVE_ACCEPTED_STATUSES = ['nguoi_ban_da_chap_nhan', 'cho_hen_gap', 'cho_xac_nhan_hoan_tat'];
 const OPEN_DEAL_STATUSES = ['cho_nguoi_ban_xac_nhan', 'nguoi_ban_da_chap_nhan', 'cho_hen_gap', 'cho_xac_nhan_hoan_tat'];
 const DEAL_MAP_DEFAULT_CENTER = { lat: 16.047079, lng: 108.20623 };
@@ -198,17 +200,71 @@ function isPostShareMessage(text) {
     return typeof text === 'string' && text.includes(POST_SHARE_PREFIX);
 }
 
+function parsePostSharePayload(text) {
+    if (typeof text !== 'string') {
+        return { cleanText: '', postId: '', postImage: '', title: '' };
+    }
+
+    let cleanText = text;
+    let postId = '';
+    let postImage = '';
+
+    const markerIndex = text.indexOf(POST_SHARE_META_PREFIX);
+    if (markerIndex >= 0) {
+        cleanText = text.slice(0, markerIndex).trimEnd();
+        const rawMeta = text.slice(markerIndex + POST_SHARE_META_PREFIX.length).trim();
+        try {
+            const parsed = JSON.parse(rawMeta);
+            postId = typeof parsed?.postId === 'string' ? parsed.postId.trim() : '';
+            postImage = typeof parsed?.postImage === 'string' ? parsed.postImage.trim() : '';
+        } catch {
+            cleanText = text;
+        }
+    }
+
+    const legacyPostId = getPostShareMetadataLine(cleanText, POST_SHARE_ID_PREFIX);
+    const legacyPostImage = getPostShareMetadataLine(cleanText, POST_SHARE_IMAGE_PREFIX);
+    if (!postId) postId = legacyPostId;
+    if (!postImage) postImage = legacyPostImage;
+
+    cleanText = cleanText
+        .split('\n')
+        .filter((line) => !line.startsWith(POST_SHARE_ID_PREFIX) && !line.startsWith(POST_SHARE_IMAGE_PREFIX))
+        .join('\n')
+        .trim();
+
+    return {
+        cleanText,
+        postId,
+        postImage,
+        title: getPostShareMetadataLine(cleanText, POST_SHARE_PREFIX),
+    };
+}
+
 function extractPostShareTitle(text) {
     if (!isPostShareMessage(text)) return '';
-    return getPostShareMetadataLine(text, POST_SHARE_PREFIX);
+    return parsePostSharePayload(text).title;
 }
 
 function extractPostShareId(text) {
-    return getPostShareMetadataLine(text, POST_SHARE_ID_PREFIX);
+    return parsePostSharePayload(text).postId;
 }
 
 function extractPostShareImage(text) {
-    return getPostShareMetadataLine(text, POST_SHARE_IMAGE_PREFIX);
+    return parsePostSharePayload(text).postImage;
+}
+
+function extractLocationPayload(text) {
+    if (typeof text !== 'string' || !text.includes('📍')) return null;
+
+    const match = text.match(/maps\?q=([-\d.]+),([-\d.]+)/i);
+    if (!match) return null;
+
+    const lat = Number(match[1]);
+    const lng = Number(match[2]);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+
+    return { lat, lng };
 }
 
 function formatCurrency(value) {
@@ -1144,8 +1200,9 @@ export default function Messages() {
     const selectedChatRef = useRef(null);
     const activeDealPostIdRef = useRef(null);
     const listSearchInputRef = useRef(null);
+    const messageFileInputRef = useRef(null);
     const pendingSelectedUserRef = useRef(location.state?.selectedUser || null);
-    const [focusedPostId, setFocusedPostId] = useState(location.state?.focusPostId || null);
+    const [focusedPostId, setFocusedPostId] = useState(null);
     const [dealContext, setDealContext] = useState(EMPTY_DEAL_CONTEXT);
     const [loadingDeal, setLoadingDeal] = useState(false);
     const [dealActionLoading, setDealActionLoading] = useState('');
@@ -1166,6 +1223,36 @@ export default function Messages() {
         try { return new URL(API_BASE_URL).origin; } catch { return 'http://localhost:3000'; }
     }, []);
     const socketUrl = useMemo(() => backendOrigin, [backendOrigin]);
+    const getDealRoomStorageKey = useCallback((chatId) => {
+        if (!myUserId || !chatId) return '';
+        return `${DEAL_ROOM_STORAGE_PREFIX}:${myUserId}:${chatId}`;
+    }, [myUserId]);
+    const persistDealRoomSelection = useCallback((chatId, postId) => {
+        const storageKey = getDealRoomStorageKey(chatId);
+        if (!storageKey) return;
+
+        try {
+            if (postId) {
+                window.localStorage.setItem(storageKey, String(postId));
+                return;
+            }
+
+            window.localStorage.removeItem(storageKey);
+        } catch (storageError) {
+            console.warn('Persist deal room selection failed', storageError);
+        }
+    }, [getDealRoomStorageKey]);
+    const restoreDealRoomSelection = useCallback((chatId) => {
+        const storageKey = getDealRoomStorageKey(chatId);
+        if (!storageKey) return null;
+
+        try {
+            return window.localStorage.getItem(storageKey) || null;
+        } catch (storageError) {
+            console.warn('Restore deal room selection failed', storageError);
+            return null;
+        }
+    }, [getDealRoomStorageKey]);
 
     const normalizeUploadsUrl = useCallback((raw, uploadsSubPath = '') => {
         if (!raw) return '';
@@ -1227,11 +1314,28 @@ export default function Messages() {
         [chatMessages],
     );
 
-    const activeDealPostId = focusedPostId || latestSharedPostMessage?.postId || null;
+    const activeDealPostId = focusedPostId || null;
 
     useEffect(() => {
         selectedChatRef.current = selectedChat;
     }, [selectedChat]);
+
+    useEffect(() => {
+        if (!selectedChat || selectedChat.type !== 'private') {
+            return;
+        }
+
+        const persistedPostId = restoreDealRoomSelection(selectedChat.id);
+        if (!persistedPostId) {
+            return;
+        }
+
+        setFocusedPostId((currentValue) => (
+            String(currentValue || '') === String(persistedPostId)
+                ? currentValue
+                : String(persistedPostId)
+        ));
+    }, [restoreDealRoomSelection, selectedChat]);
 
     useEffect(() => {
         activeDealPostIdRef.current = activeDealPostId;
@@ -1508,6 +1612,7 @@ export default function Messages() {
             setChatMessages([]);
             setSearchQuery('');
             setError('');
+            setFocusedPostId(null);
             resetDealStage();
         }
 
@@ -1616,16 +1721,24 @@ export default function Messages() {
         try {
             const res = await apiFetch(`/tinnhan/conversations/${myUserId}`);
             const rows = res?.data || [];
-            const mapped = rows.map((c) => ({
-                id: c.conversation_id,
-                type: c.conversation_type, // private | group
-                name: c.conversation_name || 'Unknown',
-                avatar: normalizeUploadsUrl(c.conversation_avatar) || avatarFallback(c.conversation_id),
-                lastMsg: c.last_message || '',
-                lastAt: c.last_message_time ? new Date(c.last_message_time) : null,
-                unread: c.unread_count || 0,
-                online: false, // will update via socket events later
-            }));
+            const mapped = rows.map((c) => {
+                const rawLastMessage = c.last_message || '';
+                const postSharePayload = parsePostSharePayload(rawLastMessage);
+                const isPostShare = isPostShareMessage(postSharePayload.cleanText || rawLastMessage);
+
+                return {
+                    id: c.conversation_id,
+                    type: c.conversation_type, // private | group
+                    name: c.conversation_name || 'Unknown',
+                    avatar: normalizeUploadsUrl(c.conversation_avatar) || avatarFallback(c.conversation_id),
+                    lastMsg: isPostShare
+                        ? (postSharePayload.title ? `Đã chia sẻ bài: ${postSharePayload.title}` : 'Đã chia sẻ một bài đăng')
+                        : (postSharePayload.cleanText || rawLastMessage),
+                    lastAt: c.last_message_time ? new Date(c.last_message_time) : null,
+                    unread: c.unread_count || 0,
+                    online: false, // will update via socket events later
+                };
+            });
             setConversations(mapped);
             if (!selectedChat && mapped.length > 0) {
                 setSelectedChat(mapped[0]);
@@ -1656,22 +1769,26 @@ export default function Messages() {
                 .reverse()
                 .map((m) => {
                     const isMine = m.ID_NguoiGui === myUserId;
-                    const text = m.noi_dung || '';
+                    const rawText = m.noi_dung || '';
+                    const postSharePayload = parsePostSharePayload(rawText);
+                    const text = postSharePayload.cleanText || rawText;
                     const time = m.thoi_gian_gui
                         ? new Date(m.thoi_gian_gui).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false })
                         : '';
                     const file = m.file_dinh_kem ? normalizeUploadsUrl(m.file_dinh_kem, 'messages') : '';
                     const postShare = isPostShareMessage(text);
-                    const postImage = postShare ? normalizeUploadsUrl(extractPostShareImage(text)) : '';
+                    const postImage = postShare ? normalizeUploadsUrl(postSharePayload.postImage || extractPostShareImage(rawText)) : '';
+                    const location = extractLocationPayload(text);
                     return {
                         id: m.ID_TinNhan,
                         sender: isMine ? 'me' : 'them',
                         text,
                         time,
                         image: file || '',
+                        location,
                         isPostShare: postShare,
-                        postTitle: postShare ? extractPostShareTitle(text) : '',
-                        postId: postShare ? extractPostShareId(text) : null,
+                        postTitle: postShare ? (postSharePayload.title || extractPostShareTitle(rawText)) : '',
+                        postId: postShare ? (postSharePayload.postId || extractPostShareId(rawText) || null) : null,
                         postImage,
                     };
                 });
@@ -1685,12 +1802,9 @@ export default function Messages() {
         }
     }, [apiFetch, myUserId, normalizeUploadsUrl]);
 
-    const handleSelectChat = useCallback((conv, options = {}) => {
-        const { preserveFocusedPost = false } = options;
+    const handleSelectChat = useCallback((conv) => {
         setSelectedChat(conv);
-        if (!preserveFocusedPost) {
-            setFocusedPostId(null);
-        }
+        setFocusedPostId(null);
         setDealNotice(null);
         setShowMeetingComposer(false);
         setConversations(prev => prev.map(c => c.id === conv.id ? { ...c, unread: 0 } : c));
@@ -1716,10 +1830,6 @@ export default function Messages() {
         const pending = pendingSelectedUserRef.current;
         if (!pending || loadingConvs || !myUserId) return;
 
-        if (location.state?.focusPostId) {
-            setFocusedPostId(location.state.focusPostId);
-        }
-
         const existing = conversations.find(
             (conv) => conv.type === 'private' && String(conv.id) === String(pending.id),
         );
@@ -1736,7 +1846,7 @@ export default function Messages() {
         };
 
         if (!selectedChat || String(selectedChat.id) !== String(nextConv.id)) {
-            handleSelectChat(nextConv, { preserveFocusedPost: Boolean(location.state?.focusPostId) });
+            handleSelectChat(nextConv);
         }
 
         pendingSelectedUserRef.current = null;
@@ -1798,13 +1908,16 @@ export default function Messages() {
             const otherId = m.ID_NguoiGui === myUserId ? m.ID_NguoiNhan : m.ID_NguoiGui;
             const currentChat = selectedChatRef.current;
             const isCurrentChatOpen = currentChat?.type === 'private' && String(currentChat.id) === String(otherId);
-            const text = m.noi_dung || '';
+            const rawText = m.noi_dung || '';
+            const postSharePayload = parsePostSharePayload(rawText);
+            const text = postSharePayload.cleanText || rawText;
             const time = m.thoi_gian_gui
                 ? new Date(m.thoi_gian_gui).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false })
                 : '';
             const img = m.file_dinh_kem ? normalizeUploadsUrl(m.file_dinh_kem, 'messages') : '';
             const postShare = isPostShareMessage(text);
-            const postImage = postShare ? normalizeUploadsUrl(extractPostShareImage(text)) : '';
+            const postImage = postShare ? normalizeUploadsUrl(postSharePayload.postImage || extractPostShareImage(rawText)) : '';
+            const location = extractLocationPayload(text);
             const lastAt = m.thoi_gian_gui ? new Date(m.thoi_gian_gui) : new Date();
 
             setConversations((prev) => {
@@ -1822,7 +1935,7 @@ export default function Messages() {
                     avatar: existingConversation?.avatar
                         || (String(m.ID_NguoiGui) === String(myUserId) ? currentChat?.avatar : normalizeUploadsUrl(m.anh_nguoi_gui))
                         || avatarFallback(otherId),
-                    lastMsg: text,
+                    lastMsg: postShare ? (postSharePayload.title ? `Đã chia sẻ bài: ${postSharePayload.title}` : 'Đã chia sẻ một bài đăng') : text,
                     lastAt,
                     unread: isCurrentChatOpen || String(m.ID_NguoiGui) === String(myUserId)
                         ? 0
@@ -1847,9 +1960,10 @@ export default function Messages() {
                     text,
                     time,
                     image: img,
+                    location,
                     isPostShare: postShare,
-                    postTitle: postShare ? extractPostShareTitle(text) : '',
-                    postId: postShare ? extractPostShareId(text) : null,
+                    postTitle: postShare ? (postSharePayload.title || extractPostShareTitle(rawText)) : '',
+                    postId: postShare ? (postSharePayload.postId || extractPostShareId(rawText) || null) : null,
                     postImage,
                 };
                 setChatMessages(prev => {
@@ -1891,20 +2005,23 @@ export default function Messages() {
             if (!isCurrentConversationRelated) return;
 
             const currentDealPostId = activeDealPostIdRef.current;
-            const shouldOpenIncomingDeal = !currentDealPostId;
-            const shouldRefreshCurrentDeal =
-                shouldOpenIncomingDeal || String(currentDealPostId) === String(payload.postId);
 
-            if (!shouldRefreshCurrentDeal) {
+            if (!currentDealPostId) {
+                setDealNotice({
+                    type: 'success',
+                    text: 'Giao dịch vừa cập nhật. Bấm "Chốt đơn hàng" trong tin nhắn bài đăng nếu bạn muốn mở deal room.',
+                });
+                loadConversations();
+                return;
+            }
+
+            if (String(currentDealPostId) !== String(payload.postId)) {
                 setDealNotice({
                     type: 'success',
                     text: DEAL_SOCKET_NOTICE_LABELS[payload.action] || 'Giao dịch ở bài khác vừa được cập nhật.',
                 });
+                loadConversations();
                 return;
-            }
-
-            if (shouldOpenIncomingDeal) {
-                setFocusedPostId(payload.postId);
             }
 
             loadDealContext(payload.postId, currentChat);
@@ -1912,6 +2029,27 @@ export default function Messages() {
             setDealNotice({
                 type: 'success',
                 text: DEAL_SOCKET_NOTICE_LABELS[payload.action] || 'Trạng thái giao dịch vừa được cập nhật.',
+            });
+        });
+
+        s.on('deal_room_opened', (payload) => {
+            if (!payload?.postId || !payload?.senderId || !payload?.receiverId) return;
+
+            const currentChat = selectedChatRef.current;
+            if (!currentChat || currentChat.type !== 'private') return;
+
+            const participantIds = [String(payload.senderId), String(payload.receiverId)];
+            const isCurrentConversationRelated =
+                participantIds.includes(String(myUserId))
+                && participantIds.includes(String(currentChat.id));
+
+            if (!isCurrentConversationRelated) return;
+
+            setFocusedPostId(String(payload.postId));
+            persistDealRoomSelection(currentChat.id, payload.postId);
+            setDealNotice({
+                type: 'success',
+                text: 'Deal room vừa được mở từ tin nhắn bài đăng.',
             });
         });
 
@@ -2143,12 +2281,136 @@ export default function Messages() {
         sendMessageWithOptimistic(payload, newMsg);
     };
 
+    const handleShareLocation = useCallback(() => {
+        if (!selectedChat || selectedChat.type !== 'private') return;
+
+        if (!navigator.geolocation) {
+            window.alert('Trình duyệt này chưa hỗ trợ lấy vị trí.');
+            return;
+        }
+
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                const latitude = position.coords.latitude;
+                const longitude = position.coords.longitude;
+                const locationText = `📍 Vị trí GPS: https://www.google.com/maps?q=${latitude},${longitude}`;
+                const optimisticMessage = {
+                    id: `temp_location_${Date.now()}`,
+                    sender: 'me',
+                    text: locationText,
+                    time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false }),
+                    image: '',
+                    location: { lat: latitude, lng: longitude },
+                    isPostShare: false,
+                    postTitle: '',
+                    postId: null,
+                    postImage: '',
+                };
+
+                sendMessageWithOptimistic({
+                    ID_NguoiNhan: selectedChat.id,
+                    noi_dung: locationText,
+                    loai_tin_nhan: 'text',
+                    file_dinh_kem: null,
+                    tin_nhan_phu_thuoc: null,
+                }, optimisticMessage);
+            },
+            () => {
+                window.alert('Không lấy được vị trí hiện tại. Hãy kiểm tra quyền truy cập vị trí.');
+            },
+            {
+                enableHighAccuracy: true,
+                timeout: 10000,
+                maximumAge: 0,
+            },
+        );
+    }, [selectedChat, sendMessageWithOptimistic]);
+
+    const handleOpenImagePicker = useCallback(() => {
+        messageFileInputRef.current?.click();
+    }, []);
+
+    const handleImageFileChange = useCallback(async (event) => {
+        const file = event.target.files?.[0];
+        if (!file || !selectedChat || selectedChat.type !== 'private' || !token) {
+            if (event.target) {
+                event.target.value = '';
+            }
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('ID_NguoiNhan', selectedChat.id);
+        formData.append('noi_dung', '');
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/tinnhan/upload-and-send`, {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                },
+                body: formData,
+            });
+
+            const payload = await response.json().catch(() => null);
+            if (!response.ok) {
+                throw new Error(payload?.message || 'Không gửi được ảnh.');
+            }
+
+            const serverMessage = payload?.data?.message;
+            if (!socketRef.current?.connected && serverMessage) {
+                setChatMessages((prev) => [
+                    ...prev,
+                    {
+                        id: serverMessage.ID_TinNhan,
+                        sender: 'me',
+                        text: serverMessage.noi_dung || '',
+                        time: serverMessage.thoi_gian_gui
+                            ? new Date(serverMessage.thoi_gian_gui).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false })
+                            : new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false }),
+                        image: serverMessage.file_dinh_kem ? normalizeUploadsUrl(serverMessage.file_dinh_kem, 'messages') : '',
+                        location: null,
+                        isPostShare: false,
+                        postTitle: '',
+                        postId: null,
+                        postImage: '',
+                    },
+                ]);
+            }
+        } catch (uploadError) {
+            console.error('Upload image message failed', uploadError);
+            window.alert(uploadError.message || 'Không gửi được ảnh.');
+        } finally {
+            if (event.target) {
+                event.target.value = '';
+            }
+        }
+    }, [normalizeUploadsUrl, selectedChat, token]);
+
     const handleKeyDown = (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             handleSend();
         }
     };
+
+    const openDealRoom = useCallback((postId, options = {}) => {
+        if (!postId || !selectedChat || selectedChat.type !== 'private') return;
+
+        const { broadcast = true } = options;
+        setFocusedPostId(String(postId));
+        persistDealRoomSelection(selectedChat.id, postId);
+        setDealNotice(null);
+
+        if (broadcast && socketRef.current?.connected) {
+            socketRef.current.emit('open_deal_room', {
+                chatType: 'private',
+                chatId: selectedChat.id,
+                postId,
+            });
+        }
+    }, [persistDealRoomSelection, selectedChat]);
 
     const refreshDealContext = useCallback(async () => {
         if (!selectedChat || !activeDealPostId) return;
@@ -2587,7 +2849,7 @@ export default function Messages() {
                         </div>
 
                         <div ref={messagesViewportRef} className="msg-detail-scrollbody">
-                        {selectedChat.type === 'private' && (
+                        {selectedChat.type === 'private' && (activeDealPostId || loadingDeal) && (
                             <section className={`msg-deal-stage tone-${currentDealMeta.tone}`}>
                                 {loadingDeal ? (
                                     <div className="msg-deal-empty-stage loading">
@@ -2967,15 +3229,7 @@ export default function Messages() {
                                             </div>
                                         )}
                                     </>
-                                ) : (
-                                    <div className="msg-deal-empty-stage">
-                                        <Sparkles size={20} />
-                                        <div>
-                                            <h3>Bảng chốt đơn sẽ hiện ở đây</h3>
-                                            <p>Gửi kèm một bài đăng trong cuộc trò chuyện hoặc mở chat từ trang chi tiết bài đăng để bật giao diện giao dịch.</p>
-                                        </div>
-                                    </div>
-                                )}
+                                ) : null}
                             </section>
                         )}
 
@@ -2987,16 +3241,22 @@ export default function Messages() {
                                     <div className="msg-bubble-container">
                                         {msg.image && <img className="msg-bubble-img" src={msg.image} alt="" />}
                                         <div className="msg-bubble-wrap">
-                                            {msg.isPostShare ? (
+                                            {msg.location ? (
                                                 <button
                                                     type="button"
-                                                    className={`msg-post-share-card ${msg.sender === 'me' ? 'mine' : 'theirs'} ${msg.postId ? 'clickable' : ''}`}
-                                                    onClick={() => {
-                                                        if (msg.postId) {
-                                                            navigate(`/post/${msg.postId}`);
-                                                        }
-                                                    }}
+                                                    className={`msg-location-card ${msg.sender === 'me' ? 'mine' : 'theirs'}`}
+                                                    onClick={() => window.open(`https://www.google.com/maps?q=${msg.location.lat},${msg.location.lng}`, '_blank', 'noopener,noreferrer')}
                                                 >
+                                                    <div className="msg-location-icon">
+                                                        <MapPin size={26} />
+                                                    </div>
+                                                    <div className="msg-location-content">
+                                                        <div className="msg-location-title">📍 Vị trí của tôi</div>
+                                                        <div className="msg-location-subtitle">Nhấn để xem trên bản đồ</div>
+                                                    </div>
+                                                </button>
+                                            ) : msg.isPostShare ? (
+                                                <div className={`msg-post-share-card ${msg.sender === 'me' ? 'mine' : 'theirs'}`}>
                                                     {msg.postImage && (
                                                         <img className="msg-post-share-image" src={msg.postImage} alt={msg.postTitle || 'Bài đăng'} />
                                                     )}
@@ -3006,8 +3266,28 @@ export default function Messages() {
                                                         <div className="msg-post-share-subtitle">
                                                             {msg.postId ? 'Nhấn để xem chi tiết bài đăng' : 'Bài đăng được gửi kèm trong cuộc trò chuyện'}
                                                         </div>
+                                                        <div className="msg-post-share-actions">
+                                                            {msg.postId && (
+                                                                <button
+                                                                    type="button"
+                                                                    className="msg-post-share-link-btn"
+                                                                    onClick={() => navigate(`/post/${msg.postId}`)}
+                                                                >
+                                                                    Xem bài đăng
+                                                                </button>
+                                                            )}
+                                                            {msg.postId && (
+                                                                <button
+                                                                    type="button"
+                                                                    className="msg-post-share-deal-btn"
+                                                                    onClick={() => openDealRoom(msg.postId)}
+                                                                >
+                                                                    Chốt đơn hàng
+                                                                </button>
+                                                            )}
+                                                        </div>
                                                     </div>
-                                                </button>
+                                                </div>
                                             ) : (
                                                 <div className="msg-bubble">{msg.text}</div>
                                             )}
@@ -3043,9 +3323,20 @@ export default function Messages() {
                                     </button>
                                 </div>
                             )}
+                            <input
+                                ref={messageFileInputRef}
+                                type="file"
+                                accept="image/*"
+                                className="msg-hidden-file-input"
+                                onChange={handleImageFileChange}
+                            />
                             <div className="msg-input-bar">
-                                <button className="msg-input-icon"><Image size={20} /></button>
-                                <button className="msg-input-icon"><Mic size={20} /></button>
+                                <button type="button" className="msg-input-icon" title="Chọn ảnh" onClick={handleOpenImagePicker}>
+                                    <Image size={20} />
+                                </button>
+                                <button type="button" className="msg-input-icon" title="Chia sẻ vị trí" onClick={handleShareLocation}>
+                                    <MapPin size={20} />
+                                </button>
                                 <input
                                     type="text"
                                     className="msg-input-text"

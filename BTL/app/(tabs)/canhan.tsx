@@ -20,6 +20,7 @@ import BaiDangCanHan from '../components/CaNhan/baidangcanhan';
 import { useFocusEffect, Link, router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
+import { normalizeBackendMediaUrl } from '../../utils/mediaUrl';
 
 const API_BASE_URL = Constants.expoConfig?.extra?.apiUrl as string;
 
@@ -51,7 +52,7 @@ const FriendItem = ({ id, name, image }: { id: string; name: string; image?: str
     <TouchableOpacity className="w-1/3 p-1">
       <View className="overflow-hidden border border-gray-200 rounded-lg">
         {image ? (
-          <Image source={{ uri: image }} className="w-full h-28" />
+          <Image source={{ uri: normalizeBackendMediaUrl(image) }} className="w-full h-28" />
         ) : (
           <View className="items-center justify-center w-full h-28 bg-gray-200">
             <FontAwesome name="user" size={40} color="#ccc" />
@@ -172,14 +173,14 @@ const FullProfileScreen = () => {
         <Image
           source={{
             uri:
-              userData.anh_bia ||
+              normalizeBackendMediaUrl(userData.anh_bia) ||
               'https://scontent.fhan3-3.fna.fbcdn.net/v/t39.30808-6/473590815_1662778177990915_5060424421094548483_n.jpg?stp=dst-jpg_s960x960_tt6&_nc_cat=111&ccb=1-7&_nc_sid=cc71e4&_nc_eui2=AeHD9z-cUu1tjuu06ErCDgFL5umk2tH-Vsrm6aTa0f5WyncRk5v9XwANSXLsGUWVG1sEmpO8COybETFbiVvqFpph&_nc_ohc=cPkn4_o07AMQ7kNvwGbiyQL&_nc_oc=AdkWOAGoNFlsquc59gKtOqY-sGDl041GJrRrXWJWh0maQ0Vfur2zjQQYbN5_oWejqzk&_nc_zt=23&_nc_ht=scontent.fhan3-3.fna&_nc_gid=93oJAhMQ3XGWDO7uhuQcOQ&oh=00_AfbyFHjX7DFQM6U7hvLMcxI3YPwd8TnEHR3nP167LYu3rg&oe=68DAFFE4',
           }}
           className="w-full h-56 rounded-b-lg bg-gray-200"
         />
         <View className="absolute p-1 bg-white rounded-full shadow-lg top-36 left-1/2 -ml-20">
           <Image
-            source={{ uri: userData.anh_dai_dien || 'https://via.placeholder.com/150.png' }}
+            source={{ uri: normalizeBackendMediaUrl(userData.anh_dai_dien) || 'https://via.placeholder.com/150.png' }}
             className="w-40 h-40 rounded-full bg-gray-300"
           />
         </View>
@@ -275,7 +276,7 @@ const FullProfileScreen = () => {
         <Text className="text-xl font-bold">Bài viết</Text>
         <View className="flex-row items-center mt-4">
           <Image
-            source={{ uri: userData.anh_dai_dien || 'https://via.placeholder.com/150.png' }}
+            source={{ uri: normalizeBackendMediaUrl(userData.anh_dai_dien) || 'https://via.placeholder.com/150.png' }}
             className="w-10 h-10 rounded-full"
           />
           <Text className="ml-3 text-lg text-gray-500">Bạn đang nghĩ gì?</Text>
@@ -303,7 +304,7 @@ const FullProfileScreen = () => {
 
       <View className="w-full h-2 mt-4 bg-gray-200" />
 
-      <BaiDangCanHan userData={userData} />
+      <BaiDangCanHan key={userData.ID_NguoiDung} userData={userData} />
     </ScrollView>
   );
 };

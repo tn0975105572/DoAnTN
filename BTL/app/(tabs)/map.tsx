@@ -17,6 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
+import { normalizeBackendMediaUrl } from '../../utils/mediaUrl';
 
 const GRAPH_HOPPER_KEY = 'e27a7eaf-2b2f-4a1b-b0cb-610240d2e9f9';
 const API_BASE_URL = Constants.expoConfig?.extra?.apiUrl as string;
@@ -301,13 +302,7 @@ export default function NearestByRoute() {
             if (imageRes.ok) {
               const images = await imageRes.json();
               if (images && images.length > 0) {
-                const linkAnh = images[0].LinkAnh;
-                if (linkAnh.startsWith('http://') || linkAnh.startsWith('https://')) {
-                  postImage = linkAnh;
-                } else {
-                  const baseUrl = API_BASE_URL.replace('/api', '');
-                  postImage = `${baseUrl}/uploads/${linkAnh}`;
-                }
+                postImage = normalizeBackendMediaUrl(images[0].LinkAnh);
               }
             }
 
@@ -321,28 +316,7 @@ export default function NearestByRoute() {
               const user = userData.user || userData;
 
               if (user.anh_dai_dien) {
-                // Nếu đã là full URL (có http/https), kiểm tra xem có localhost không
-                if (
-                  user.anh_dai_dien.startsWith('http://') ||
-                  user.anh_dai_dien.startsWith('https://')
-                ) {
-                  // Nếu có localhost, thay thế bằng IP thực tế từ API_BASE_URL
-                  if (
-                    user.anh_dai_dien.includes('localhost') ||
-                    user.anh_dai_dien.includes('127.0.0.1')
-                  ) {
-                    const baseUrl = API_BASE_URL.replace('/api', '');
-                    const fileName =
-                      user.anh_dai_dien.split('/uploads/')[1] || user.anh_dai_dien.split('/').pop();
-                    authorAvatar = `${baseUrl}/uploads/${fileName}`;
-                  } else {
-                    authorAvatar = user.anh_dai_dien;
-                  }
-                } else {
-                  // Nếu chỉ là tên file, thêm base URL
-                  const baseUrl = API_BASE_URL.replace('/api', '');
-                  authorAvatar = `${baseUrl}/uploads/${user.anh_dai_dien}`;
-                }
+                authorAvatar = normalizeBackendMediaUrl(user.anh_dai_dien) || authorAvatar;
               }
             }
 

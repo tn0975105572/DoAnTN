@@ -152,17 +152,14 @@ exports.search = async (req, res) => {
 // Lấy bài đăng của người dùng
 exports.getByUserId = async (req, res) => {
   try {
-    const authenticatedUserId = getAuthenticatedUserId(req);
     const requestedUserId = String(req.params.userId || "").trim();
-    const userId =
-      isAdminRequest(req) && requestedUserId
-        ? requestedUserId
-        : authenticatedUserId;
+    const authenticatedUserId = getAuthenticatedUserId(req);
+    const userId = requestedUserId || authenticatedUserId;
 
     if (!userId) {
       return res.status(401).json({
         success: false,
-        message: "Ban can dang nhap de xem danh sach bai dang cua minh",
+        message: "Ban can dang nhap de xem danh sach bai dang",
       });
     }
 

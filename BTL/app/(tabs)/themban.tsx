@@ -17,6 +17,7 @@ import { router, useFocusEffect } from 'expo-router';
 import Constants from 'expo-constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { io } from 'socket.io-client';
+import { normalizeBackendMediaUrl } from '../../utils/mediaUrl';
 
 const API_BASE_URL = Constants.expoConfig?.extra?.apiUrl as string;
 const SOCKET_URL = API_BASE_URL;
@@ -49,7 +50,7 @@ const RequestListItem = ({ user, onAccept, onDecline }) => (
     >
       <Image
         style={styles.avatar}
-        source={{ uri: user.anh_dai_dien || `https://i.pravatar.cc/150?u=${user.ID_NguoiDung}` }}
+        source={{ uri: normalizeBackendMediaUrl(user.anh_dai_dien) || `https://i.pravatar.cc/150?u=${user.ID_NguoiDung}` }}
       />
     </TouchableOpacity>
     <View style={styles.userInfo}>
@@ -87,7 +88,7 @@ const SentRequestListItem = ({ user, onCancel }) => (
     >
       <Image
         style={styles.avatar}
-        source={{ uri: user.anh_dai_dien || `https://i.pravatar.cc/150?u=${user.ID_NguoiDung}` }}
+        source={{ uri: normalizeBackendMediaUrl(user.anh_dai_dien) || `https://i.pravatar.cc/150?u=${user.ID_NguoiDung}` }}
       />
     </TouchableOpacity>
     <View style={styles.userInfo}>
@@ -145,7 +146,7 @@ const SuggestionListItem = ({ user, onAdd }) => {
       >
         <Image
           style={styles.avatar}
-          source={{ uri: user.anh_dai_dien || `https://i.pravatar.cc/150?u=${user.ID_NguoiDung}` }}
+          source={{ uri: normalizeBackendMediaUrl(user.anh_dai_dien) || `https://i.pravatar.cc/150?u=${user.ID_NguoiDung}` }}
         />
       </TouchableOpacity>
       <View style={styles.userInfo}>
@@ -180,7 +181,7 @@ const FriendListItem = ({ user }) => (
     >
       <Image
         style={styles.avatar}
-        source={{ uri: user.anh_dai_dien || `https://i.pravatar.cc/150?u=${user.ID_NguoiDung}` }}
+        source={{ uri: normalizeBackendMediaUrl(user.anh_dai_dien) || `https://i.pravatar.cc/150?u=${user.ID_NguoiDung}` }}
       />
     </TouchableOpacity>
     <View style={styles.userInfo}>

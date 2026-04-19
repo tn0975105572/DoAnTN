@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import Toast from 'react-native-toast-message';
+import { normalizeBackendMediaUrl } from '../../../utils/mediaUrl';
 
 // --- Tái sử dụng các hằng số và interfaces từ HomeScreen ---
 const API_BASE_URL = Constants.expoConfig?.extra?.apiUrl as string;
@@ -186,7 +187,7 @@ const PostDetailScreen = () => {
           ID_BaiDang: postDetail.ID_BaiDang,
           ID_NguoiDung: postDetail.ID_NguoiDung,
           authorName: authorProfile?.ho_ten || 'Người dùng OLODO',
-          authorAvatar: authorProfile?.anh_dai_dien || 'https://i.pravatar.cc/50',
+          authorAvatar: normalizeBackendMediaUrl(authorProfile?.anh_dai_dien) || 'https://i.pravatar.cc/50',
           title: postDetail.tieu_de,
           description: postDetail.mo_ta || '',
           price: formattedPrice,
@@ -194,15 +195,7 @@ const PostDetailScreen = () => {
           time: new Date(postDetail.thoi_gian_tao).toLocaleDateString('vi-VN'),
           imageUrls: postImages.map((img: any) => {
             const linkAnh = img.LinkAnh;
-            // If it's already a full URL (starts with http/https), use it directly
-            if (linkAnh.startsWith('http://') || linkAnh.startsWith('https://')) {
-              return linkAnh;
-            }
-            // Otherwise, construct the full URL
-            const baseUrl = Constants.expoConfig?.extra?.apiUrl || 'http://192.168.0.108:3000';
-            const API_BASE_URL = baseUrl.endsWith('/api') ? baseUrl : `${baseUrl}/api`;
-            const uploadBaseUrl = API_BASE_URL.replace('/api', '');
-            return `${uploadBaseUrl}/uploads/${linkAnh}`;
+            return normalizeBackendMediaUrl(linkAnh);
           }),
           liked: isLiked,
           likeCount: likeCount,
