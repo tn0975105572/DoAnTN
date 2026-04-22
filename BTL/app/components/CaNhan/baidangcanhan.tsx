@@ -7,6 +7,7 @@ import { router } from 'expo-router';
 import Toast from 'react-native-toast-message';
 import PostMenu from '../BaiDang/PostMenu';
 import { normalizeBackendMediaUrl } from '../../../utils/mediaUrl';
+import { extractLikeRecords, findUserLike } from '../../../utils/likeUtils';
 
 const API_BASE_URL = Constants.expoConfig?.extra?.apiUrl as string;
 
@@ -175,12 +176,11 @@ const BaiDangCanHan: React.FC<BaiDangCanHanProps> = ({ userData }) => {
               });
 
               if (likeResponse.ok) {
-                const likes = await likeResponse.json();
+                const likesPayload = await likeResponse.json();
+                const likes = extractLikeRecords(likesPayload);
 
                 // Find if current user has liked this post
-                const userLike = likes.find((like: any) => {
-                  return like.ID_NguoiDung === userInfo.ID_NguoiDung;
-                });
+                const userLike = findUserLike(likesPayload, userInfo.ID_NguoiDung);
 
                 if (userLike) {
                   da_thich = true;
@@ -243,11 +243,10 @@ const BaiDangCanHan: React.FC<BaiDangCanHanProps> = ({ userData }) => {
       });
 
       if (likeResponse.ok) {
-        const likes = await likeResponse.json();
+        const likesPayload = await likeResponse.json();
+        const likes = extractLikeRecords(likesPayload);
 
-        const userLike = likes.find((like: any) => {
-          return like.ID_NguoiDung === userInfo.ID_NguoiDung;
-        });
+        const userLike = findUserLike(likesPayload, userInfo.ID_NguoiDung);
 
         setBaiDang((prev) =>
           prev.map((post) =>
@@ -381,8 +380,8 @@ const BaiDangCanHan: React.FC<BaiDangCanHanProps> = ({ userData }) => {
             });
 
             clearTimeout(likeTimeoutId);
-            const likes = likeResponse.ok ? await likeResponse.json() : [];
-            const userLike = likes.find((like: any) => like.ID_NguoiDung === userInfo.ID_NguoiDung);
+            const likesPayload = likeResponse.ok ? await likeResponse.json() : [];
+            const userLike = findUserLike(likesPayload, userInfo.ID_NguoiDung);
             likeIdToDelete = userLike?.ID_Like;
           }
 
@@ -446,11 +445,9 @@ const BaiDangCanHan: React.FC<BaiDangCanHanProps> = ({ userData }) => {
                   });
 
                   if (likeResponse.ok) {
-                    const likes = await likeResponse.json();
+                    const likesPayload = await likeResponse.json();
 
-                    const userLike = likes.find((like: any) => {
-                      return like.ID_NguoiDung === userInfo.ID_NguoiDung;
-                    });
+                    const userLike = findUserLike(likesPayload, userInfo.ID_NguoiDung);
 
                     if (userLike) {
                       setBaiDang((prev) => {

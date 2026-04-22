@@ -1,13 +1,15 @@
 import { useState, useEffect } from 'react';
-import { Search, Eye, Trash2, CheckCircle, XCircle } from 'lucide-react';
-import { postAPI } from '../services/api';
+import { Search, Eye, Trash2, CheckCircle, XCircle, Pencil } from 'lucide-react';
+import api, { categoryAPI, postAPI } from '../services/api';
 import './Posts.css';
 
 interface Post {
   ID_BaiDang: string;
+  ID_DanhMuc?: string;
+  ID_LoaiBaiDang?: string;
   tieu_de: string;
   mo_ta: string;
-  gia: number;
+  gia: number | null;
   vi_tri: string;
   trang_thai: string;
   thoi_gian_tao: string;
@@ -22,6 +24,16 @@ interface Post {
   DanhSachAnh?: string[];
 }
 
+interface Category {
+  ID_DanhMuc: string;
+  ten: string;
+}
+
+interface PostType {
+  ID_LoaiBaiDang: string;
+  ten: string;
+}
+
 const Posts = () => {
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
@@ -29,6 +41,11 @@ const Posts = () => {
   const [filterStatus, setFilterStatus] = useState('all');
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [showModal, setShowModal] = useState(false);
+  const [editingPost, setEditingPost] = useState<Post | null>(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [postTypes, setPostTypes] = useState<PostType[]>([]);
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -46,10 +63,36 @@ const Posts = () => {
     }
   }, [filterStatus, searchTerm]);
 
+  useEffect(() => {
+    const loadSupportData = async () => {
+      try {
+        const [categoriesResponse, postTypesResponse] = await Promise.all([
+          categoryAPI.getAll(),
+          api.get('/api/loaibaidang/getAll'),
+        ]);
+
+        setCategories(
+          Array.isArray(categoriesResponse.data)
+            ? categoriesResponse.data
+            : categoriesResponse.data?.data || [],
+        );
+        setPostTypes(
+          Array.isArray(postTypesResponse.data)
+            ? postTypesResponse.data
+            : postTypesResponse.data?.data || [],
+        );
+      } catch (error) {
+        console.error('Error loading post form options:', error);
+      }
+    };
+
+    void loadSupportData();
+  }, []);
+
   const loadPosts = async () => {
     try {
       setLoading(true);
-      const response = await postAPI.getAllWithDetails(currentPage, pageSize);
+      const response = await postAPI.getAll(currentPage, pageSize, filterStatus, searchTerm);
       setPosts(response.data.data || response.data);
       setTotalPages(response.data.totalPages || 1);
     } catch (error) {
@@ -75,6 +118,65 @@ const Posts = () => {
   const handleViewDetails = (post: Post) => {
     setSelectedPost(post);
     setShowModal(true);
+  };
+
+  const handleEdit = (post: Post) => {
+    setEditingPost({
+      ...post,
+      gia: post.gia ?? 0,
+      vi_tri: post.vi_tri || '',
+      mo_ta: post.mo_ta || '',
+      ID_DanhMuc: post.ID_DanhMuc || '',
+      ID_LoaiBaiDang: post.ID_LoaiBaiDang || '',
+    });
+    setShowEditModal(true);
+  };
+
+  const handleCloseEdit = () => {
+    setShowEditModal(false);
+    setEditingPost(null);
+    setSavingEdit(false);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingPost) return;
+
+    if (!editingPost.tieu_de?.trim()) {
+      alert('Vui lòng nhập tiêu đề bài đăng.');
+      return;
+    }
+
+    if (!editingPost.ID_DanhMuc || !editingPost.ID_LoaiBaiDang) {
+      alert('Vui lòng chọn danh mục và loại bài đăng.');
+      return;
+    }
+
+    setSavingEdit(true);
+
+    try {
+      await postAPI.update(editingPost.ID_BaiDang, {
+        ID_DanhMuc: editingPost.ID_DanhMuc,
+        ID_LoaiBaiDang: editingPost.ID_LoaiBaiDang,
+        tieu_de: editingPost.tieu_de.trim(),
+        mo_ta: editingPost.mo_ta?.trim() || '',
+        gia:
+          editingPost.gia === null || editingPost.gia === undefined
+            ? null
+            : Number(editingPost.gia),
+        vi_tri: editingPost.vi_tri?.trim() || '',
+        trang_thai: editingPost.trang_thai,
+        thoi_gian_cap_nhat: new Date().toISOString(),
+      });
+
+      await loadPosts();
+      handleCloseEdit();
+      alert('Cập nhật bài đăng thành công!');
+    } catch (error) {
+      console.error('Error updating post:', error);
+      alert('Không thể cập nhật bài đăng!');
+    } finally {
+      setSavingEdit(false);
+    }
   };
 
   // Helper function to get image URL
@@ -198,6 +300,13 @@ const Posts = () => {
                   onClick={() => handleViewDetails(post)}
                 >
                   <Eye size={16} />
+                </button>
+                <button
+                  className="btn-icon btn-edit"
+                  onClick={() => handleEdit(post)}
+                  title="Chỉnh sửa"
+                >
+                  <Pencil size={16} />
                 </button>
                 <button
                   className="btn-icon btn-delete"
@@ -429,13 +538,157 @@ const Posts = () => {
           </div>
         </div>
       )}
+
+      {showEditModal && editingPost && (
+        <div className="modal-overlay" onClick={handleCloseEdit}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Chỉnh sửa bài đăng</h3>
+              <button onClick={handleCloseEdit} className="modal-close">×</button>
+            </div>
+            <div className="modal-body">
+              <div className="form-group">
+                <label>Tiêu đề:</label>
+                <input
+                  type="text"
+                  value={editingPost.tieu_de || ''}
+                  onChange={(e) =>
+                    setEditingPost((current) =>
+                      current ? { ...current, tieu_de: e.target.value } : current,
+                    )
+                  }
+                  className="form-input"
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Mô tả:</label>
+                <textarea
+                  value={editingPost.mo_ta || ''}
+                  onChange={(e) =>
+                    setEditingPost((current) =>
+                      current ? { ...current, mo_ta: e.target.value } : current,
+                    )
+                  }
+                  className="form-input form-textarea"
+                  rows={5}
+                />
+              </div>
+
+              <div className="posts-form-grid">
+                <div className="form-group">
+                  <label>Giá:</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={editingPost.gia ?? ''}
+                    onChange={(e) =>
+                      setEditingPost((current) =>
+                        current
+                          ? {
+                              ...current,
+                              gia: e.target.value === '' ? null : Number(e.target.value),
+                            }
+                          : current,
+                      )
+                    }
+                    className="form-input"
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label>Trạng thái:</label>
+                  <select
+                    value={editingPost.trang_thai || 'dang_ban'}
+                    onChange={(e) =>
+                      setEditingPost((current) =>
+                        current ? { ...current, trang_thai: e.target.value } : current,
+                      )
+                    }
+                    className="form-input"
+                  >
+                    <option value="dang_ban">Đang bán</option>
+                    <option value="dang_giu_cho">Đang giữ chỗ</option>
+                    <option value="dang_giao_dich">Đang giao dịch</option>
+                    <option value="da_ban">Đã bán</option>
+                    <option value="da_trao_doi">Đã trao đổi</option>
+                    <option value="da_tang">Đã tặng</option>
+                    <option value="an">Ẩn</option>
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label>Danh mục:</label>
+                  <select
+                    value={editingPost.ID_DanhMuc || ''}
+                    onChange={(e) =>
+                      setEditingPost((current) =>
+                        current ? { ...current, ID_DanhMuc: e.target.value } : current,
+                      )
+                    }
+                    className="form-input"
+                  >
+                    <option value="">Chọn danh mục</option>
+                    {categories.map((category) => (
+                      <option key={category.ID_DanhMuc} value={category.ID_DanhMuc}>
+                        {category.ten}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label>Loại bài đăng:</label>
+                  <select
+                    value={editingPost.ID_LoaiBaiDang || ''}
+                    onChange={(e) =>
+                      setEditingPost((current) =>
+                        current ? { ...current, ID_LoaiBaiDang: e.target.value } : current,
+                      )
+                    }
+                    className="form-input"
+                  >
+                    <option value="">Chọn loại bài đăng</option>
+                    {postTypes.map((type) => (
+                      <option key={type.ID_LoaiBaiDang} value={type.ID_LoaiBaiDang}>
+                        {type.ten}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label>Vị trí:</label>
+                <input
+                  type="text"
+                  value={editingPost.vi_tri || ''}
+                  onChange={(e) =>
+                    setEditingPost((current) =>
+                      current ? { ...current, vi_tri: e.target.value } : current,
+                    )
+                  }
+                  className="form-input"
+                />
+              </div>
+
+              <div className="modal-actions">
+                <button onClick={handleCloseEdit} className="btn-secondary" disabled={savingEdit}>
+                  Hủy
+                </button>
+                <button onClick={handleSaveEdit} className="btn-primary" disabled={savingEdit}>
+                  {savingEdit ? 'Đang lưu...' : 'Lưu thay đổi'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
 export default Posts;
-
-
 
 
 

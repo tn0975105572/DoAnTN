@@ -5,7 +5,7 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   server: {
-    port: 3004,
+    port: 3005,
     host: true, // Cho phép truy cập từ bên ngoài
     hmr: {
       overlay: false // Tắt overlay lỗi để tăng tốc
@@ -27,7 +27,7 @@ export default defineConfig({
   // Tối ưu hóa build
   build: {
     target: 'esnext',
-    minify: 'terser',
+    minify: 'esbuild',
     sourcemap: false,
     rollupOptions: {
       output: {
@@ -44,5 +44,4 @@ export default defineConfig({
     include: ['react', 'react-dom', 'axios', 'framer-motion', 'lucide-react']
   }
 })
-
 

@@ -11,7 +11,6 @@ import {
   SafeAreaView,
   Platform,
   ImageBackground,
-  Share,
   StatusBar,
   ActivityIndicator,
   Modal,
@@ -22,6 +21,7 @@ import Constants from 'expo-constants';
 import Toast from 'react-native-toast-message';
 import { io } from 'socket.io-client';
 import { normalizeBackendMediaUrl } from '../../utils/mediaUrl';
+import { extractLikeRecords, findUserLike } from '../../utils/likeUtils';
 import FeedPost, { HydratedPost } from '../components/FeedPost';
 import Chatbot from '../components/Home/Chatbot';
 
@@ -84,6 +84,9 @@ interface Like {
   ID_BaiDang: string;
 }
 
+const getDefaultAvatar = (userId?: string | number) =>
+  `https://i.pravatar.cc/150?u=${String(userId || 'olodo-user')}`;
+
 // HydratedPost interface moved to ../components/FeedPost.tsx
 
 interface PeopleYouMayKnow {
@@ -119,41 +122,50 @@ const AppHeader = () => {
   };
 
   useEffect(() => {
-    loadUnreadCount();
+    void loadUnreadCount();
+
+    let isMounted = true;
+    let socket: ReturnType<typeof io> | null = null;
 
     // 🔔 Kết nối Socket.IO để cập nhật badge ngay lập tức
     const setupSocket = async () => {
       const userInfo = await AsyncStorage.getItem('userInfo');
-      if (userInfo) {
-        const user = JSON.parse(userInfo);
-        const userId = user.ID_NguoiDung;
-        if (userId) {
-          try {
-            const socket = io(API_BASE_URL);
+      const userToken = await AsyncStorage.getItem('userToken');
+      if (!userInfo || !userToken || !isMounted) {
+        return;
+      }
 
-            socket.on('connect', () => {
-              // Socket connected
-            });
+      const user = JSON.parse(userInfo);
+      const userId = user.ID_NguoiDung;
+      if (userId) {
+        try {
+          socket = io(API_BASE_URL, {
+            transports: ['websocket'],
+            auth: { token: userToken },
+          });
 
-            // Lắng nghe thông báo mới
-            socket.on(`notification_${userId}`, (data: any) => {
-              // Reload badge count ngay lập tức
-              loadUnreadCount();
-            });
+          socket.on('connect', () => {
+            socket?.emit('user_login', { userId });
+          });
 
-            return () => socket.disconnect();
-          } catch (error) {
-            // Silent error
-          }
+          socket.on('notification', () => {
+            void loadUnreadCount();
+          });
+        } catch {
+          // Silent error
         }
       }
     };
 
-    setupSocket();
+    void setupSocket();
 
     // Fallback: Reload every 30 seconds nếu socket fail
     const interval = setInterval(loadUnreadCount, 30000);
-    return () => clearInterval(interval);
+    return () => {
+      isMounted = false;
+      socket?.disconnect();
+      clearInterval(interval);
+    };
   }, []);
 
   return (
@@ -245,89 +257,105 @@ const TabSelector = ({
   </View>
 );
 
-const CreatePost = () => (
-  <View className="p-4 bg-white border-b-8 border-[#fffcef]">
-    <View className="flex-row items-center">
-      <Image className="w-10 h-10 rounded-full" source={{ uri: 'https://i.pravatar.cc/50' }} />
-      <View className="ml-3">
-        <Text className="text-base font-bold text-[#222]">What&apos;s Going On?</Text>
-        <Text className="text-sm text-[#777] mt-1">Type Something Here...</Text>
+const CreatePost = ({ currentUser }: { currentUser: UserProfile | null }) => {
+  const avatarUri =
+    normalizeBackendMediaUrl(currentUser?.anh_dai_dien) ||
+    getDefaultAvatar(currentUser?.ID_NguoiDung);
+
+  return (
+    <View className="p-4 bg-white border-b-8 border-[#fffcef]">
+      <View className="flex-row items-center">
+        <Image className="w-10 h-10 rounded-full" source={{ uri: avatarUri }} />
+        <View className="ml-3">
+          <Text className="text-base font-bold text-[#222]">What&apos;s Going On?</Text>
+          <Text className="text-sm text-[#777] mt-1">Type Something Here...</Text>
+        </View>
+      </View>
+      <View className="h-[1px] bg-[#EEEEEE] my-3" />
+      <View className="flex-row justify-between">
+        <TouchableOpacity className="flex-row items-center">
+          <Ionicons name="image-outline" size={20} color="#4CAF50" />
+          <Text className="ml-2 text-xs text-[#777] font-medium">Gallery</Text>
+        </TouchableOpacity>
+        <TouchableOpacity className="flex-row items-center">
+          <FontAwesome5 name="user-tag" size={20} color="#1E88E5" />
+          <Text className="ml-2 text-xs text-[#777] font-medium">Tag People</Text>
+        </TouchableOpacity>
+        <TouchableOpacity className="flex-row items-center">
+          <MaterialCommunityIcons name="emoticon-happy-outline" size={20} color="#FFC107" />
+          <Text className="ml-2 text-xs text-[#777] font-medium">Feeling</Text>
+        </TouchableOpacity>
+        <TouchableOpacity className="flex-row items-center">
+          <MaterialCommunityIcons name="video-outline" size={20} color="#E63946" />
+          <Text className="ml-2 text-xs text-[#777] font-medium">Live</Text>
+        </TouchableOpacity>
       </View>
     </View>
-    <View className="h-[1px] bg-[#EEEEEE] my-3" />
-    <View className="flex-row justify-between">
-      <TouchableOpacity className="flex-row items-center">
-        <Ionicons name="image-outline" size={20} color="#4CAF50" />
-        <Text className="ml-2 text-xs text-[#777] font-medium">Gallery</Text>
-      </TouchableOpacity>
-      <TouchableOpacity className="flex-row items-center">
-        <FontAwesome5 name="user-tag" size={20} color="#1E88E5" />
-        <Text className="ml-2 text-xs text-[#777] font-medium">Tag People</Text>
-      </TouchableOpacity>
-      <TouchableOpacity className="flex-row items-center">
-        <MaterialCommunityIcons name="emoticon-happy-outline" size={20} color="#FFC107" />
-        <Text className="ml-2 text-xs text-[#777] font-medium">Feeling</Text>
-      </TouchableOpacity>
-      <TouchableOpacity className="flex-row items-center">
-        <MaterialCommunityIcons name="video-outline" size={20} color="#E63946" />
-        <Text className="ml-2 text-xs text-[#777] font-medium">Live</Text>
-      </TouchableOpacity>
-    </View>
-  </View>
-);
+  );
+};
 
-const Stories = () => (
-  <View className="bg-white pb-4">
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={{ paddingLeft: 15 }}
-    >
-      <TouchableOpacity className="w-24 h-40 rounded-lg mr-3">
-        <ImageBackground
-          source={{ uri: 'https://images.unsplash.com/photo-1579626343210-9b6d611f8b33?q=80' }}
-          className="w-full h-full justify-end rounded-lg overflow-hidden"
-          imageStyle={{ borderRadius: 10, opacity: 0.7 }}
-        >
-          <View className="items-center pb-4">
-            <TouchableOpacity
-              className="w-8 h-8 rounded-full bg-white justify-center items-center mb-2"
-              onPress={() => router.push('/components/Home/TaoTin')}
-            >
-              <Ionicons name="add" size={24} color={COLORS.primary} />
-            </TouchableOpacity>
-            <Text className="text-white font-bold text-xs">Add Story</Text>
-          </View>
-        </ImageBackground>
-      </TouchableOpacity>
-      {[
-        {
-          name: 'Alexfin',
-          img: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80',
-        },
-        {
-          name: 'Harinax',
-          img: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80',
-        },
-        { name: 'Sonix', img: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80' },
-      ].map((story) => (
-        <TouchableOpacity className="w-24 h-40 rounded-lg mr-3" key={story.name}>
+const Stories = ({ currentUser }: { currentUser: UserProfile | null }) => {
+  const currentUserAvatar =
+    normalizeBackendMediaUrl(currentUser?.anh_dai_dien) ||
+    getDefaultAvatar(currentUser?.ID_NguoiDung);
+
+  return (
+    <View className="bg-white pb-4">
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{ paddingLeft: 15 }}
+      >
+        <TouchableOpacity className="w-24 h-40 rounded-lg mr-3">
           <ImageBackground
-            source={{ uri: story.img }}
-            className="w-full h-full justify-between p-2 rounded-lg overflow-hidden"
-            imageStyle={{ borderRadius: 10 }}
+            source={{ uri: currentUserAvatar }}
+            className="w-full h-full justify-end rounded-lg overflow-hidden"
+            imageStyle={{ borderRadius: 10, opacity: 0.82 }}
           >
-            <Image
-              className="w-8 h-8 rounded-full border-2 border-[#7f001f]"
-              source={{ uri: story.img }}
+            <View
+              className="absolute inset-0"
+              style={{ backgroundColor: 'rgba(0, 0, 0, 0.18)' }}
             />
-            <Text className="text-white font-bold text-xs">{story.name}</Text>
+            <View className="items-center pb-4">
+              <TouchableOpacity
+                className="w-8 h-8 rounded-full bg-white justify-center items-center mb-2"
+                onPress={() => router.push('/components/Home/TaoTin')}
+              >
+                <Ionicons name="add" size={24} color={COLORS.primary} />
+              </TouchableOpacity>
+              <Text className="text-white font-bold text-xs">Add Story</Text>
+            </View>
           </ImageBackground>
         </TouchableOpacity>
-      ))}
-    </ScrollView>
-  </View>
-);
+        {[
+          {
+            name: 'Alexfin',
+            img: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80',
+          },
+          {
+            name: 'Harinax',
+            img: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80',
+          },
+          { name: 'Sonix', img: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80' },
+        ].map((story) => (
+          <TouchableOpacity className="w-24 h-40 rounded-lg mr-3" key={story.name}>
+            <ImageBackground
+              source={{ uri: story.img }}
+              className="w-full h-full justify-between p-2 rounded-lg overflow-hidden"
+              imageStyle={{ borderRadius: 10 }}
+            >
+              <Image
+                className="w-8 h-8 rounded-full border-2 border-[#7f001f]"
+                source={{ uri: story.img }}
+              />
+              <Text className="text-white font-bold text-xs">{story.name}</Text>
+            </ImageBackground>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+    </View>
+  );
+};
 
 const PeopleMayKnow = () => (
   <View className="bg-white pt-4 pb-2">
@@ -386,6 +414,7 @@ const HomeScreen = () => {
   const [activeTab, setActiveTab] = useState('news');
   const [token, setToken] = useState<string>('');
   const [userId, setUserId] = useState<string>('');
+  const [currentUserProfile, setCurrentUserProfile] = useState<UserProfile | null>(null);
   const [canPress, setCanPress] = useState(true);
   const isFocused = useIsFocused();
 
@@ -764,10 +793,9 @@ const HomeScreen = () => {
 
             if (postImages.length === 0) return null;
 
-            const likes =
+            const likesPayload =
               likeRes.status === 'fulfilled' && likeRes.value.ok ? await likeRes.value.json() : [];
-            // getLikesByPostId trả về { success, data, total } — lấy .data
-            const likesData = Array.isArray(likes) ? likes : (likes?.data ?? []);
+            const likesData = extractLikeRecords(likesPayload);
 
             const commentCountRaw =
               commentRes.status === 'fulfilled' && commentRes.value.ok
@@ -776,9 +804,7 @@ const HomeScreen = () => {
             const commentCount: number = commentCountRaw?.count ?? 0;
 
             const authorProfile = await fetchUserInfo(postDetail.ID_NguoiDung, token);
-            const userLike = likesData.find(
-              (like: Like) => String(like.ID_NguoiDung) === String(userId),
-            );
+            const userLike = findUserLike(likesPayload, userId) as Like | undefined;
 
             // Memoized price formatting
             const rawPrice = parseFloat(postDetail.gia) || 0;
@@ -1053,13 +1079,74 @@ const HomeScreen = () => {
         ]);
         setToken(tokenResult || '');
         const userInfo = userInfoResult ? JSON.parse(userInfoResult) : {};
-        setUserId(userInfo.ID_NguoiDung ? String(userInfo.ID_NguoiDung) : '');
+        const currentUserId = userInfo.ID_NguoiDung ? String(userInfo.ID_NguoiDung) : '';
+        setUserId(currentUserId);
+        if (currentUserId) {
+          setCurrentUserProfile({
+            ID_NguoiDung: currentUserId,
+            ho_ten: userInfo.ho_ten || 'Người dùng OLODO',
+            anh_dai_dien:
+              normalizeBackendMediaUrl(userInfo.anh_dai_dien) || getDefaultAvatar(currentUserId),
+            email: userInfo.email,
+          });
+        }
       } catch (error) {
         console.error('Error loading auth data:', error);
       }
     };
-    loadAuthData();
+    void loadAuthData();
   }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const syncCurrentUserProfile = async () => {
+      if (!isFocused || !token || !userId) {
+        return;
+      }
+
+      try {
+        const latestProfile = await fetchUserInfo(userId, token);
+        if (!isMounted) {
+          return;
+        }
+
+        const normalizedAvatar =
+          normalizeBackendMediaUrl(latestProfile.anh_dai_dien) || getDefaultAvatar(userId);
+
+        setCurrentUserProfile({
+          ID_NguoiDung: String(latestProfile.ID_NguoiDung || userId),
+          ho_ten: latestProfile.ho_ten || 'Người dùng OLODO',
+          anh_dai_dien: normalizedAvatar,
+          email: latestProfile.email,
+        });
+
+        const storedUserInfo = await AsyncStorage.getItem('userInfo');
+        if (!storedUserInfo || !isMounted) {
+          return;
+        }
+
+        const parsedStoredUser = JSON.parse(storedUserInfo);
+        await AsyncStorage.setItem(
+          'userInfo',
+          JSON.stringify({
+            ...parsedStoredUser,
+            ho_ten: latestProfile.ho_ten || parsedStoredUser.ho_ten,
+            anh_dai_dien: latestProfile.anh_dai_dien || parsedStoredUser.anh_dai_dien,
+            email: latestProfile.email || parsedStoredUser.email,
+          }),
+        );
+      } catch (error) {
+        console.error('Error syncing current user profile:', error);
+      }
+    };
+
+    void syncCurrentUserProfile();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [fetchUserInfo, isFocused, token, userId]);
 
   useEffect(() => {
     let mounted = true;
@@ -1114,8 +1201,8 @@ const HomeScreen = () => {
             });
 
             clearTimeout(likeTimeoutId);
-            const likes: Like[] = likeResponse.ok ? await likeResponse.json() : [];
-            const userLike = likes.find((like) => String(like.ID_NguoiDung) === String(userId));
+            const likesPayload = likeResponse.ok ? await likeResponse.json() : [];
+            const userLike = findUserLike(likesPayload, userId) as Like | undefined;
             likeIdToDelete = userLike?.ID_Like;
           }
 
@@ -1197,14 +1284,14 @@ const HomeScreen = () => {
       <>
         <AppHeader />
         <TabSelector activeTab={activeTab} setActiveTab={setActiveTab} />
-        <CreatePost />
-        <Stories />
+        <CreatePost currentUser={currentUserProfile} />
+        <Stories currentUser={currentUserProfile} />
         <Text className="text-lg font-bold text-[#222] px-4 pt-4 pb-2">
           {activeTab === 'news' ? 'News Feed' : 'Popular Posts'}
         </Text>
       </>
     ),
-    [activeTab, setActiveTab],
+    [activeTab, currentUserProfile, setActiveTab],
   );
 
   const renderFooter = () => {

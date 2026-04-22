@@ -6,6 +6,7 @@ import Constants from 'expo-constants';
 import { Ionicons } from '@expo/vector-icons';
 import FeedPost, { HydratedPost } from '../FeedPost';
 import { normalizeBackendMediaUrl } from '../../../utils/mediaUrl';
+import { extractLikeRecords, findUserLike } from '../../../utils/likeUtils';
 
 const API_BASE_URL = Constants.expoConfig?.extra?.apiUrl as string;
 const API_URLS = {
@@ -117,10 +118,10 @@ export default function KetQuaTimKiemScreen() {
             ]);
 
             const likesRaw = likesRes.ok ? await likesRes.json() : [];
-            const likes = Array.isArray(likesRaw) ? likesRaw : (likesRaw?.data ?? []);
+            const likes = extractLikeRecords(likesRaw);
             const commentCountRaw = commentsRes.ok ? await commentsRes.json() : { count: 0 };
             const commentCount: number = commentCountRaw?.count ?? 0;
-            const userLike = likes.find((like: any) => like.ID_NguoiDung == userId);
+            const userLike = findUserLike(likesRaw, userId);
 
             const formattedPrice = new Intl.NumberFormat('vi-VN').format(postDetail.gia || 0);
 

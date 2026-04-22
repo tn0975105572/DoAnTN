@@ -17,7 +17,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
-import { normalizeBackendMediaUrl } from '../../utils/mediaUrl';
+import {
+  getDefaultProfileAvatarUrl,
+  normalizeBackendMediaUrl,
+} from '../../utils/mediaUrl';
 
 const API_BASE_URL = Constants.expoConfig!.extra!.apiUrl as string;
 
@@ -106,16 +109,25 @@ const VipBanner = ({ vipExpiry }) => {
 
 // UserProfile
 const UserProfile = ({
-  name, email, avatar, isVerified, isVip, vipExpiry, points, onEditPress, onVerificationPress
+  name,
+  email,
+  avatar,
+  isVerified,
+  isVip,
+  vipExpiry,
+  points,
+  onAvatarPress,
+  onEditPress,
+  onVerificationPress,
 }) => {
   const isVipActive = isVip && vipExpiry && new Date(vipExpiry) > new Date();
   const avatarBorder = isVipActive ? '#FFD700' : isVerified ? '#4CAF50' : '#FF9800';
   return (
     <View style={[styles.profileSection, isVipActive && styles.profileSectionVip]}>
-      <TouchableOpacity style={styles.avatarContainer} onPress={onEditPress} activeOpacity={0.7}>
+      <TouchableOpacity style={styles.avatarContainer} onPress={onAvatarPress} activeOpacity={0.7}>
         <Image source={{ uri: avatar }} style={[styles.avatar, { borderColor: avatarBorder }]} />
         <View style={styles.avatarOverlay}>
-          <Ionicons name="create-outline" size={18} color="#fff" />
+          <Ionicons name="person-outline" size={18} color="#fff" />
         </View>
       </TouchableOpacity>
       <View style={styles.profileInfo}>
@@ -297,12 +309,16 @@ const AccountScreen = () => {
           <UserProfile
             name={userInfo.ho_ten || userInfo.name || 'Người dùng'}
             email={userInfo.email || userInfo.ten_dang_nhap || 'Không có email'}
-            avatar={normalizeBackendMediaUrl(userInfo.anh_dai_dien) || 'https://i.pravatar.cc/150'}
+            avatar={
+              normalizeBackendMediaUrl(userInfo.anh_dai_dien) ||
+              getDefaultProfileAvatarUrl(userInfo.ID_NguoiDung)
+            }
             isVerified={isVerified}
             isVip={userInfo.la_vip === 1}
             vipExpiry={userInfo.ngay_het_han_vip}
             points={userInfo.diem_so}
-            onEditPress={() => router.push('/caidat/thongtincanhan')}
+            onAvatarPress={() => router.push('/canhan')}
+            onEditPress={() => router.push('/components/CaiDat/thongtincanhan')}
             onVerificationPress={handleVerificationPress}
           />
         ) : (

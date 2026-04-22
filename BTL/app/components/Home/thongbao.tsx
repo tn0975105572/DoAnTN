@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
-  Image,
   Alert,
 } from 'react-native';
 import { router } from 'expo-router';
@@ -53,7 +52,7 @@ const NotificationsScreen = () => {
   };
 
   // Load thông báo
-  const loadNotifications = async () => {
+  const loadNotifications = useCallback(async () => {
     try {
       setLoading(true);
       const currentUserId = await getUserId();
@@ -71,19 +70,19 @@ const NotificationsScreen = () => {
       } else {
         setNotifications([]);
       }
-    } catch (error) {
+    } catch {
       setNotifications([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   // Refresh thông báo
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await loadNotifications();
     setRefreshing(false);
-  }, []);
+  }, [loadNotifications]);
 
   // Đánh dấu đã đọc
   const handleNotificationPress = async (notification: Notification) => {
@@ -127,7 +126,7 @@ const NotificationsScreen = () => {
                   prev.filter((n) => n.ID_ThongBao !== notification.ID_ThongBao)
                 );
               }
-            } catch (error) {
+            } catch {
               Alert.alert('Lỗi', 'Không thể xóa thông báo');
             }
           },
@@ -137,46 +136,48 @@ const NotificationsScreen = () => {
   };
 
   useEffect(() => {
-    loadNotifications();
-    
+    void loadNotifications();
+
     // 🔔 Kết nối Socket.IO để nhận thông báo real-time
-    let socket: any = null;
-    
+    let socket: ReturnType<typeof io> | null = null;
+
     const setupSocket = async () => {
       const currentUserId = await getUserId();
-      if (!currentUserId) return;
-      
+      const userToken = await AsyncStorage.getItem('userToken');
+      if (!currentUserId || !userToken) return;
+
       try {
-        socket = io(API_BASE_URL);
-        
+        socket = io(API_BASE_URL, {
+          transports: ['websocket'],
+          auth: { token: userToken },
+        });
+
         socket.on('connect', () => {
-          // Connected
+          socket?.emit('user_login', { userId: currentUserId });
         });
-        
-        // Lắng nghe thông báo mới cho user này
-        socket.on(`notification_${currentUserId}`, (data: any) => {
-          // Reload thông báo ngay lập tức
-          loadNotifications();
+
+        socket.on('notification', () => {
+          void loadNotifications();
         });
-        
+
         socket.on('disconnect', () => {
           // Disconnected
         });
-        
-      } catch (error) {
+
+      } catch {
         // Silent error
       }
     };
-    
-    setupSocket();
-    
+
+    void setupSocket();
+
     // Cleanup khi component unmount
     return () => {
       if (socket) {
         socket.disconnect();
       }
     };
-  }, []);
+  }, [loadNotifications]);
 
   const renderItem = ({ item }: { item: Notification }) => {
     const icon = notificationService.getIconByType(item.loai);

@@ -41,6 +41,14 @@ const shouldRewriteLocalBackendUrl = (hostname: string) =>
   PRIVATE_IP_REGEX.test(hostname) ||
   hostname.endsWith('.local');
 
+const DEFAULT_PROFILE_COVER_URL =
+  'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1400&q=80';
+
+export const getDefaultProfileCoverUrl = () => DEFAULT_PROFILE_COVER_URL;
+
+export const getDefaultProfileAvatarUrl = (seed: string | number = 'olodo-user') =>
+  `https://i.pravatar.cc/150?u=${encodeURIComponent(String(seed))}`;
+
 export const normalizeBackendMediaUrl = (rawUrl: unknown, uploadsSubPath = ''): string => {
   if (typeof rawUrl !== 'string') {
     return '';
@@ -84,4 +92,3 @@ export const normalizeBackendMediaUrl = (rawUrl: unknown, uploadsSubPath = ''): 
     return value;
   }
 };
-

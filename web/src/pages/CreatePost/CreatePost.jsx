@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
     ArrowLeft,
     CheckCircle2,
     Crosshair,
     ImagePlus,
     Loader2,
+    Lock,
     MapPin,
+    Pencil,
     Sparkles,
     Trash2,
     Wallet,
@@ -25,12 +27,23 @@ const INITIAL_FORM = {
     trang_thai: 'dang_ban',
 };
 
-const POST_STATUSES = [
+const USER_POST_STATUSES = [
     { value: 'dang_ban', label: 'Đang bán' },
-    { value: 'da_ban', label: 'Đã bán' },
     { value: 'da_trao_doi', label: 'Đã trao đổi' },
     { value: 'da_tang', label: 'Đã tặng' },
 ];
+
+const STATUS_LABELS = {
+    dang_ban: 'Đang bán',
+    dang_giu_cho: 'Đang giữ chỗ',
+    dang_giao_dich: 'Đang giao dịch',
+    da_ban: 'Đã bán',
+    da_trao_doi: 'Đã trao đổi',
+    da_tang: 'Đã tặng',
+};
+
+const RESTRICTED_POST_STATUSES = new Set(['dang_giu_cho', 'dang_giao_dich', 'da_ban']);
+const MAX_POST_IMAGES = 10;
 
 const getBackendOrigin = () => {
     try {
@@ -42,8 +55,48 @@ const getBackendOrigin = () => {
 
 const formatNumber = (value) => new Intl.NumberFormat('vi-VN').format(Number(value || 0));
 
+const resolveMediaUrl = (rawUrl, backendOrigin) => {
+    if (!rawUrl) {
+        return '';
+    }
+
+    if (/^https?:\/\//i.test(rawUrl)) {
+        return rawUrl;
+    }
+
+    const cleaned = String(rawUrl).replace(/^\/+/, '');
+    if (!cleaned) {
+        return '';
+    }
+
+    if (cleaned.startsWith('uploads/')) {
+        return `${backendOrigin}/${cleaned}`;
+    }
+
+    if (cleaned.includes('/')) {
+        return `${backendOrigin}/uploads/${cleaned}`;
+    }
+
+    return `${backendOrigin}/uploads/${cleaned}`;
+};
+
+const normalizeExistingImages = (rows, backendOrigin) =>
+    (Array.isArray(rows) ? rows : []).map((item, index) => {
+        const rawLink = item?.LinkAnh || item?.link || '';
+        const fileName = String(rawLink || '').split('/').pop() || `image-${index + 1}.jpg`;
+
+        return {
+            id: String(item?.ID || item?.id || `${fileName}-${index}`),
+            rawLink,
+            previewUrl: resolveMediaUrl(rawLink, backendOrigin),
+            name: fileName,
+        };
+    });
+
 export default function CreatePost() {
     const navigate = useNavigate();
+    const location = useLocation();
+    const { postId: routePostId } = useParams();
     const [form, setForm] = useState(INITIAL_FORM);
     const [types, setTypes] = useState([]);
     const [categories, setCategories] = useState([]);
@@ -52,10 +105,17 @@ export default function CreatePost() {
     const [submitting, setSubmitting] = useState(false);
     const [geoLoading, setGeoLoading] = useState(false);
     const [selectedFiles, setSelectedFiles] = useState([]);
+    const [existingImages, setExistingImages] = useState([]);
+    const [imagesToDelete, setImagesToDelete] = useState([]);
     const [feedback, setFeedback] = useState(null);
 
     const { userId, token } = useAuthSession();
     const backendOrigin = useMemo(() => getBackendOrigin(), []);
+    const editingPostId = useMemo(
+        () => String(routePostId || location.state?.postId || '').trim(),
+        [location.state, routePostId],
+    );
+    const isEditMode = Boolean(editingPostId);
 
     const apiFetch = useCallback(async (path, options = {}) => {
         const headers = {
@@ -79,6 +139,7 @@ export default function CreatePost() {
 
     const syncUserInfo = useCallback(async () => {
         if (!userId) return null;
+
         const response = await apiFetch(`/nguoidung/get/${userId}`);
         const nextUser = response?.user || response;
         if (nextUser) {
@@ -94,19 +155,21 @@ export default function CreatePost() {
                 notifyAuthSessionChanged();
             }
         }
+
         return nextUser;
     }, [apiFetch, userId]);
 
     useEffect(() => {
         if (!userId) {
             navigate('/login');
-            return;
+            return undefined;
         }
 
         let cancelled = false;
 
         const loadData = async () => {
             setLoading(true);
+
             try {
                 const [typeRows, categoryRows] = await Promise.all([
                     apiFetch('/loaibaidang/getAll'),
@@ -121,15 +184,46 @@ export default function CreatePost() {
 
                 setTypes(mappedTypes);
                 setCategories(mappedCategories);
-                setForm((current) => ({
-                    ...current,
-                    ID_LoaiBaiDang: current.ID_LoaiBaiDang || mappedTypes[0]?.ID_LoaiBaiDang || '',
-                    ID_DanhMuc: current.ID_DanhMuc || mappedCategories[0]?.ID_DanhMuc || '',
-                }));
+
+                if (isEditMode) {
+                    const [postData, imageRows] = await Promise.all([
+                        apiFetch(`/baidang/getById/${editingPostId}`),
+                        apiFetch(`/baidang_anh/getById/${editingPostId}`),
+                    ]);
+
+                    if (cancelled) return;
+
+                    setForm({
+                        ID_LoaiBaiDang: String(postData?.ID_LoaiBaiDang || ''),
+                        ID_DanhMuc: String(postData?.ID_DanhMuc || ''),
+                        tieu_de: postData?.tieu_de || '',
+                        mo_ta: postData?.mo_ta || '',
+                        gia:
+                            postData?.gia === null || typeof postData?.gia === 'undefined'
+                                ? ''
+                                : String(postData.gia),
+                        vi_tri: postData?.vi_tri || '',
+                        trang_thai: String(postData?.trang_thai || 'dang_ban'),
+                    });
+                    setExistingImages(normalizeExistingImages(imageRows, backendOrigin));
+                    setImagesToDelete([]);
+                    setSelectedFiles([]);
+                } else {
+                    setForm((current) => ({
+                        ...current,
+                        ID_LoaiBaiDang:
+                            current.ID_LoaiBaiDang || mappedTypes[0]?.ID_LoaiBaiDang || '',
+                        ID_DanhMuc:
+                            current.ID_DanhMuc || mappedCategories[0]?.ID_DanhMuc || '',
+                    }));
+                }
             } catch (error) {
                 console.error('Load create-post data failed', error);
                 if (!cancelled) {
-                    setFeedback({ type: 'error', text: error.message || 'Không thể tải dữ liệu tạo bài đăng.' });
+                    setFeedback({
+                        type: 'error',
+                        text: error.message || 'Không thể tải dữ liệu chỉnh sửa bài đăng.',
+                    });
                 }
             } finally {
                 if (!cancelled) {
@@ -138,27 +232,53 @@ export default function CreatePost() {
             }
         };
 
-        loadData();
+        void loadData();
 
         return () => {
             cancelled = true;
         };
-    }, [apiFetch, navigate, syncUserInfo, userId]);
+    }, [apiFetch, backendOrigin, editingPostId, isEditMode, navigate, syncUserInfo, userId]);
 
     const imagePreviews = useMemo(
-        () => selectedFiles.map((file) => ({
-            key: `${file.name}-${file.size}-${file.lastModified}`,
-            file,
-            previewUrl: URL.createObjectURL(file),
-        })),
+        () =>
+            selectedFiles.map((file) => ({
+                key: `${file.name}-${file.size}-${file.lastModified}`,
+                file,
+                previewUrl: URL.createObjectURL(file),
+            })),
         [selectedFiles],
     );
 
     const canAffordPost = Number(userInfo?.diem_so || 0) >= 20;
+    const totalImageCount = existingImages.length + selectedFiles.length;
+    const statusLocked = isEditMode && RESTRICTED_POST_STATUSES.has(String(form.trang_thai || '').trim());
 
-    useEffect(() => () => {
-        imagePreviews.forEach((item) => URL.revokeObjectURL(item.previewUrl));
-    }, [imagePreviews]);
+    const availableStatusOptions = useMemo(() => {
+        const currentStatus = String(form.trang_thai || '').trim();
+
+        if (!currentStatus) {
+            return USER_POST_STATUSES;
+        }
+
+        if (USER_POST_STATUSES.some((item) => item.value === currentStatus)) {
+            return USER_POST_STATUSES;
+        }
+
+        return [
+            {
+                value: currentStatus,
+                label: STATUS_LABELS[currentStatus] || currentStatus,
+            },
+            ...USER_POST_STATUSES,
+        ];
+    }, [form.trang_thai]);
+
+    useEffect(
+        () => () => {
+            imagePreviews.forEach((item) => URL.revokeObjectURL(item.previewUrl));
+        },
+        [imagePreviews],
+    );
 
     const handleChange = (field) => (event) => {
         setForm((current) => ({
@@ -171,11 +291,27 @@ export default function CreatePost() {
         const nextFiles = Array.from(event.target.files || []);
         if (!nextFiles.length) return;
 
+        let skippedCount = 0;
+
         setSelectedFiles((current) => {
-            const existingKeys = new Set(current.map((file) => `${file.name}-${file.size}-${file.lastModified}`));
-            const unique = nextFiles.filter((file) => !existingKeys.has(`${file.name}-${file.size}-${file.lastModified}`));
-            return [...current, ...unique];
+            const existingKeys = new Set(
+                current.map((file) => `${file.name}-${file.size}-${file.lastModified}`),
+            );
+            const unique = nextFiles.filter(
+                (file) => !existingKeys.has(`${file.name}-${file.size}-${file.lastModified}`),
+            );
+            const remainingSlots = Math.max(0, MAX_POST_IMAGES - (existingImages.length + current.length));
+            const accepted = unique.slice(0, remainingSlots);
+            skippedCount = unique.length - accepted.length;
+            return [...current, ...accepted];
         });
+
+        if (skippedCount > 0) {
+            setFeedback({
+                type: 'error',
+                text: `Bạn chỉ có thể giữ tối đa ${MAX_POST_IMAGES} ảnh cho một bài đăng.`,
+            });
+        }
 
         event.target.value = '';
     };
@@ -190,6 +326,13 @@ export default function CreatePost() {
                         file.lastModified === fileToRemove.lastModified
                     ),
             ),
+        );
+    };
+
+    const handleRemoveExistingImage = (imageId) => {
+        setExistingImages((current) => current.filter((image) => image.id !== imageId));
+        setImagesToDelete((current) =>
+            current.includes(imageId) ? current : [...current, imageId],
         );
     };
 
@@ -261,7 +404,10 @@ export default function CreatePost() {
             setFeedback({ type: 'success', text: 'Đã điền vị trí hiện tại.' });
         } catch (error) {
             console.error('Get current location failed', error);
-            setFeedback({ type: 'error', text: 'Không thể lấy vị trí hiện tại. Hãy kiểm tra quyền định vị.' });
+            setFeedback({
+                type: 'error',
+                text: 'Không thể lấy vị trí hiện tại. Hãy kiểm tra quyền định vị.',
+            });
         } finally {
             setGeoLoading(false);
         }
@@ -276,11 +422,14 @@ export default function CreatePost() {
         }
 
         if (!form.tieu_de.trim() || !form.ID_LoaiBaiDang || !form.ID_DanhMuc) {
-            setFeedback({ type: 'error', text: 'Bạn cần nhập tiêu đề, loại bài đăng và danh mục.' });
+            setFeedback({
+                type: 'error',
+                text: 'Bạn cần nhập tiêu đề, loại bài đăng và danh mục.',
+            });
             return;
         }
 
-        if (!canAffordPost) {
+        if (!isEditMode && !canAffordPost) {
             setFeedback({ type: 'error', text: 'Bạn chưa đủ 20 điểm để đăng bài.' });
             return;
         }
@@ -297,21 +446,49 @@ export default function CreatePost() {
                 mo_ta: form.mo_ta.trim(),
                 gia: form.gia ? Number(form.gia) : null,
                 vi_tri: form.vi_tri.trim(),
-                trang_thai: form.trang_thai,
-                thoi_gian_tao: timestamp,
                 thoi_gian_cap_nhat: timestamp,
             };
 
-            const created = await apiFetch('/baidang/create', {
-                method: 'POST',
-                body: JSON.stringify(payload),
-            });
+            const nextStatus = String(form.trang_thai || '').trim();
+            if (nextStatus && !statusLocked) {
+                payload.trang_thai = nextStatus;
+            }
 
-            const createdPostId = created?.ID_BaiDang || created?.id;
+            let targetPostId = editingPostId;
+            let successMessage = 'Cập nhật bài đăng thành công.';
+
+            if (isEditMode) {
+                await apiFetch(`/baidang/update/${editingPostId}`, {
+                    method: 'PUT',
+                    body: JSON.stringify(payload),
+                });
+            } else {
+                const created = await apiFetch('/baidang/create', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        ...payload,
+                        trang_thai: nextStatus || 'dang_ban',
+                        thoi_gian_tao: timestamp,
+                    }),
+                });
+                targetPostId = created?.ID_BaiDang || created?.id;
+                successMessage = created?.message || 'Đăng bài thành công.';
+            }
+
+            if (imagesToDelete.length > 0) {
+                await Promise.all(
+                    imagesToDelete.map((imageId) =>
+                        apiFetch(`/baidang_anh/delete/${imageId}`, {
+                            method: 'DELETE',
+                        }),
+                    ),
+                );
+            }
+
             const uploadedFileUrls = [];
             const failedUploads = [];
 
-            if (createdPostId && selectedFiles.length) {
+            if (targetPostId && selectedFiles.length) {
                 for (const file of selectedFiles) {
                     try {
                         const imageUrl = await uploadImageFile(file);
@@ -325,13 +502,13 @@ export default function CreatePost() {
                 }
             }
 
-            if (createdPostId && uploadedFileUrls.length) {
+            if (targetPostId && uploadedFileUrls.length) {
                 await Promise.all(
                     uploadedFileUrls.map((link) =>
                         apiFetch('/baidang_anh/create', {
                             method: 'POST',
                             body: JSON.stringify({
-                                ID_BaiDang: createdPostId,
+                                ID_BaiDang: targetPostId,
                                 LinkAnh: link,
                             }),
                         }),
@@ -339,23 +516,48 @@ export default function CreatePost() {
                 );
             }
 
-            await syncUserInfo();
+            if (!isEditMode) {
+                await syncUserInfo();
+            }
+
             setFeedback({
                 type: 'success',
                 text: failedUploads.length
-                    ? `Bài đăng đã tạo nhưng có ${failedUploads.length} ảnh upload lỗi: ${failedUploads.join(', ')}`
-                    : (created?.message || 'Đăng bài thành công.'),
+                    ? `${successMessage} Có ${failedUploads.length} ảnh upload lỗi: ${failedUploads.join(', ')}`
+                    : successMessage,
             });
-            setForm(INITIAL_FORM);
-            setSelectedFiles([]);
+
+            if (!isEditMode) {
+                setForm(INITIAL_FORM);
+                setSelectedFiles([]);
+                setExistingImages([]);
+                setImagesToDelete([]);
+            }
+
             window.setTimeout(() => navigate('/profile'), 1200);
         } catch (error) {
-            console.error('Create post failed', error);
-            setFeedback({ type: 'error', text: error.message || 'Không thể đăng bài.' });
+            console.error(isEditMode ? 'Update post failed' : 'Create post failed', error);
+            setFeedback({
+                type: 'error',
+                text: error.message || (isEditMode ? 'Không thể cập nhật bài đăng.' : 'Không thể đăng bài.'),
+            });
         } finally {
             setSubmitting(false);
         }
     };
+
+    if (loading) {
+        return (
+            <div className="create-post-page">
+                <div className="cp-shell">
+                    <div className="cp-card cp-loading-state">
+                        <Loader2 size={22} className="spin" />
+                        <p>Đang tải dữ liệu bài đăng...</p>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="create-post-page">
@@ -366,11 +568,18 @@ export default function CreatePost() {
                             <ArrowLeft size={16} />
                             Quay lại
                         </button>
-                        <span className="cp-eyebrow">Dang bai moi</span>
-                        <h1>Đăng bài mới lên chợ sinh viên</h1>
+                        <span className="cp-eyebrow">
+                            {isEditMode ? 'Cap nhat bai dang' : 'Dang bai moi'}
+                        </span>
+                        <h1>
+                            {isEditMode
+                                ? 'Chỉnh sửa bài đăng đã có'
+                                : 'Đăng bài mới lên chợ sinh viên'}
+                        </h1>
                         <p>
-                            Tạo bài đăng từ web với đầy đủ loại bài, danh mục, giá, vị trí và ảnh minh họa.
-                            Hệ thống sẽ trừ 20 điểm khi đăng thành công.
+                            {isEditMode
+                                ? 'Cập nhật nội dung, ảnh minh họa, vị trí hoặc giá bán mà không làm mất bài đăng hiện tại.'
+                                : 'Tạo bài đăng từ web với đầy đủ loại bài, danh mục, giá, vị trí và ảnh minh họa. Hệ thống sẽ trừ 20 điểm khi đăng thành công.'}
                         </p>
                     </div>
 
@@ -383,17 +592,19 @@ export default function CreatePost() {
                             </div>
                         </div>
                         <div className="cp-hero-item">
-                            <span className="cp-hero-icon"><Sparkles size={18} /></span>
+                            <span className="cp-hero-icon">
+                                {isEditMode ? <Pencil size={18} /> : <Sparkles size={18} />}
+                            </span>
                             <div>
-                                <strong>20 điểm</strong>
-                                <span>Chi phí cho mỗi bài đăng</span>
+                                <strong>{isEditMode ? 'Không trừ điểm' : '20 điểm'}</strong>
+                                <span>{isEditMode ? 'Cập nhật bài đăng hiện có' : 'Chi phí cho mỗi bài đăng'}</span>
                             </div>
                         </div>
                         <div className="cp-hero-item">
                             <span className="cp-hero-icon"><ImagePlus size={18} /></span>
                             <div>
-                                <strong>{selectedFiles.length}</strong>
-                                <span>Tổng ảnh đang chuẩn bị</span>
+                                <strong>{totalImageCount}</strong>
+                                <span>Tổng ảnh đang gắn với bài đăng</span>
                             </div>
                         </div>
                     </div>
@@ -409,21 +620,27 @@ export default function CreatePost() {
                 <div className="cp-layout">
                     <aside className="cp-sidebar">
                         <div className="cp-card">
-                            <h2>Điều kiện nghiệp vụ</h2>
+                            <h2>{isEditMode ? 'Lưu ý khi chỉnh sửa' : 'Điều kiện nghiệp vụ'}</h2>
                             <ul className="cp-rule-list">
-                                <li>Người dùng phải đăng nhập để đăng bài.</li>
-                                <li>Mỗi bài đăng thành công sẽ bị trừ 20 điểm.</li>
+                                <li>Người dùng phải đăng nhập để thao tác với bài đăng.</li>
+                                {isEditMode ? (
+                                    <li>Cập nhật bài đăng sẽ không trừ thêm điểm của tài khoản.</li>
+                                ) : (
+                                    <li>Mỗi bài đăng thành công sẽ bị trừ 20 điểm.</li>
+                                )}
                                 <li>Loại bài đăng và danh mục là bắt buộc.</li>
-                                <li>Ảnh bài đăng chỉ được chọn trực tiếp từ máy.</li>
+                                <li>Bạn có thể giữ tối đa 10 ảnh cho một bài đăng.</li>
                             </ul>
                         </div>
 
-                        <div className={`cp-card cp-card-accent${canAffordPost ? '' : ' is-warning'}`}>
-                            <h2>Trạng thái điểm</h2>
+                        <div className={`cp-card cp-card-accent${!isEditMode && !canAffordPost ? ' is-warning' : ''}`}>
+                            <h2>{isEditMode ? 'Trạng thái cập nhật' : 'Trạng thái điểm'}</h2>
                             <p>
-                                {canAffordPost
-                                    ? 'Bạn đang đủ điểm để đăng bài mới.'
-                                    : 'Bạn chưa đủ 20 điểm để đăng bài. Backend sẽ từ chối nếu tiếp tục gửi.'}
+                                {isEditMode
+                                    ? 'Sau khi lưu, bài đăng sẽ giữ nguyên ID hiện tại và cập nhật ngay trong hồ sơ cá nhân.'
+                                    : canAffordPost
+                                        ? 'Bạn đang đủ điểm để đăng bài mới.'
+                                        : 'Bạn chưa đủ 20 điểm để đăng bài. Backend sẽ từ chối nếu tiếp tục gửi.'}
                             </p>
                         </div>
                     </aside>
@@ -480,16 +697,29 @@ export default function CreatePost() {
                                         />
                                     </label>
 
-                                    <label className="cp-field">
-                                        <span>Trạng thái sau khi tạo</span>
-                                        <select value={form.trang_thai} onChange={handleChange('trang_thai')}>
-                                            {POST_STATUSES.map((item) => (
-                                                <option key={item.value} value={item.value}>
-                                                    {item.label}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </label>
+                                    {statusLocked ? (
+                                        <label className="cp-field">
+                                            <span>Trạng thái hiện tại</span>
+                                            <div className="cp-locked-status">
+                                                <Lock size={16} />
+                                                <span>{STATUS_LABELS[form.trang_thai] || form.trang_thai}</span>
+                                            </div>
+                                            <small className="cp-field-note">
+                                                Trạng thái này đang được điều khiển bởi luồng giao dịch nên không thể sửa tại đây.
+                                            </small>
+                                        </label>
+                                    ) : (
+                                        <label className="cp-field">
+                                            <span>{isEditMode ? 'Trạng thái bài đăng' : 'Trạng thái sau khi tạo'}</span>
+                                            <select value={form.trang_thai} onChange={handleChange('trang_thai')}>
+                                                {availableStatusOptions.map((item) => (
+                                                    <option key={item.value} value={item.value}>
+                                                        {item.label}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </label>
+                                    )}
 
                                     <label className="cp-field cp-field-full">
                                         <span>Vị trí</span>
@@ -528,32 +758,61 @@ export default function CreatePost() {
                             <div className="cp-card">
                                 <h2>Ảnh minh họa</h2>
                                 <p className="cp-helper">
-                                    Chọn ảnh trực tiếp từ máy để hệ thống upload tự động lên server trước khi gắn vào bài đăng.
+                                    {isEditMode
+                                        ? 'Bạn có thể xóa ảnh cũ, thêm ảnh mới rồi lưu để cập nhật bài đăng.'
+                                        : 'Chọn ảnh trực tiếp từ máy để hệ thống upload tự động lên server trước khi gắn vào bài đăng.'}
                                 </p>
                                 <label className="cp-upload-box">
                                     <input type="file" accept="image/*" multiple onChange={handleChooseFiles} />
                                     <span className="cp-upload-icon"><ImagePlus size={20} /></span>
-                                    <strong>Chọn ảnh từ máy</strong>
+                                    <strong>{isEditMode ? 'Thêm ảnh mới' : 'Chọn ảnh từ máy'}</strong>
                                     <small>Hỗ trợ chọn nhiều ảnh cùng lúc</small>
                                 </label>
 
+                                {existingImages.length > 0 && (
+                                    <>
+                                        <div className="cp-section-caption">Ảnh hiện tại</div>
+                                        <div className="cp-preview-grid">
+                                            {existingImages.map((image) => (
+                                                <div key={image.id} className="cp-preview-card">
+                                                    <img src={image.previewUrl} alt={image.name} />
+                                                    <button
+                                                        type="button"
+                                                        className="cp-preview-remove"
+                                                        onClick={() => handleRemoveExistingImage(image.id)}
+                                                        title="Gỡ ảnh hiện tại"
+                                                    >
+                                                        <Trash2 size={14} />
+                                                    </button>
+                                                    <span>{image.name}</span>
+                                                    <em className="cp-preview-badge">Ảnh đang có</em>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </>
+                                )}
+
                                 {imagePreviews.length > 0 && (
-                                    <div className="cp-preview-grid">
-                                        {imagePreviews.map((item) => (
-                                            <div key={item.key} className="cp-preview-card">
-                                                <img src={item.previewUrl} alt={item.file.name} />
-                                                <button
-                                                    type="button"
-                                                    className="cp-preview-remove"
-                                                    onClick={() => handleRemoveFile(item.file)}
-                                                    title="Xóa ảnh"
-                                                >
-                                                    <Trash2 size={14} />
-                                                </button>
-                                                <span>{item.file.name}</span>
-                                            </div>
-                                        ))}
-                                    </div>
+                                    <>
+                                        <div className="cp-section-caption">Ảnh sẽ tải lên</div>
+                                        <div className="cp-preview-grid">
+                                            {imagePreviews.map((item) => (
+                                                <div key={item.key} className="cp-preview-card">
+                                                    <img src={item.previewUrl} alt={item.file.name} />
+                                                    <button
+                                                        type="button"
+                                                        className="cp-preview-remove"
+                                                        onClick={() => handleRemoveFile(item.file)}
+                                                        title="Xóa ảnh mới"
+                                                    >
+                                                        <Trash2 size={14} />
+                                                    </button>
+                                                    <span>{item.file.name}</span>
+                                                    <em className="cp-preview-badge is-new">Ảnh mới</em>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </>
                                 )}
                             </div>
 
@@ -566,8 +825,8 @@ export default function CreatePost() {
                                     className="cp-btn cp-btn-primary"
                                     disabled={loading || submitting || !types.length || !categories.length}
                                 >
-                                    {submitting ? <Loader2 size={16} className="spin" /> : <Sparkles size={16} />}
-                                    Đăng bài
+                                    {submitting ? <Loader2 size={16} className="spin" /> : (isEditMode ? <Pencil size={16} /> : <Sparkles size={16} />)}
+                                    {isEditMode ? 'Lưu cập nhật' : 'Đăng bài'}
                                 </button>
                             </div>
                         </form>

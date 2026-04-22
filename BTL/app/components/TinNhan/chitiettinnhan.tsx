@@ -1899,7 +1899,16 @@ const ChatDetailScreen = () => {
       socketRef.current.on('disconnect', (reason) => { });
 
       socketRef.current.on('new_message', (data) => {
-        if (data.type === 'private' && data.message.ID_NguoiGui === otherUser.id) {
+        const senderId = String(data?.message?.ID_NguoiGui ?? '');
+        const receiverId = String(data?.message?.ID_NguoiNhan ?? '');
+        const currentOtherUserId = String(otherUser.id ?? '');
+        const currentViewerId = String(currentUserId ?? '');
+        const isCurrentPrivateChat =
+          data?.type === 'private' &&
+          senderId === currentOtherUserId &&
+          receiverId === currentViewerId;
+
+        if (isCurrentPrivateChat) {
           // Chỉ hiển thị tin nhắn nếu da_xoa_gui = 0 (chưa bị xóa)
           if (data.message.da_xoa_gui === 0) {
             // Phân biệt tin nhắn ảnh qua file_dinh_kem (theo API docs)
@@ -1953,7 +1962,7 @@ const ChatDetailScreen = () => {
 
       // Lắng nghe tin nhắn bị thu hồi
       socketRef.current.on('message_recalled', (data) => {
-        if (data.chatType === 'private' && data.chatId === otherUser.id) {
+        if (data.chatType === 'private' && String(data.chatId) === String(otherUser.id)) {
           // Cập nhật tin nhắn trong state để đánh dấu da_xoa_gui = 1
           setMessages((prevMessages) =>
             prevMessages.map((msg) =>
@@ -2032,8 +2041,8 @@ const ChatDetailScreen = () => {
       socketRef.current.on('typing_start', (data) => {
         if (
           data.chatType === 'private' &&
-          data.chatId === otherUser.id &&
-          data.userId === otherUser.id
+          String(data.chatId) === String(otherUser.id) &&
+          String(data.userId) === String(otherUser.id)
         ) {
           setIsTyping(true);
         }
@@ -2042,8 +2051,8 @@ const ChatDetailScreen = () => {
       socketRef.current.on('typing_stop', (data) => {
         if (
           data.chatType === 'private' &&
-          data.chatId === otherUser.id &&
-          data.userId === otherUser.id
+          String(data.chatId) === String(otherUser.id) &&
+          String(data.userId) === String(otherUser.id)
         ) {
           setIsTyping(false);
         }

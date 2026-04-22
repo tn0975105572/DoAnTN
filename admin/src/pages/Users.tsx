@@ -346,12 +346,6 @@ const Users = () => {
     return `http://localhost:3000/uploads/${imagePath}`;
   };
 
-  const filteredUsers = users.filter(user =>
-    user.ho_ten?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.ten_dang_nhap?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
   if (loading) {
     return (
       <div className="page-loading">
@@ -927,7 +921,6 @@ const Users = () => {
 };
 
 export default Users;
-
 
 
 

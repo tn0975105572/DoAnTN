@@ -16,6 +16,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import Toast from 'react-native-toast-message';
 import { normalizeBackendMediaUrl } from '../../../utils/mediaUrl';
+import { extractLikeRecords, findUserLike, getLikeCount } from '../../../utils/likeUtils';
 
 // --- Tái sử dụng các hằng số và interfaces từ HomeScreen ---
 const API_BASE_URL = Constants.expoConfig?.extra?.apiUrl as string;
@@ -142,10 +143,10 @@ const PostDetailScreen = () => {
 
         if (likeRes.ok) {
           const likeData = await likeRes.json();
-          if (likeData.success && likeData.data) {
-            likes = likeData.data;
-            likeCount = likeData.total || likes.length;
-            userLike = likes.find((like: any) => String(like.ID_NguoiDung) === currentUserId);
+          likes = extractLikeRecords(likeData);
+          if (likes.length > 0 || likeData?.success) {
+            likeCount = getLikeCount(likeData);
+            userLike = findUserLike(likeData, currentUserId) ?? null;
 
             // Use persisted state if available, otherwise use API data
             if (persistedLikeState) {
@@ -271,9 +272,7 @@ const PostDetailScreen = () => {
           if (likeResponse.ok) {
             const likeData = await likeResponse.json();
             if (likeData.success && likeData.data) {
-              const userLike = likeData.data.find(
-                (like: any) => String(like.ID_NguoiDung) === userId,
-              );
+              const userLike = findUserLike(likeData, userId);
               likeIdToDelete = userLike?.ID_Like;
             }
           }

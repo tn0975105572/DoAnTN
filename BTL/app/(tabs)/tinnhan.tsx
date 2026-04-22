@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -15,9 +15,13 @@ import {
 import { Ionicons as Icon, MaterialCommunityIcons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Constants from 'expo-constants';
+import { io, Socket } from 'socket.io-client';
 import { chatService } from '../../services/chatService';
 import SearchUsers from '../components/TinNhan/timkiem';
 import { normalizeBackendMediaUrl } from '../../utils/mediaUrl';
+
+const API_BASE_URL = Constants.expoConfig?.extra?.apiUrl as string;
 
 // Lấy User ID từ AsyncStorage
 const getUserId = async (): Promise<string> => {
@@ -103,6 +107,7 @@ const ChatListScreen = () => {
   const [showSearch, setShowSearch] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedChat, setSelectedChat] = useState<ChatItemData | null>(null);
+  const socketRef = useRef<Socket | null>(null);
   const TABS = ['All Chats', 'Groups', 'Contacts'];
 
   const handleChatPress = (item: ChatItemData) => {
@@ -139,7 +144,7 @@ const ChatListScreen = () => {
       } else {
         Alert.alert('Lỗi', 'Không thể xóa cuộc trò chuyện');
       }
-    } catch (error) {
+    } catch {
       Alert.alert('Lỗi', 'Có lỗi xảy ra khi xóa cuộc trò chuyện');
     } finally {
       setShowDeleteModal(false);
@@ -148,7 +153,7 @@ const ChatListScreen = () => {
   };
 
   // Load dữ liệu từ API
-  const loadConversations = async () => {
+  const loadConversations = useCallback(async () => {
     try {
       setLoading(true);
       const userId = await getUserId();
@@ -173,18 +178,73 @@ const ChatListScreen = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   // Load dữ liệu khi component mount
   useEffect(() => {
-    loadConversations();
-  }, []);
+    void loadConversations();
+  }, [loadConversations]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const connectRealtime = async () => {
+      try {
+        const [userInfo, userToken] = await Promise.all([
+          AsyncStorage.getItem('userInfo'),
+          AsyncStorage.getItem('userToken'),
+        ]);
+
+        if (!isMounted || !userInfo || !userToken || !API_BASE_URL) {
+          return;
+        }
+
+        const user = JSON.parse(userInfo);
+        const userId = user?.ID_NguoiDung;
+        if (!userId) {
+          return;
+        }
+
+        socketRef.current?.disconnect();
+        socketRef.current = io(API_BASE_URL, {
+          transports: ['websocket'],
+          auth: { token: userToken },
+        });
+
+        socketRef.current.on('connect', () => {
+          socketRef.current?.emit('user_login', { userId });
+        });
+
+        const refreshConversations = () => {
+          void loadConversations();
+        };
+
+        socketRef.current.on('new_message', refreshConversations);
+        socketRef.current.on('message_read', refreshConversations);
+        socketRef.current.on('notification', (payload) => {
+          if (payload?.notification?.loai === 'tin_nhan') {
+            refreshConversations();
+          }
+        });
+      } catch (error) {
+        console.error('❌ Failed to setup chat list realtime:', error);
+      }
+    };
+
+    void connectRealtime();
+
+    return () => {
+      isMounted = false;
+      socketRef.current?.disconnect();
+      socketRef.current = null;
+    };
+  }, [loadConversations]);
 
   // Refresh danh sách khi quay lại từ chat
   useFocusEffect(
-    React.useCallback(() => {
-      loadConversations();
-    }, []),
+    useCallback(() => {
+      void loadConversations();
+    }, [loadConversations]),
   );
 
   // Lọc dữ liệu theo tab

@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { Suspense, lazy } from 'react';
 import { Navigate, createBrowserRouter, useLocation } from 'react-router-dom';
 import Layout from '../components/layout/Layout';
@@ -112,6 +113,10 @@ const router = createBrowserRouter([
             },
             {
                 path: 'create-post',
+                element: <CreatePost />,
+            },
+            {
+                path: 'create-post/:postId/edit',
                 element: <CreatePost />,
             },
             {

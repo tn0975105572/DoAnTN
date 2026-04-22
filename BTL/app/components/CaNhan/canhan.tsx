@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,7 +7,6 @@ import {
   Image,
   TouchableOpacity,
   FlatList,
-  Alert,
   Modal,
   StyleSheet,
 } from 'react-native';
@@ -22,7 +21,11 @@ import {
   FontAwesome,
 } from '@expo/vector-icons';
 import BaiDangCanHan from './baidangcanhan';
-import { normalizeBackendMediaUrl } from '../../../utils/mediaUrl';
+import {
+  getDefaultProfileAvatarUrl,
+  getDefaultProfileCoverUrl,
+  normalizeBackendMediaUrl,
+} from '../../../utils/mediaUrl';
 
 const API_BASE_URL = Constants.expoConfig?.extra?.apiUrl as string;
 
@@ -102,6 +105,8 @@ const UserProfileScreen = () => {
   const [loggedInUserId, setLoggedInUserId] = useState<string | null>(null);
   const [friendshipStatus, setFriendshipStatus] = useState<FriendshipStatus>(null);
   const [showUnfriendModal, setShowUnfriendModal] = useState(false);
+  const [coverImageError, setCoverImageError] = useState(false);
+  const [avatarImageError, setAvatarImageError] = useState(false);
 
   const fetchData = useCallback(async () => {
     if (!userId) {
@@ -198,6 +203,11 @@ const UserProfileScreen = () => {
       fetchData();
     }, [fetchData]),
   );
+
+  useEffect(() => {
+    setCoverImageError(false);
+    setAvatarImageError(false);
+  }, [userData?.ID_NguoiDung, userData?.anh_bia, userData?.anh_dai_dien]);
 
   const handleAddFriend = async () => {
     if (!loggedInUserId || !userId) return;
@@ -333,6 +343,11 @@ const UserProfileScreen = () => {
   }
 
   const isMyProfile = loggedInUserId === userId;
+  const coverImageUri = coverImageError ? '' : normalizeBackendMediaUrl(userData.anh_bia);
+  const avatarImageUri = avatarImageError ? '' : normalizeBackendMediaUrl(userData.anh_dai_dien);
+  const resolvedCoverImageUri = coverImageUri || getDefaultProfileCoverUrl();
+  const resolvedAvatarImageUri =
+    avatarImageUri || getDefaultProfileAvatarUrl(userData.ID_NguoiDung);
 
   return (
     <>
@@ -390,13 +405,15 @@ const UserProfileScreen = () => {
       <ScrollView className="flex-1 bg-white">
         <View className="mb-20">
           <Image
-            source={{ uri: normalizeBackendMediaUrl(userData.anh_bia) || 'https://via.placeholder.com/600x250.png' }}
+            source={{ uri: resolvedCoverImageUri }}
             className="w-full h-56 bg-gray-200 rounded-b-lg"
+            onError={() => setCoverImageError(true)}
           />
           <View className="absolute p-1 bg-white rounded-full shadow-lg top-36 left-1/2 -ml-20">
             <Image
-              source={{ uri: normalizeBackendMediaUrl(userData.anh_dai_dien) || 'https://via.placeholder.com/150.png' }}
+              source={{ uri: resolvedAvatarImageUri }}
               className="w-40 h-40 rounded-full bg-gray-300"
+              onError={() => setAvatarImageError(true)}
             />
           </View>
         </View>

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import {
     ArrowLeft,
     BadgeCheck,
@@ -254,7 +254,6 @@ function EmptyState({ title, description, action }) {
 
 export default function Profile() {
     const navigate = useNavigate();
-    const location = useLocation();
     const { userId: routeUserId } = useParams();
     const [profile, setProfile] = useState(null);
     const [tab, setTab] = useState('overview');
@@ -400,6 +399,16 @@ export default function Profile() {
             },
         });
     }, [navigate, profile?.user]);
+
+    const openListingEditor = useCallback((listing) => {
+        if (!listing?.id) return;
+
+        navigate(`/create-post/${listing.id}/edit`, {
+            state: {
+                postId: listing.id,
+            },
+        });
+    }, [navigate]);
 
     const openProfileMessages = useCallback(() => {
         if (!profile?.user?.id) return;
@@ -982,6 +991,14 @@ export default function Profile() {
                                                     </button>
                                                     {isOwner && (
                                                         <>
+                                                            <button
+                                                                type="button"
+                                                                className="pr-btn pr-btn-soft"
+                                                                onClick={() => openListingEditor(selectedListing)}
+                                                            >
+                                                                <Pencil size={16} />
+                                                                Sửa bài đăng
+                                                            </button>
                                                             <button type="button" className="pr-btn pr-btn-soft" onClick={() => navigate('/admin')}>
                                                                 <Pencil size={16} />
                                                                 Mở Admin
@@ -1162,6 +1179,14 @@ export default function Profile() {
                                                         </button>
                                                         {isOwner && (
                                                             <>
+                                                                <button
+                                                                    type="button"
+                                                                    className="pr-btn pr-btn-soft"
+                                                                    onClick={() => openListingEditor(selectedListing)}
+                                                                >
+                                                                    <Pencil size={16} />
+                                                                    Sửa bài
+                                                                </button>
                                                                 <button type="button" className="pr-btn pr-btn-soft" onClick={() => navigate('/admin')}>
                                                                     <Pencil size={16} />
                                                                     Mở Admin
@@ -1419,6 +1444,15 @@ export default function Profile() {
                                                                 </option>
                                                             ))}
                                                         </select>
+                                                        <button
+                                                            type="button"
+                                                            className="pr-btn pr-btn-soft"
+                                                            onClick={() => openListingEditor(listing)}
+                                                            disabled={listingBusyId === String(listing.id)}
+                                                        >
+                                                            <Pencil size={16} />
+                                                            Sửa bài
+                                                        </button>
                                                         <button
                                                             type="button"
                                                             className="pr-btn pr-btn-soft"
