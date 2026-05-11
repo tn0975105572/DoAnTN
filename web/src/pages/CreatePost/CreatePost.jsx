@@ -55,6 +55,13 @@ const getBackendOrigin = () => {
 
 const formatNumber = (value) => new Intl.NumberFormat('vi-VN').format(Number(value || 0));
 
+const getLocationLabel = (value) => String(value || '').split('|')[0].trim();
+
+const buildStoredLocation = (label, latitude, longitude) => {
+    const cleanLabel = String(label || '').trim() || `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+    return `${cleanLabel}|${latitude},${longitude}`;
+};
+
 const resolveMediaUrl = (rawUrl, backendOrigin) => {
     if (!rawUrl) {
         return '';
@@ -373,7 +380,7 @@ export default function CreatePost() {
 
             const latitude = position.coords.latitude;
             const longitude = position.coords.longitude;
-            let nextLocation = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+            let nextLocationLabel = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
 
             try {
                 const response = await fetch(
@@ -381,7 +388,7 @@ export default function CreatePost() {
                 );
                 const data = await response.json().catch(() => null);
                 if (response.ok && data) {
-                    nextLocation =
+                    nextLocationLabel =
                         data.display_name ||
                         [
                             data.address?.road,
@@ -391,7 +398,7 @@ export default function CreatePost() {
                         ]
                             .filter(Boolean)
                             .join(', ') ||
-                        nextLocation;
+                        nextLocationLabel;
                 }
             } catch {
                 // fallback to lat/lng string
@@ -399,7 +406,7 @@ export default function CreatePost() {
 
             setForm((current) => ({
                 ...current,
-                vi_tri: nextLocation,
+                vi_tri: buildStoredLocation(nextLocationLabel, latitude, longitude),
             }));
             setFeedback({ type: 'success', text: 'Đã điền vị trí hiện tại.' });
         } catch (error) {
@@ -727,7 +734,7 @@ export default function CreatePost() {
                                             <MapPin size={16} />
                                             <input
                                                 type="text"
-                                                value={form.vi_tri}
+                                                value={getLocationLabel(form.vi_tri)}
                                                 onChange={handleChange('vi_tri')}
                                                 placeholder="Ví dụ: KTX khu A, ĐHQG TP.HCM"
                                             />

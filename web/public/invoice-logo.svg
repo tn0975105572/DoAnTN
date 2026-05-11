@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 379" role="img" aria-labelledby="invoiceLogoTitle">
+  <title id="invoiceLogoTitle">OLODO Shopping</title>
+  <rect width="280" height="379" rx="0" fill="#960a2b"/>
+
+  <g fill="#f8f0e6">
+    <path fill-rule="evenodd" d="M42 39c0-20.99 17.01-38 38-38 15.82 0 29.39 9.66 35.07 23.39L97.2 37.69C94.11 28.38 87.2 22 80 22c-9.39 0-17 7.61-17 17s7.61 17 17 17c7.2 0 14.11-6.38 17.2-15.69l17.87 13.3C109.39 67.34 95.82 77 80 77 59.01 77 42 59.99 42 39Z"/>
+    <polygon points="108,17 127,31 106,47 98,39"/>
+
+    <path d="M129 2h27v74h-27z"/>
+    <path d="M129 49h55v27h-55z"/>
+
+    <path fill-rule="evenodd" d="M174 39c0-20.99 17.01-38 38-38 15.82 0 29.39 9.66 35.07 23.39L229.2 37.69C226.11 28.38 219.2 22 212 22c-9.39 0-17 7.61-17 17s7.61 17 17 17c7.2 0 14.11-6.38 17.2-15.69l17.87 13.3C241.39 67.34 227.82 77 212 77c-20.99 0-38-17.01-38-38Z"/>
+    <polygon points="240,17 259,31 238,47 230,39"/>
+
+    <path d="M78 114h26c14.5 0 26 11.5 26 26v22c0 14.5-11.5 26-26 26H78z"/>
+    <path fill="#960a2b" d="M99 136h4c3.31 0 6 2.69 6 6v18c0 3.31-2.69 6-6 6h-4z"/>
+    <path d="M78 114h25v74H78z"/>
+
+    <path fill-rule="evenodd" d="M146 151c0-20.99 17.01-38 38-38 15.82 0 29.39 9.66 35.07 23.39l-17.87 13.3C198.11 140.38 191.2 134 184 134c-9.39 0-17 7.61-17 17s7.61 17 17 17c7.2 0 14.11-6.38 17.2-15.69l17.87 13.3C213.39 179.34 199.82 189 184 189c-20.99 0-38-17.01-38-38Z"/>
+    <polygon points="212,129 231,143 210,159 202,151"/>
+  </g>
+
+  <rect x="88" y="228" width="42" height="64" rx="6" fill="#a8c97a" transform="rotate(-5 109 260)"/>
+  <rect x="151" y="226" width="42" height="64" rx="6" fill="#4c8fe5" transform="rotate(5 172 258)"/>
+
+  <text x="140" y="344" text-anchor="middle" fill="#f8f0e6" font-size="20" font-family="Arial, Helvetica, sans-serif" font-weight="700">SHOPPING</text>
+</svg>

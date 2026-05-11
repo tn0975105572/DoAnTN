@@ -106,7 +106,7 @@ export default function Notifications() {
                 const data = res.data?.data || [];
                 const mapped = data.map(mapApiNotification);
                 setNotifications(mapped);
-            } catch (err) {
+            } catch {
                 setError('Không thể tải thông báo. Vui lòng thử lại sau.');
             } finally {
                 setLoading(false);
@@ -159,6 +159,29 @@ export default function Notifications() {
 
     const unreadCount = notifications.filter(n => n.unread).length;
 
+    const markNotificationAsRead = useCallback(async (notifId) => {
+        if (!notifId || !token) return;
+        try {
+            await axios.put(`${API_BASE_URL}/thongbao/mark-read/${notifId}`, null, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+        } catch {
+            // giữ im lặng, UI đã cập nhật local
+        }
+    }, [token]);
+
+    const openNotificationTarget = useCallback((notif) => {
+        const link = notif?.raw?.lien_ket;
+        if (!link) return;
+
+        if (link.startsWith('http://') || link.startsWith('https://')) {
+            window.location.href = link;
+            return;
+        }
+
+        navigate(link);
+    }, [navigate]);
+
     /* Filter */
     let filtered = notifications;
     if (activeTab === 'unread') {
@@ -183,6 +206,9 @@ export default function Notifications() {
         setNotifications(prev =>
             prev.map(n => n.id === notif.id ? { ...n, unread: false } : n)
         );
+        if (notif.unread) {
+            markNotificationAsRead(notif.id);
+        }
     };
 
     const handleDelete = async (notifId) => {
@@ -190,7 +216,7 @@ export default function Notifications() {
             await axios.delete(`${API_BASE_URL}/thongbao/delete/${notifId}`, {
                 headers: token ? { Authorization: `Bearer ${token}` } : {},
             });
-        } catch (e) {
+        } catch {
             // API lỗi vẫn xóa local
         }
         setNotifications(prev => prev.filter(n => n.id !== notifId));
@@ -204,7 +230,7 @@ export default function Notifications() {
                 headers: token ? { Authorization: `Bearer ${token}` } : {},
             });
             setNotifications(prev => prev.map(n => ({ ...n, unread: false })));
-        } catch (e) {
+        } catch {
             // giữ im lặng, UI vẫn cập nhật local
         }
     };
@@ -372,7 +398,7 @@ export default function Notifications() {
                             </button>
                             <ProfileAvatarLink userId={selected.senderId} className="notif-detail-avatar-link" stopPropagation={false}>
                                 {selected.avatar ? (
-                                    <img className="notif-detail-avatar" src={selected.avatar} alt={selected.sender} />
+                                    <img className="notif-detail-avatar" src={normalizeUploadsUrl(selected.avatar)} alt={selected.sender} />
                                 ) : (
                                     <div
                                         className="notif-detail-avatar"
@@ -433,16 +459,10 @@ export default function Notifications() {
                                         <button className="notif-cta-btn secondary" onClick={openSelectedSenderProfile}>Xem hồ sơ</button>
                                     )}
                                     {selected.type === 'order' && (
-                                        <>
-                                            <button className="notif-cta-btn primary">Xem đơn hàng</button>
-                                            <button className="notif-cta-btn secondary">Nhắn tin</button>
-                                        </>
+                                        <button className="notif-cta-btn primary" onClick={() => openNotificationTarget(selected)}>Xem hóa đơn</button>
                                     )}
                                     {selected.type === 'comment' && (
-                                        <>
-                                            <button className="notif-cta-btn primary">Trả lời</button>
-                                            <button className="notif-cta-btn secondary">Xem bài đăng</button>
-                                        </>
+                                        <button className="notif-cta-btn primary" onClick={() => openNotificationTarget(selected)}>Xem bài đăng</button>
                                     )}
                                     {selected.type === 'friend' && (
                                         <>
@@ -451,13 +471,13 @@ export default function Notifications() {
                                         </>
                                     )}
                                     {selected.type === 'like' && (
-                                        <button className="notif-cta-btn primary">Xem bài đăng</button>
+                                        <button className="notif-cta-btn primary" onClick={() => openNotificationTarget(selected)}>Xem bài đăng</button>
                                     )}
                                     {selected.type === 'promo' && (
-                                        <button className="notif-cta-btn primary">Xem ưu đãi</button>
+                                        <button className="notif-cta-btn primary" onClick={() => openNotificationTarget(selected)}>Xem ưu đãi</button>
                                     )}
                                     {selected.type === 'system' && (
-                                        <button className="notif-cta-btn primary">Xem chi tiết</button>
+                                        <button className="notif-cta-btn primary" onClick={() => openNotificationTarget(selected)}>Xem chi tiết</button>
                                     )}
                                 </div>
                             </div>

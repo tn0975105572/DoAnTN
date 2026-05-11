@@ -338,6 +338,11 @@ const AccountScreen = () => {
               label="Thông tin cá nhân"
               onPress={() => router.push('/components/CaiDat/thongtincanhan')}
             />
+            <SettingsItem
+              icon="receipt-outline"
+              label="Hóa đơn của tôi"
+              onPress={() => router.push('/components/CaiDat/hoadon')}
+            />
             {/* 👑 VIP */}
             <TouchableOpacity
               style={[

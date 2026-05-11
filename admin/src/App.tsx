@@ -7,6 +7,7 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Users from './pages/Users';
 import Posts from './pages/Posts';
+import Orders from './pages/Orders';
 import Points from './pages/Points';
 import Statistics from './pages/Statistics';
 
@@ -44,6 +45,7 @@ function App() {
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/users" element={<Users />} />
             <Route path="/posts" element={<Posts />} />
+            <Route path="/orders" element={<Orders />} />
             <Route path="/points" element={<Points />} />
             <Route path="/statistics" element={<Statistics />} />
           </Routes>
@@ -78,5 +80,4 @@ function App() {
 }
 
 export default App;
-
 

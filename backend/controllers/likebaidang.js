@@ -225,6 +225,56 @@ exports.getLikeCountByPostId = async (req, res) => {
     }
 };
 
+// Lấy danh sách bài đăng người dùng đã like
+exports.getLikedPostsByUser = async (req, res) => {
+    try {
+        const authenticatedUserId = getAuthenticatedUserId(req);
+        const requestedUserId = String(req.params.userId || req.query.userId || '').trim();
+        const userId = isAdminRequest(req) && requestedUserId
+            ? requestedUserId
+            : authenticatedUserId;
+        const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+        const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 100);
+        const offset = (page - 1) * limit;
+
+        if (!authenticatedUserId) {
+            return res.status(401).json({
+                success: false,
+                message: "Bạn cần đăng nhập để xem bài đã thích"
+            });
+        }
+
+        if (!userId) {
+            return res.status(400).json({
+                success: false,
+                message: "ID người dùng không được để trống"
+            });
+        }
+
+        const [likedPosts, total] = await Promise.all([
+            likebaidang.getLikedPostsByUserId(userId, limit, offset),
+            likebaidang.getLikedPostCountByUserId(userId),
+        ]);
+
+        res.json({
+            success: true,
+            data: likedPosts,
+            total,
+            page,
+            limit,
+            totalPages: Math.ceil(total / limit),
+            message: `Đã lấy thành công ${likedPosts.length} bài đã thích`
+        });
+    } catch (error) {
+        console.error("Error getting liked posts:", error);
+        res.status(500).json({
+            success: false,
+            message: "Lỗi máy chủ",
+            error: error.message
+        });
+    }
+};
+
 // Kiểm tra người dùng đã like bài đăng chưa
 exports.checkUserLiked = async (req, res) => {
     try {

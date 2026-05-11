@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useLayoutEffect } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useMemo } from 'react';
 import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   Heart, Bell, MessageCircle, Menu, X, ShoppingBag, LogOut
 } from 'lucide-react';
 import ChatWidget from '../ChatWidget/ChatWidget';
+import AiAdvisorWidget from '../AiAdvisorWidget/AiAdvisorWidget';
 import { clearAuthSession, useAuthSession } from '../../utils/authSession';
 import './Layout.css';
 
@@ -31,21 +32,22 @@ function ScrollToTop() {
 const Layout = () => {
   const navigate = useNavigate();
   const { token, userId, user: storedUser } = useAuthSession();
-  const [currentUser, setCurrentUser] = useState(null);
+  const [fetchedUser, setFetchedUser] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
 
-  useEffect(() => {
-    if (storedUser) {
-      setCurrentUser({
-        name: storedUser.ho_ten || storedUser.name || 'Bạn',
-        avatar: normalizeUrl(storedUser.anh_dai_dien
-          ? (storedUser.anh_dai_dien.startsWith('http') ? storedUser.anh_dai_dien : `${API_BASE}/uploads/${storedUser.anh_dai_dien}`)
-          : DEFAULT_AVATAR)
-      });
-    } else {
-      setCurrentUser(null);
-    }
+  const currentUser = useMemo(() => {
+    if (fetchedUser) return fetchedUser;
+    if (!storedUser) return null;
 
+    return {
+      name: storedUser.ho_ten || storedUser.name || 'Bạn',
+      avatar: normalizeUrl(storedUser.anh_dai_dien
+        ? (storedUser.anh_dai_dien.startsWith('http') ? storedUser.anh_dai_dien : `${API_BASE}/uploads/${storedUser.anh_dai_dien}`)
+        : DEFAULT_AVATAR)
+    };
+  }, [fetchedUser, storedUser]);
+
+  useEffect(() => {
     const fetchUserInfo = async () => {
       if (!token || !userId) return;
       try {
@@ -55,7 +57,7 @@ const Layout = () => {
         if (res.ok) {
           const data = await res.json();
           const u = data?.user || {};
-          setCurrentUser({
+          setFetchedUser({
             name: u.ho_ten || 'Bạn',
             avatar: normalizeUrl(
               u.anh_dai_dien
@@ -65,16 +67,16 @@ const Layout = () => {
           });
         }
       } catch {
-        setCurrentUser((prev) => prev);
+        return undefined;
       }
     };
 
     fetchUserInfo();
-  }, [storedUser, token, userId]);
+  }, [token, userId]);
 
   const handleLogout = () => {
     clearAuthSession();
-    setCurrentUser(null);
+    setFetchedUser(null);
     navigate('/login', { replace: true });
   };
 
@@ -104,6 +106,9 @@ const Layout = () => {
             <Link to="/contact" className="nav-link" onClick={() => setMenuOpen(false)}>
               Liên hệ
             </Link>
+            <Link to="/orders" className="nav-link" onClick={() => setMenuOpen(false)}>
+              Hóa đơn
+            </Link>
           </nav>
 
           {/* Right Actions */}
@@ -115,7 +120,7 @@ const Layout = () => {
 
             {currentUser ? (
               <>
-                <button className="header-icon-btn" aria-label="Yêu thích">
+                <button className="header-icon-btn" aria-label="Bài đăng đã thích" onClick={() => navigate('/liked-posts')}>
                   <Heart size={20} />
                 </button>
                 <button className="header-icon-btn" aria-label="Tin nhắn" onClick={() => navigate('/messages')}>
@@ -194,6 +199,7 @@ const Layout = () => {
       </footer>
 
       <ChatWidget />
+      <AiAdvisorWidget />
     </div>
   );
 };

@@ -14,6 +14,7 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import Toast from 'react-native-toast-message';
@@ -58,6 +59,7 @@ const ChinhSuaBaiDangScreen: React.FC = () => {
   // UI states
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLocating, setIsLocating] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
   const [postTypes, setPostTypes] = useState<PostType[]>([]);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
@@ -209,6 +211,47 @@ const ChinhSuaBaiDangScreen: React.FC = () => {
     };
     initializeData();
   }, [loadPostData, loadCategoriesAndTypes]);
+
+  const getLocationLabel = (value: string): string => String(value || '').split('|')[0].trim();
+
+  const buildStoredLocation = (label: string, latitude: number, longitude: number): string => {
+    const cleanLabel = label.trim() || `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+    return `${cleanLabel}|${latitude},${longitude}`;
+  };
+
+  const handleUseCurrentLocation = async (): Promise<void> => {
+    try {
+      setIsLocating(true);
+
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Cần quyền truy cập vị trí', 'Vui lòng cấp quyền để tự động lấy vị trí.');
+        return;
+      }
+
+      const position = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
+
+      const { latitude, longitude } = position.coords;
+      let displayAddress = '';
+
+      const geo = await Location.reverseGeocodeAsync({ latitude, longitude });
+      if (geo && geo.length > 0) {
+        const g = geo[0];
+        displayAddress = [g.name, g.street, g.subregion, g.region, g.country]
+          .filter(Boolean)
+          .join(', ');
+      }
+
+      setViTri(buildStoredLocation(displayAddress, latitude, longitude));
+      Toast.show({ type: 'success', text1: 'Đã lấy vị trí hiện tại' });
+    } catch {
+      Alert.alert('Lỗi', 'Không thể lấy vị trí hiện tại. Vui lòng thử lại.');
+    } finally {
+      setIsLocating(false);
+    }
+  };
 
   // Image picker
   const pickImage = async () => {
@@ -528,12 +571,25 @@ const ChinhSuaBaiDangScreen: React.FC = () => {
 
         <View style={styles.formGroup}>
           <Text style={styles.label}>Vị trí</Text>
-          <TextInput
-            style={styles.input}
-            value={viTri}
-            onChangeText={setViTri}
-            placeholder="Nhập vị trí"
-          />
+          <View style={styles.locationRow}>
+            <TextInput
+              style={[styles.input, styles.locationInput]}
+              value={getLocationLabel(viTri)}
+              onChangeText={setViTri}
+              placeholder="Nhập vị trí"
+            />
+            <TouchableOpacity
+              style={[styles.locationButton, isLocating && styles.locationButtonDisabled]}
+              onPress={handleUseCurrentLocation}
+              disabled={isLocating}
+            >
+              {isLocating ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Ionicons name="locate-outline" size={22} color="#fff" />
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Category Selection */}
@@ -745,6 +801,25 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     fontSize: 16,
     color: '#333',
+  },
+  locationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  locationInput: {
+    flex: 1,
+  },
+  locationButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 8,
+    backgroundColor: '#7f001f',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  locationButtonDisabled: {
+    opacity: 0.7,
   },
   textArea: {
     height: 100,

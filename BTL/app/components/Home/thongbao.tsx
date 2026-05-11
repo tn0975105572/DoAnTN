@@ -31,6 +31,15 @@ interface Notification {
   nguoi_gui_avatar?: string;
 }
 
+const extractOrderIdFromLink = (link?: string) => {
+  if (!link) {
+    return '';
+  }
+
+  const match = String(link).match(/\/orders\/([^/?#]+)/i);
+  return match?.[1] ? decodeURIComponent(match[1]) : '';
+};
+
 const NotificationsScreen = () => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
@@ -86,14 +95,25 @@ const NotificationsScreen = () => {
 
   // Đánh dấu đã đọc
   const handleNotificationPress = async (notification: Notification) => {
-    if (notification.da_doc === 0) {
-      await notificationService.markAsRead(notification.ID_ThongBao);
-      // Cập nhật local state
-      setNotifications((prev) =>
-        prev.map((n) =>
-          n.ID_ThongBao === notification.ID_ThongBao ? { ...n, da_doc: 1 } : n
-        )
-      );
+    try {
+      if (notification.da_doc === 0) {
+        await notificationService.markAsRead(notification.ID_ThongBao);
+        setNotifications((prev) =>
+          prev.map((n) =>
+            n.ID_ThongBao === notification.ID_ThongBao ? { ...n, da_doc: 1 } : n
+          )
+        );
+      }
+    } catch {
+      // Keep navigation available even if marking as read fails.
+    }
+
+    const orderId = extractOrderIdFromLink(notification.lien_ket);
+    if (orderId) {
+      router.push({
+        pathname: '/components/CaiDat/chitiethoadon',
+        params: { orderId },
+      });
     }
   };
 
@@ -182,6 +202,10 @@ const NotificationsScreen = () => {
   const renderItem = ({ item }: { item: Notification }) => {
     const icon = notificationService.getIconByType(item.loai);
     const time = notificationService.formatTime(item.thoi_gian_tao);
+    const orderId = extractOrderIdFromLink(item.lien_ket);
+    const secondaryText =
+      item.nguoi_gui_ten ||
+      (orderId ? 'Chạm để xem chi tiết hóa đơn.' : '');
 
     return (
       <TouchableOpacity
@@ -204,11 +228,11 @@ const NotificationsScreen = () => {
           >
             {item.noi_dung}
           </Text>
-          {item.nguoi_gui_ten && (
+          {secondaryText ? (
             <Text style={styles.description} numberOfLines={2}>
-              {item.nguoi_gui_ten}
+              {secondaryText}
             </Text>
-          )}
+          ) : null}
         </View>
         <Text style={styles.time}>{time}</Text>
       </TouchableOpacity>

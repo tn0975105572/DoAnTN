@@ -16,6 +16,9 @@ import Settings from '../pages/Settings/Settings';
 import PostComments from '../pages/PostComments/PostComments';
 import Profile from '../pages/Profile/Profile';
 import CreatePost from '../pages/CreatePost/CreatePost';
+import LikedPosts from '../pages/LikedPosts/LikedPosts';
+import Orders from '../pages/Orders/Orders';
+import OrderDetail from '../pages/OrderDetail/OrderDetail';
 import PostDetail from '../pages/PostDetail/PostDetail';
 import { useAuthSession } from '../utils/authSession';
 
@@ -100,6 +103,10 @@ const router = createBrowserRouter([
                 element: <Notifications />,
             },
             {
+                path: 'liked-posts',
+                element: <LikedPosts />,
+            },
+            {
                 path: 'settings',
                 element: <Settings />,
             },
@@ -114,6 +121,14 @@ const router = createBrowserRouter([
             {
                 path: 'create-post',
                 element: <CreatePost />,
+            },
+            {
+                path: 'orders',
+                element: <Orders />,
+            },
+            {
+                path: 'orders/:orderId',
+                element: <OrderDetail />,
             },
             {
                 path: 'create-post/:postId/edit',

@@ -152,6 +152,15 @@ const ADMIN_SECTIONS = [
         icon: ShoppingBag,
     },
     {
+        id: 'revenue',
+        label: 'Doanh thu',
+        helper: 'Gợi ý tăng đơn và giá trị bán',
+        title: 'Gợi ý tăng doanh thu',
+        description: 'Template tăng trưởng với kịch bản, dự báo và danh sách chiến dịch mẫu để bạn gắn dữ liệu thật sau.',
+        kicker: 'Growth studio',
+        icon: TrendingUp,
+    },
+    {
         id: 'analytics',
         label: 'Hiệu suất',
         helper: 'So sánh tương tác và tình trạng bán',
@@ -209,6 +218,165 @@ const CHART_PALETTE = {
     activeDotStroke: '#140f16',
     pie: ['#60a5fa', '#22d3ee', '#fbbf24', '#f97316', '#a78bfa', '#34d399'],
 };
+
+const REVENUE_SCENARIOS = [
+    {
+        id: 'balanced',
+        label: 'Cân bằng',
+        helper: 'Tăng đều đơn, giữ giá và ưu tiên bài có tín hiệu tốt.',
+        forecastRevenue: 28600000,
+        extraRevenue: 6400000,
+        conversion: 14.8,
+        confidence: 86,
+        payback: '9 ngày',
+        chart: [
+            { label: 'Tuần 1', hienTai: 3.2, deXuat: 4.1 },
+            { label: 'Tuần 2', hienTai: 3.6, deXuat: 4.8 },
+            { label: 'Tuần 3', hienTai: 4.0, deXuat: 5.7 },
+            { label: 'Tuần 4', hienTai: 4.2, deXuat: 6.3 },
+            { label: 'Tuần 5', hienTai: 4.5, deXuat: 7.0 },
+            { label: 'Tuần 6', hienTai: 4.8, deXuat: 7.9 },
+        ],
+    },
+    {
+        id: 'aggressive',
+        label: 'Bứt tốc',
+        helper: 'Đẩy bài mạnh, tạo combo và phản hồi khách trong khung giờ nóng.',
+        forecastRevenue: 34200000,
+        extraRevenue: 9200000,
+        conversion: 17.6,
+        confidence: 78,
+        payback: '6 ngày',
+        chart: [
+            { label: 'Tuần 1', hienTai: 3.2, deXuat: 4.6 },
+            { label: 'Tuần 2', hienTai: 3.6, deXuat: 5.7 },
+            { label: 'Tuần 3', hienTai: 4.0, deXuat: 6.9 },
+            { label: 'Tuần 4', hienTai: 4.2, deXuat: 8.2 },
+            { label: 'Tuần 5', hienTai: 4.5, deXuat: 9.1 },
+            { label: 'Tuần 6', hienTai: 4.8, deXuat: 10.4 },
+        ],
+    },
+    {
+        id: 'premium',
+        label: 'Premium',
+        helper: 'Tập trung nâng giá trị đơn bằng gói chăm sóc và bài đăng nổi bật.',
+        forecastRevenue: 31800000,
+        extraRevenue: 7800000,
+        conversion: 13.2,
+        confidence: 91,
+        payback: '12 ngày',
+        chart: [
+            { label: 'Tuần 1', hienTai: 3.2, deXuat: 4.0 },
+            { label: 'Tuần 2', hienTai: 3.6, deXuat: 4.9 },
+            { label: 'Tuần 3', hienTai: 4.0, deXuat: 5.8 },
+            { label: 'Tuần 4', hienTai: 4.2, deXuat: 6.8 },
+            { label: 'Tuần 5', hienTai: 4.5, deXuat: 7.7 },
+            { label: 'Tuần 6', hienTai: 4.8, deXuat: 8.6 },
+        ],
+    },
+];
+
+const REVENUE_FUNNEL = [
+    { label: 'Tiếp cận', value: 12800, percent: 100, tone: 'brand' },
+    { label: 'Quan tâm', value: 1840, percent: 64, tone: 'success' },
+    { label: 'Nhắn tin', value: 520, percent: 42, tone: 'gold' },
+    { label: 'Giữ chỗ', value: 116, percent: 24, tone: 'danger' },
+    { label: 'Hoàn tất', value: 68, percent: 18, tone: 'success' },
+];
+
+const REVENUE_CHANNELS = [
+    { label: 'Bài đăng nổi bật', value: 42, amount: '11,8 triệu', tone: 'brand' },
+    { label: 'Combo theo nhu cầu', value: 28, amount: '7,4 triệu', tone: 'success' },
+    { label: 'Chat chốt nhanh', value: 18, amount: '4,9 triệu', tone: 'gold' },
+    { label: 'Khách quay lại', value: 12, amount: '3,2 triệu', tone: 'danger' },
+];
+
+const REVENUE_CAMPAIGNS = [
+    {
+        title: 'Combo đồ học tập đầu kỳ',
+        segment: 'Sinh viên năm nhất',
+        impact: '+4,8 triệu',
+        confidence: 92,
+        effort: 'Thấp',
+        description: 'Gom các bài sách, balo và phụ kiện còn tốt thành nhóm đề xuất để tăng giá trị mỗi đơn.',
+        tasks: ['Gắn nhãn combo cho 6 bài đang bán', 'Đặt ưu đãi nhẹ khi mua từ 2 món', 'Ưu tiên trả lời khách trong 15 phút'],
+    },
+    {
+        title: 'Đẩy lại bài có nhiều bình luận',
+        segment: 'Khách đã hỏi nhưng chưa chốt',
+        impact: '+3,1 triệu',
+        confidence: 84,
+        effort: 'Trung bình',
+        description: 'Tận dụng bài có tín hiệu hỏi mua cao, làm mới ảnh đầu và phản hồi lại nhóm khách còn phân vân.',
+        tasks: ['Chọn 4 bài có bình luận cao', 'Thêm ảnh cận cảnh và tình trạng món', 'Gửi tin nhắn nhắc ưu đãi hôm nay'],
+    },
+    {
+        title: 'Gói premium cho món giá cao',
+        segment: 'Laptop, xe, đồ điện tử',
+        impact: '+6,2 triệu',
+        confidence: 76,
+        effort: 'Cao',
+        description: 'Tạo trải nghiệm tin cậy hơn cho món giá trị cao bằng điểm hẹn rõ, ảnh kiểm chứng và cam kết giữ chỗ.',
+        tasks: ['Đưa 3 món giá cao lên khu nổi bật', 'Thêm lịch hẹn xem trực tiếp', 'Chuẩn hóa mô tả bảo hành hoặc phụ kiện'],
+    },
+];
+
+const REVENUE_AI_ADDONS = [
+    {
+        type: 'Sản phẩm nên thêm',
+        title: 'Combo theo nhu cầu sinh viên',
+        expectedRevenue: '+5,4 triệu',
+        priority: 'Rất nên thêm',
+        reason: 'AI thấy các bài đồ học tập, balo và phụ kiện thường có nhu cầu mua chung, dễ tăng giá trị mỗi đơn.',
+        additions: ['Combo sách + balo + phụ kiện', 'Gói đồ nhập học', 'Bộ đồ dùng phòng trọ cơ bản'],
+        signal: 'Nhiều khách hỏi mua nhiều món trong cùng cuộc chat',
+    },
+    {
+        type: 'Bán kèm',
+        title: 'Phụ kiện giá nhỏ đi kèm món chính',
+        expectedRevenue: '+3,6 triệu',
+        priority: 'Nên thử ngay',
+        reason: 'Các món giá nhỏ làm khách dễ thêm vào đơn, tăng doanh thu mà không cần kéo thêm lượt truy cập mới.',
+        additions: ['Ốp, sạc, dây cáp', 'Túi chống sốc laptop', 'Bộ vệ sinh đồ điện tử'],
+        signal: 'Tỷ lệ quan tâm cao nhưng giá trị đơn còn thấp',
+    },
+    {
+        type: 'Dịch vụ nên thêm',
+        title: 'Hỗ trợ giao nhận và hẹn xem nhanh',
+        expectedRevenue: '+4,2 triệu',
+        priority: 'Tăng chốt đơn',
+        reason: 'AI dự đoán một phần khách rơi ở bước giữ chỗ vì chưa rõ điểm hẹn, thời gian nhận hàng hoặc độ tin cậy.',
+        additions: ['Lịch hẹn xem trực tiếp', 'Giao trong bán kính gần', 'Giữ chỗ có thời hạn'],
+        signal: 'Nhiều đơn dừng ở trạng thái chờ điểm hẹn',
+    },
+    {
+        type: 'Ưu đãi nên thêm',
+        title: 'Voucher quay lại cho khách đã từng hỏi',
+        expectedRevenue: '+2,8 triệu',
+        priority: 'Nuôi khách cũ',
+        reason: 'Khách từng nhắn tin có ý định mua cao hơn khách mới, nên ưu đãi nhỏ có thể kéo họ quay lại chốt đơn.',
+        additions: ['Giảm nhẹ khi quay lại trong 48h', 'Mua lần 2 giảm phí giao', 'Ưu đãi cho khách đã bình luận'],
+        signal: 'Có nhóm khách hỏi giá nhưng chưa hoàn tất giao dịch',
+    },
+    {
+        type: 'Cam kết nên thêm',
+        title: 'Cam kết kiểm tra và đổi trả ngắn hạn',
+        expectedRevenue: '+6,1 triệu',
+        priority: 'Cho món giá cao',
+        reason: 'Món điện tử hoặc món giá trị cao cần thêm niềm tin. Cam kết rõ giúp tăng tỷ lệ chốt mà không phải giảm giá sâu.',
+        additions: ['Cho kiểm tra khi nhận', 'Đổi trả 24-48h nếu lỗi mô tả', 'Ảnh/video kiểm chứng tình trạng'],
+        signal: 'Món giá cao có lượt xem nhưng khách chưa nhắn nhiều',
+    },
+    {
+        type: 'Nội dung nên thêm',
+        title: 'Bảng so sánh lợi ích trong bài đăng',
+        expectedRevenue: '+2,4 triệu',
+        priority: 'Tối ưu mô tả',
+        reason: 'AI thấy nhiều bài có ảnh tốt nhưng mô tả còn thiếu lý do mua. Bảng lợi ích giúp khách quyết định nhanh hơn.',
+        additions: ['Tình trạng hiện tại', 'Lý do nên mua', 'Phụ kiện đi kèm'],
+        signal: 'Lượt xem có nhưng bình luận và chat chưa tương xứng',
+    },
+];
 
 const getBackendOrigin = () => {
     try {
@@ -665,6 +833,7 @@ export default function AdminBankDash() {
     const [orderRoleFilter, setOrderRoleFilter] = useState('all');
     const [orderViewFilter, setOrderViewFilter] = useState('needs_action');
     const [selectedOrderId, setSelectedOrderId] = useState('');
+    const [revenueScenarioId, setRevenueScenarioId] = useState('balanced');
 
     const apiFetch = useCallback(async (path, options = {}) => {
         const headers = {
@@ -1020,6 +1189,11 @@ export default function AdminBankDash() {
         };
     }, [pointHistory, pointUsageHistory, profile?.user?.points]);
 
+    const activeRevenueScenario = useMemo(
+        () => REVENUE_SCENARIOS.find((scenario) => scenario.id === revenueScenarioId) || REVENUE_SCENARIOS[0],
+        [revenueScenarioId],
+    );
+
     const activeSectionMeta = useMemo(
         () => ADMIN_SECTIONS.find((section) => section.id === activeSection) || ADMIN_SECTIONS[0],
         [activeSection],
@@ -1131,6 +1305,260 @@ export default function AdminBankDash() {
             <MetricCard icon={Clock3} label="Đã chốt điểm hẹn" value={formatNumber(orderAnalytics.withMeeting)} helper="Đã có địa chỉ hoặc thời gian giao nhận" tone="gold" delay={160} />
             <MetricCard icon={TrendingUp} label="Giá trị đã chốt" value={orderAnalytics.completedValue > 0 ? formatCurrency(orderAnalytics.completedValue) : '0 ₫'} helper={`${formatNumber(orderAnalytics.completed)} đơn đã hoàn tất`} tone="success" delay={240} />
         </section>
+    );
+
+    const renderRevenueMetrics = () => (
+        <section className="admin-metrics-grid">
+            <MetricCard icon={TrendingUp} label="Doanh thu dự phóng" value={formatCurrency(activeRevenueScenario.forecastRevenue)} helper={`Kịch bản ${activeRevenueScenario.label.toLowerCase()} trong 6 tuần`} tone="brand" delay={0} />
+            <MetricCard icon={Sparkles} label="Tăng thêm ước tính" value={formatCurrency(activeRevenueScenario.extraRevenue)} helper="Phần cộng thêm từ chiến dịch đề xuất" tone="success" delay={80} />
+            <MetricCard icon={BadgeCheck} label="Tỷ lệ chốt mục tiêu" value={`${activeRevenueScenario.conversion}%`} helper="Mục tiêu từ khách nhắn tin sang hoàn tất" tone="gold" delay={160} />
+            <MetricCard icon={Clock3} label="Hoàn vốn dự kiến" value={activeRevenueScenario.payback} helper={`${activeRevenueScenario.confidence}% độ tin cậy mô phỏng`} tone="danger" delay={240} />
+        </section>
+    );
+
+    const renderRevenueDashboard = () => (
+        <>
+            <section className="admin-card admin-revenue-studio">
+                <div className="admin-revenue-studio-copy">
+                    <span className="admin-section-tag">Template doanh thu</span>
+                    <h2>Bộ điều phối tăng trưởng</h2>
+                    <p>Chọn một kịch bản mẫu để xem mức tăng dự phóng, kênh ưu tiên và các chiến dịch nên triển khai trước.</p>
+                </div>
+
+                <div className="admin-revenue-scenario-list">
+                    {REVENUE_SCENARIOS.map((scenario) => (
+                        <button
+                            key={scenario.id}
+                            type="button"
+                            className={`admin-revenue-scenario${scenario.id === activeRevenueScenario.id ? ' active' : ''}`}
+                            onClick={() => setRevenueScenarioId(scenario.id)}
+                        >
+                            <strong>{scenario.label}</strong>
+                            <span>{scenario.helper}</span>
+                        </button>
+                    ))}
+                </div>
+
+                <div className="admin-revenue-hero-metric">
+                    <span>Dự phóng 6 tuần</span>
+                    <strong>{formatCurrency(activeRevenueScenario.forecastRevenue)}</strong>
+                    <small>+{formatCurrency(activeRevenueScenario.extraRevenue)} so với nhịp hiện tại</small>
+                </div>
+            </section>
+
+            <div className="admin-revenue-grid">
+                <section className="admin-card admin-chart-card">
+                    <div className="admin-card-head">
+                        <div>
+                            <span className="admin-section-tag">Dự báo</span>
+                            <h2>Đường tăng doanh thu</h2>
+                            <p>Biểu đồ mẫu so sánh nhịp hiện tại với doanh thu khi áp dụng kịch bản đang chọn.</p>
+                        </div>
+                        <div className="admin-section-chip">{activeRevenueScenario.confidence}% tin cậy</div>
+                    </div>
+
+                    <div className="admin-chart-surface admin-revenue-chart-surface">
+                        <div className="admin-chart-surface-head">
+                            <strong>Doanh thu theo tuần</strong>
+                            <span>Đơn vị: triệu VND</span>
+                        </div>
+                        <ResponsiveContainer width="100%" height={300}>
+                            <AreaChart data={activeRevenueScenario.chart} margin={{ top: 12, right: 8, left: 0, bottom: 0 }}>
+                                <defs>
+                                    <linearGradient id="revenue-current-area" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="0%" stopColor={chartPalette.slate} stopOpacity={0.2} />
+                                        <stop offset="100%" stopColor={chartPalette.slate} stopOpacity={0.02} />
+                                    </linearGradient>
+                                    <linearGradient id="revenue-next-area" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="0%" stopColor={chartPalette.brand} stopOpacity={0.32} />
+                                        <stop offset="100%" stopColor={chartPalette.success} stopOpacity={0.05} />
+                                    </linearGradient>
+                                </defs>
+                                <CartesianGrid stroke={chartPalette.grid} strokeDasharray="4 4" vertical={false} />
+                                <XAxis dataKey="label" axisLine={false} tickLine={false} tick={chartTickStyle} />
+                                <YAxis axisLine={false} tickLine={false} tick={chartTickStyle} />
+                                <Tooltip content={<AdminChartTooltip />} />
+                                <Area type="monotone" dataKey="hienTai" name="Hiện tại" stroke={chartPalette.slate} strokeWidth={2} fill="url(#revenue-current-area)" />
+                                <Area type="monotone" dataKey="deXuat" name="Đề xuất" stroke={chartPalette.brand} strokeWidth={3} fill="url(#revenue-next-area)" activeDot={{ r: 5, fill: chartPalette.brand, stroke: chartPalette.activeDotStroke, strokeWidth: 2 }} />
+                            </AreaChart>
+                        </ResponsiveContainer>
+                    </div>
+
+                    <div className="admin-chart-facts">
+                        <div className="admin-chart-fact">
+                            <span>Kịch bản</span>
+                            <strong>{activeRevenueScenario.label}</strong>
+                        </div>
+                        <div className="admin-chart-fact">
+                            <span>Chênh lệch kỳ này</span>
+                            <strong>{formatCurrency(activeRevenueScenario.extraRevenue)}</strong>
+                        </div>
+                        <div className="admin-chart-fact">
+                            <span>Điểm ưu tiên</span>
+                            <strong>{activeRevenueScenario.conversion}% chuyển đổi</strong>
+                        </div>
+                    </div>
+                </section>
+
+                <aside className="admin-revenue-side">
+                    <section className="admin-card">
+                        <div className="admin-card-head">
+                            <div>
+                                <span className="admin-section-tag">Phễu bán hàng</span>
+                                <h2>Điểm rơi doanh thu</h2>
+                                <p>Theo dõi nơi khách rơi nhiều nhất để biết nên tối ưu tiếp cận, chat hay khâu chốt đơn.</p>
+                            </div>
+                        </div>
+
+                        <div className="admin-revenue-funnel">
+                            {REVENUE_FUNNEL.map((step) => (
+                                <div key={step.label} className="admin-revenue-funnel-row">
+                                    <div className="admin-status-copy">
+                                        <strong>{step.label}</strong>
+                                        <span>{formatNumber(step.value)}</span>
+                                    </div>
+                                    <div className="admin-status-bar">
+                                        <div className={`tone-${step.tone}`} style={{ width: `${step.percent}%` }} />
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </section>
+
+                    <section className="admin-card">
+                        <div className="admin-card-head">
+                            <div>
+                                <span className="admin-section-tag">Kênh ưu tiên</span>
+                                <h2>Nguồn tăng trưởng</h2>
+                                <p>Nhóm kênh mẫu có thể tạo thêm doanh thu khi triển khai đồng thời.</p>
+                            </div>
+                        </div>
+
+                        <div className="admin-revenue-channel-list">
+                            {REVENUE_CHANNELS.map((channel) => (
+                                <div key={channel.label} className="admin-revenue-channel">
+                                    <div>
+                                        <strong>{channel.label}</strong>
+                                        <span>{channel.amount}</span>
+                                    </div>
+                                    <em className={`tone-${channel.tone}`}>{channel.value}%</em>
+                                </div>
+                            ))}
+                        </div>
+                    </section>
+                </aside>
+            </div>
+
+            <section className="admin-card admin-ai-revenue-card">
+                <div className="admin-card-head">
+                    <div>
+                        <span className="admin-section-tag">AI revenue advisor</span>
+                        <h2>AI gợi ý chủ cửa hàng nên thêm gì</h2>
+                        <p>Khối này mô phỏng câu trả lời AI: nên thêm sản phẩm, dịch vụ, ưu đãi hoặc nội dung nào để tăng doanh thu. Hiện tại dùng dữ liệu mẫu, sau này có thể thay bằng API AI.</p>
+                    </div>
+                    <div className="admin-section-chip">{formatNumber(REVENUE_AI_ADDONS.length)} gợi ý AI</div>
+                </div>
+
+                <div className="admin-ai-revenue-layout">
+                    <div className="admin-ai-revenue-panel">
+                        <div className="admin-ai-revenue-badge">
+                            <Sparkles size={26} />
+                        </div>
+                        <span>Phân tích mẫu</span>
+                        <strong>AI đang tìm cách tăng giá trị mỗi đơn và giảm khách rơi ở bước chat.</strong>
+                        <p>Gợi ý ưu tiên không chỉ là giảm giá, mà là thêm thứ khách có lý do mua kèm: combo, dịch vụ giao nhận, cam kết kiểm tra và voucher quay lại.</p>
+
+                        <div className="admin-ai-signal-list">
+                            <div>
+                                <BadgeCheck size={15} />
+                                <span>Ưu tiên món có tương tác cao nhưng chưa chốt</span>
+                            </div>
+                            <div>
+                                <BadgeCheck size={15} />
+                                <span>Tăng doanh thu bằng bán kèm và combo</span>
+                            </div>
+                            <div>
+                                <BadgeCheck size={15} />
+                                <span>Thêm cam kết để chốt món giá trị cao</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="admin-ai-addon-grid">
+                        {REVENUE_AI_ADDONS.map((item, index) => (
+                            <article key={item.title} className="admin-ai-addon-card" style={{ '--delay': `${index * 45}ms` }}>
+                                <div className="admin-ai-addon-head">
+                                    <span className="admin-pill tone-ghost">{item.type}</span>
+                                    <strong>{item.expectedRevenue}</strong>
+                                </div>
+                                <h3>{item.title}</h3>
+                                <p>{item.reason}</p>
+                                <div className="admin-ai-addon-signal">
+                                    <Sparkles size={14} />
+                                    <span>{item.signal}</span>
+                                </div>
+                                <div className="admin-ai-addon-list">
+                                    {item.additions.map((addition) => (
+                                        <div key={addition}>
+                                            <PlusCircle size={15} />
+                                            <span>{addition}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="admin-ai-addon-footer">
+                                    <span>{item.priority}</span>
+                                    <button type="button" className="admin-btn admin-btn-soft" onClick={() => setFeedback({ type: 'info', text: `Đã chọn gợi ý mẫu: ${item.title}` })}>
+                                        Chọn gợi ý
+                                    </button>
+                                </div>
+                            </article>
+                        ))}
+                    </div>
+                </div>
+            </section>
+
+            <section className="admin-card">
+                <div className="admin-card-head">
+                    <div>
+                        <span className="admin-section-tag">Chiến dịch đề xuất</span>
+                        <h2>Việc nên triển khai để tăng doanh thu</h2>
+                        <p>Các khối dưới đây là template mock, có đủ tác động, độ tin cậy và checklist để sau này gắn API hoặc dữ liệu AI.</p>
+                    </div>
+                    <div className="admin-section-chip">{formatNumber(REVENUE_CAMPAIGNS.length)} chiến dịch</div>
+                </div>
+
+                <div className="admin-revenue-campaign-grid">
+                    {REVENUE_CAMPAIGNS.map((campaign, index) => (
+                        <article key={campaign.title} className="admin-revenue-campaign" style={{ '--delay': `${index * 70}ms` }}>
+                            <div className="admin-revenue-campaign-head">
+                                <span className="admin-pill tone-brand">{campaign.segment}</span>
+                                <strong>{campaign.impact}</strong>
+                            </div>
+                            <h3>{campaign.title}</h3>
+                            <p>{campaign.description}</p>
+                            <div className="admin-revenue-campaign-meta">
+                                <div>
+                                    <span>Độ tin cậy</span>
+                                    <strong>{campaign.confidence}%</strong>
+                                </div>
+                                <div>
+                                    <span>Công sức</span>
+                                    <strong>{campaign.effort}</strong>
+                                </div>
+                            </div>
+                            <div className="admin-revenue-task-list">
+                                {campaign.tasks.map((task) => (
+                                    <div key={task}>
+                                        <BadgeCheck size={15} />
+                                        <span>{task}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </article>
+                    ))}
+                </div>
+            </section>
+        </>
     );
 
     const renderOpportunitiesCard = () => (
@@ -2003,6 +2431,10 @@ export default function AdminBankDash() {
                                 <div className="admin-topbar-badge">
                                     Đơn hàng ở đây được đồng bộ trực tiếp từ phần chốt đơn trong Tin nhắn.
                                 </div>
+                            ) : activeSection === 'revenue' ? (
+                                <div className="admin-topbar-badge">
+                                    Khu doanh thu đang dùng dữ liệu mẫu để làm template giao diện.
+                                </div>
                             ) : (
                                 <div className="admin-topbar-badge">
                                     Chuyển khu vực ở thanh bên để làm việc gọn và tập trung hơn.
@@ -2019,6 +2451,7 @@ export default function AdminBankDash() {
 
                     {['overview', 'manage', 'analytics'].includes(activeSection) && renderPrimaryMetrics()}
                     {activeSection === 'orders' && renderOrderMetrics()}
+                    {activeSection === 'revenue' && renderRevenueMetrics()}
 
                     {activeSection === 'overview' && (
                         <div className="admin-main-grid">
@@ -2080,6 +2513,8 @@ export default function AdminBankDash() {
                     {activeSection === 'manage' && renderManageBoard()}
 
                     {activeSection === 'orders' && renderOrdersBoard()}
+
+                    {activeSection === 'revenue' && renderRevenueDashboard()}
 
                     {activeSection === 'analytics' && (
                         <div className="admin-main-grid">

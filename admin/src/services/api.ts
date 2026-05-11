@@ -91,6 +91,11 @@ export const pointsAPI = {
   }) => api.post('/api/lich_su_tich_diem/addPoints', data),
 };
 
+export const orderAPI = {
+  getAll: () => api.get('/api/donhang/getAll'),
+  getById: (id: string) => api.get(`/api/donhang/getById/${id}`),
+};
+
 export const categoryAPI = {
   getAll: () => api.get('/api/danhmuc/getAll'),
   getById: (id: string) => api.get(`/api/danhmuc/getById/${id}`),
@@ -124,5 +129,4 @@ export const notificationAPI = {
 };
 
 export default api;
-
 

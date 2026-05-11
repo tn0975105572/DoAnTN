@@ -1,5 +1,6 @@
 const pool = require("../config/database");
 const giaodichBaiDang = require("../models/giaodich_baidang");
+const donhang = require("../models/donhang");
 const thongbao = require("../models/thongbao");
 
 const FINAL_POST_STATUSES = new Set(["da_ban", "da_trao_doi", "da_tang"]);
@@ -33,6 +34,34 @@ const createNotification = async ({
     );
   } catch (error) {
     console.error("Khong the tao thong bao giao dich:", error.message);
+  }
+};
+
+const createSystemNotification = async ({
+  io,
+  receiverId,
+  type,
+  content,
+  link,
+}) => {
+  if (!receiverId) {
+    return;
+  }
+
+  try {
+    await thongbao.insert(
+      {
+        ID_NguoiDung: receiverId,
+        ID_NguoiGui: null,
+        loai: type,
+        noi_dung: content,
+        lien_ket: link,
+        da_doc: 0,
+      },
+      io
+    );
+  } catch (error) {
+    console.error("Khong the tao thong bao he thong:", error.message);
   }
 };
 
@@ -1022,6 +1051,7 @@ exports.requestComplete = async (req, res) => {
   let connection;
 
   try {
+    await donhang.ensureSchema();
     connection = await pool.getConnection();
     await connection.beginTransaction();
 
@@ -1149,13 +1179,15 @@ exports.requestComplete = async (req, res) => {
       })
     );
 
+    const completedAt = new Date();
+
     await giaodichBaiDang.update(
       transaction.ID_GiaoDich,
       {
         trang_thai: "hoan_tat",
         ma_khoa_yeu_cau_mo: null,
         ma_khoa_baidang_active: null,
-        thoi_gian_hoan_tat: new Date(),
+        thoi_gian_hoan_tat: completedAt,
         lich_su_json: completionHistory,
       },
       connection
@@ -1198,18 +1230,37 @@ exports.requestComplete = async (req, res) => {
       );
     }
 
+    const createdInvoice = await donhang.createFromTransaction(
+      {
+        ...transaction,
+        trang_thai: "hoan_tat",
+        thoi_gian_hoan_tat: completedAt,
+      },
+      connection
+    );
+
     await connection.commit();
 
     const updatedTransaction = await giaodichBaiDang.getById(transaction.ID_GiaoDich);
+    const invoiceLink = `/orders/${createdInvoice.ID_DonHang}`;
+    const invoiceContent = `Hoa don ${createdInvoice.ma_hoa_don} cho bai dang "${transaction.tieu_de}" da duoc tao`;
 
-    await createNotification({
-      io: req.io,
-      receiverId,
-      senderId: actorId,
-      type: "cap_nhat_giao_dich",
-      content: `Ca hai ben da xac nhan hoan tat giao dich cua bai dang "${transaction.tieu_de}"`,
-      link: `/messages?postId=${transaction.ID_BaiDang}&transactionId=${transaction.ID_GiaoDich}`,
-    });
+    await Promise.all([
+      createSystemNotification({
+        io: req.io,
+        receiverId: transaction.ID_NguoiBan,
+        type: "thanh_toan",
+        content: invoiceContent,
+        link: invoiceLink,
+      }),
+      createSystemNotification({
+        io: req.io,
+        receiverId: transaction.ID_NguoiMua,
+        type: "thanh_toan",
+        content: invoiceContent,
+        link: invoiceLink,
+      }),
+    ]);
 
     emitDealRealtimeUpdate({
       io: req.io,
@@ -1223,6 +1274,7 @@ exports.requestComplete = async (req, res) => {
     return res.json({
       success: true,
       data: updatedTransaction,
+      invoice: createdInvoice,
       message: "Ca hai ben da xac nhan. Giao dich da hoan tat.",
     });
   } catch (error) {

@@ -222,6 +222,12 @@ export default function ChatWidget() {
     }, [selectedChat]);
 
     useEffect(() => {
+        const closeForAiAdvisor = () => setIsOpen(false);
+        window.addEventListener('olodo:ai-advisor-open', closeForAiAdvisor);
+        return () => window.removeEventListener('olodo:ai-advisor-open', closeForAiAdvisor);
+    }, []);
+
+    useEffect(() => {
         const previousUserId = previousUserIdRef.current;
         const hasUserSwitched = previousUserId && previousUserId !== myUserId;
 
@@ -578,7 +584,17 @@ export default function ChatWidget() {
 
     return (
         <>
-            <button className="chat-fab" onClick={() => setIsOpen(!isOpen)} aria-label="Tin nhắn">
+            <button
+                className="chat-fab"
+                onClick={() => {
+                    setIsOpen((current) => {
+                        const next = !current;
+                        if (next) window.dispatchEvent(new CustomEvent('olodo:chat-widget-open'));
+                        return next;
+                    });
+                }}
+                aria-label="Tin nhắn"
+            >
                 {isOpen ? <X size={24} /> : <MessageCircle size={24} />}
                 {!isOpen && totalUnread > 0 && <span className="chat-fab-badge">{totalUnread}</span>}
             </button>

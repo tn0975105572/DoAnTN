@@ -1,8 +1,10 @@
 const express = require("express");
 const router = express.Router();
 const tinnhanaiController = require("../controllers/tinnhanai");
+const authMiddleware = require("../middleware/baoVe");
 
 // Định nghĩa các route
+router.post("/chat", authMiddleware.authenticateToken, tinnhanaiController.chat);
 router.get("/getAll", tinnhanaiController.getAll);
 router.get("/getById/:id", tinnhanaiController.getById);
 router.post("/create", tinnhanaiController.insert);

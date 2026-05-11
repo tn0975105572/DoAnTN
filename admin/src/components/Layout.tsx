@@ -3,6 +3,7 @@ import {
   LayoutDashboard,
   Users,
   FileText,
+  BadgeCheck,
   Star,
   BarChart3,
   LogOut,
@@ -32,6 +33,7 @@ const Layout = ({ children, onLogout }: LayoutProps) => {
     { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', color: 'from-blue-500 to-purple-600' },
     { path: '/users', icon: Users, label: 'Người dùng', color: 'from-green-500 to-teal-600' },
     { path: '/posts', icon: FileText, label: 'Bài đăng', color: 'from-orange-500 to-red-600' },
+    { path: '/orders', icon: BadgeCheck, label: 'Hóa đơn', color: 'from-cyan-500 to-blue-600' },
     { path: '/points', icon: Star, label: 'Điểm số', color: 'from-yellow-500 to-orange-600' },
     { path: '/statistics', icon: BarChart3, label: 'Thống kê', color: 'from-purple-500 to-pink-600' },
   ];

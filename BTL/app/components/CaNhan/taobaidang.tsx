@@ -49,6 +49,16 @@ interface PostData {
   thoi_gian_cap_nhat: string;
 }
 
+const getAuthToken = async (): Promise<string | null> => {
+  const rawToken =
+    (await AsyncStorage.getItem('userToken')) ||
+    (await AsyncStorage.getItem('token')) ||
+    (await AsyncStorage.getItem('auth_token'));
+
+  const token = rawToken?.replace(/^["']|["']$/g, '').trim();
+  return token || null;
+};
+
 const CreatePostScreen: React.FC = () => {
   const baseUrl = Constants.expoConfig?.extra?.apiUrl || 'http://localhost:3000';
   const API_BASE_URL = baseUrl.endsWith('/api') ? baseUrl : `${baseUrl}/api`;
@@ -437,6 +447,12 @@ const CreatePostScreen: React.FC = () => {
         return;
       }
 
+      const token = await getAuthToken();
+      if (!token) {
+        Alert.alert('Phiên đăng nhập hết hạn', 'Vui lòng đăng nhập lại trước khi tạo bài đăng.');
+        return;
+      }
+
       const currentPoints = userInfo.diem_so || 0;
       const requiredPoints = 20;
 
@@ -467,12 +483,18 @@ const CreatePostScreen: React.FC = () => {
 
       const postResponse = await fetch(`${API_BASE_URL}/baidang/create`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify(postData),
       });
 
       if (!postResponse.ok) {
         const errorText = await postResponse.text();
+        if (postResponse.status === 401 || postResponse.status === 403) {
+          throw new Error('Phiên đăng nhập không hợp lệ hoặc đã hết hạn. Vui lòng đăng nhập lại.');
+        }
         throw new Error(`Failed to create post: ${postResponse.status} - ${errorText}`);
       }
 
@@ -535,7 +557,6 @@ const CreatePostScreen: React.FC = () => {
       await AsyncStorage.setItem('userInfo', JSON.stringify(updatedUserInfo));
 
       try {
-        const token = await AsyncStorage.getItem('userToken');
         const userResponse = await fetch(
           `${API_BASE_URL}/nguoidung/getById/${userInfo.ID_NguoiDung}`,
           {

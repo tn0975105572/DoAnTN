@@ -1,60 +1,140 @@
-const donhang = require('../models/donhang');
+const donhang = require("../models/donhang");
+
+const getAuthenticatedUserId = (req) =>
+  String(req.user?.id || req.user?.userId || "").trim();
+
+const isAdminRequest = (req) => req.user?.Role === "admin";
+
+const canAccessOrder = (order, actorId, isAdmin) => {
+  if (!order) return false;
+  if (isAdmin) return true;
+  return (
+    String(order.ID_NguoiBan || "") === actorId ||
+    String(order.ID_NguoiMua || "") === actorId
+  );
+};
 
 exports.getAll = async (req, res) => {
-    try {
-        const data = await donhang.getAll();
-        res.json(data);
-    } catch (error) {
-        res.status(500).json({ message: 'Lỗi máy chủ', error });
+  try {
+    if (!isAdminRequest(req)) {
+      return res.status(403).json({
+        success: false,
+        message: "Ban khong co quyen xem toan bo hoa don",
+      });
     }
+
+    const data = await donhang.getAllDetailed();
+    res.json({ success: true, data });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Loi may chu",
+      error: error.message,
+    });
+  }
 };
 
 exports.getById = async (req, res) => {
-    try {
-        const id = req.params.id;
-        const data = await donhang.getById(id);
-        if (!data) {
-            return res.status(404).json({ message: 'donhang không tồn tại' });
-        }
-        res.json(data);
-    } catch (error) {
-        res.status(500).json({ message: 'Lỗi máy chủ', error });
+  try {
+    const actorId = getAuthenticatedUserId(req);
+    const data = await donhang.getByIdDetailed(req.params.id);
+
+    if (!data) {
+      return res.status(404).json({
+        success: false,
+        message: "Hoa don khong ton tai",
+      });
     }
+
+    if (!canAccessOrder(data, actorId, isAdminRequest(req))) {
+      return res.status(403).json({
+        success: false,
+        message: "Ban khong co quyen xem hoa don nay",
+      });
+    }
+
+    res.json({ success: true, data });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Loi may chu",
+      error: error.message,
+    });
+  }
 };
 
-exports.insert = async (req, res) => {
-    try {
-        const newData = req.body;
-        const insertId = await donhang.insert(newData);
-        res.status(201).json({ id: insertId, message: 'Thêm mới thành công' });
-    } catch (error) {
-        res.status(500).json({ message: 'Lỗi máy chủ', error });
+exports.getMyOrders = async (req, res) => {
+  try {
+    const actorId = getAuthenticatedUserId(req);
+
+    if (!actorId) {
+      return res.status(401).json({
+        success: false,
+        message: "Ban can dang nhap de xem hoa don",
+      });
     }
+
+    const data = await donhang.getByUserIdDetailed(actorId);
+    res.json({ success: true, data });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Loi may chu",
+      error: error.message,
+    });
+  }
 };
 
-exports.update = async (req, res) => {
-    try {
-        const id = req.params.id;
-        const updatedData = req.body;
-        const affectedRows = await donhang.update(id, updatedData);
-        if (affectedRows === 0) {
-            return res.status(404).json({ message: 'donhang không tồn tại' });
-        }
-        res.json({ message: 'Cập nhật thành công' });
-    } catch (error) {
-        res.status(500).json({ message: 'Lỗi máy chủ', error });
+exports.getByUserId = async (req, res) => {
+  try {
+    const actorId = getAuthenticatedUserId(req);
+    const requestedUserId = String(req.params.userId || "").trim();
+    const targetUserId =
+      isAdminRequest(req) && requestedUserId ? requestedUserId : actorId;
+
+    if (!targetUserId) {
+      return res.status(401).json({
+        success: false,
+        message: "Ban can dang nhap de xem hoa don",
+      });
     }
+
+    const data = await donhang.getByUserIdDetailed(targetUserId);
+    res.json({ success: true, data });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Loi may chu",
+      error: error.message,
+    });
+  }
 };
 
-exports.delete = async (req, res) => {
-    try {
-        const id = req.params.id;
-        const affectedRows = await donhang.delete(id);
-        if (affectedRows === 0) {
-            return res.status(404).json({ message: 'donhang không tồn tại' });
-        }
-        res.json({ message: 'Xóa thành công' });
-    } catch (error) {
-        res.status(500).json({ message: 'Lỗi máy chủ', error });
+exports.getByTransactionId = async (req, res) => {
+  try {
+    const actorId = getAuthenticatedUserId(req);
+    const data = await donhang.getByTransactionId(req.params.transactionId);
+
+    if (!data) {
+      return res.status(404).json({
+        success: false,
+        message: "Hoa don chua duoc tao cho giao dich nay",
+      });
     }
+
+    if (!canAccessOrder(data, actorId, isAdminRequest(req))) {
+      return res.status(403).json({
+        success: false,
+        message: "Ban khong co quyen xem hoa don nay",
+      });
+    }
+
+    res.json({ success: true, data });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Loi may chu",
+      error: error.message,
+    });
+  }
 };

@@ -13,6 +13,8 @@ router.delete("/delete/:id", authMiddleware.authenticateToken, likebaidangContro
 // Routes mới cho like bài đăng
 router.get("/getLikesByPostId/:postId", likebaidangController.getLikesByPostId);
 router.get("/getLikeCountByPostId/:postId", likebaidangController.getLikeCountByPostId);
+router.get("/getLikedPostsByUser", authMiddleware.authenticateToken, likebaidangController.getLikedPostsByUser);
+router.get("/getLikedPostsByUser/:userId", authMiddleware.authenticateToken, likebaidangController.getLikedPostsByUser);
 router.get("/checkUserLiked/:postId/:userId", authMiddleware.authenticateToken, likebaidangController.checkUserLiked);
 
 module.exports = router;
