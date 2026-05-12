@@ -30,36 +30,8 @@ const LOCATION_MAP_ZOOM = 13;
 const POST_FOCUS_ZOOM = 15;
 const GRAPH_HOPPER_KEY = import.meta.env.VITE_GRAPHHOPPER_KEY || '';
 const FALLBACK_IMAGE = 'https://via.placeholder.com/400x300?text=No+Image';
-const GEOCODE_CACHE_KEY = 'olodo_map_geocode_cache_v3';
-const GEOCODE_BATCH_SIZE = 5;
-const MAX_RADIUS_KM = 2000;
-
-const KNOWN_HCMC_LOCATIONS = [
-  { pattern: /\bquan 1\b/, lat: 10.7757, lng: 106.7004, label: 'Quận 1, Thành phố Hồ Chí Minh' },
-  { pattern: /\bquan 2\b/, lat: 10.7873, lng: 106.7498, label: 'Quận 2, Thành phố Hồ Chí Minh' },
-  { pattern: /\bquan 3\b/, lat: 10.7844, lng: 106.6845, label: 'Quận 3, Thành phố Hồ Chí Minh' },
-  { pattern: /\bquan 4\b/, lat: 10.7578, lng: 106.7013, label: 'Quận 4, Thành phố Hồ Chí Minh' },
-  { pattern: /\bquan 5\b/, lat: 10.754, lng: 106.6634, label: 'Quận 5, Thành phố Hồ Chí Minh' },
-  { pattern: /\bquan 6\b/, lat: 10.7469, lng: 106.6345, label: 'Quận 6, Thành phố Hồ Chí Minh' },
-  { pattern: /\bquan 7\b/, lat: 10.734, lng: 106.7216, label: 'Quận 7, Thành phố Hồ Chí Minh' },
-  { pattern: /\bquan 8\b/, lat: 10.7241, lng: 106.6286, label: 'Quận 8, Thành phố Hồ Chí Minh' },
-  { pattern: /\bquan 9\b/, lat: 10.8428, lng: 106.8287, label: 'Quận 9, Thành phố Hồ Chí Minh' },
-  { pattern: /\bquan 10\b/, lat: 10.7731, lng: 106.6679, label: 'Quận 10, Thành phố Hồ Chí Minh' },
-  { pattern: /\bquan 11\b/, lat: 10.7629, lng: 106.6501, label: 'Quận 11, Thành phố Hồ Chí Minh' },
-  { pattern: /\bquan 12\b/, lat: 10.8672, lng: 106.6413, label: 'Quận 12, Thành phố Hồ Chí Minh' },
-  { pattern: /\bgo vap\b/, lat: 10.8387, lng: 106.6653, label: 'Quận Gò Vấp, Thành phố Hồ Chí Minh' },
-  { pattern: /\bbinh thanh\b/, lat: 10.806, lng: 106.7091, label: 'Quận Bình Thạnh, Thành phố Hồ Chí Minh' },
-  { pattern: /\bphu nhuan\b/, lat: 10.7992, lng: 106.6802, label: 'Quận Phú Nhuận, Thành phố Hồ Chí Minh' },
-  { pattern: /\btan binh\b/, lat: 10.8017, lng: 106.652, label: 'Quận Tân Bình, Thành phố Hồ Chí Minh' },
-  { pattern: /\btan phu\b/, lat: 10.7916, lng: 106.6273, label: 'Quận Tân Phú, Thành phố Hồ Chí Minh' },
-  { pattern: /\bbinh tan\b/, lat: 10.7653, lng: 106.6039, label: 'Quận Bình Tân, Thành phố Hồ Chí Minh' },
-  { pattern: /\bthu duc\b/, lat: 10.8494, lng: 106.7537, label: 'Thành phố Thủ Đức, Thành phố Hồ Chí Minh' },
-  { pattern: /\bbinh chanh\b/, lat: 10.6874, lng: 106.5938, label: 'Huyện Bình Chánh, Thành phố Hồ Chí Minh' },
-  { pattern: /\bcu chi\b/, lat: 10.9734, lng: 106.4931, label: 'Huyện Củ Chi, Thành phố Hồ Chí Minh' },
-  { pattern: /\bhoc mon\b/, lat: 10.8839, lng: 106.5868, label: 'Huyện Hóc Môn, Thành phố Hồ Chí Minh' },
-  { pattern: /\bnha be\b/, lat: 10.6967, lng: 106.7407, label: 'Huyện Nhà Bè, Thành phố Hồ Chí Minh' },
-  { pattern: /\bcan gio\b/, lat: 10.4114, lng: 106.9547, label: 'Huyện Cần Giờ, Thành phố Hồ Chí Minh' },
-];
+const MAX_RADIUS_KM = 100;
+const POSTS_PAGE_SIZE = 500;
 
 const getBackendOrigin = () => {
   try {
@@ -93,110 +65,14 @@ const normalizeAssetUrl = (raw, backendOrigin) => {
 const normalizeLocationLabel = (value) =>
   String(value || '').replace(/\s+/g, ' ').trim();
 
-const normalizeLocationKey = (value) =>
-  normalizeLocationLabel(value)
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase();
-
-const getKnownLocation = (address) => {
-  const normalized = normalizeLocationKey(address);
-  if (!normalized) return null;
-
-  const isCoarseHcmcArea =
-    /^(quan|huyen|thanh pho|tp)\b/.test(normalized) &&
-    normalizeLocationLabel(address).split(',').length <= 2;
-  if (!isCoarseHcmcArea) return null;
-
-  const match = KNOWN_HCMC_LOCATIONS.find((item) => item.pattern.test(normalized));
-  if (!match) return null;
-
-  return {
-    lat: match.lat,
-    lng: match.lng,
-    address: normalizeLocationLabel(address) || match.label,
-  };
-};
-
-const readGeocodeCache = () => {
-  if (typeof window === 'undefined') return {};
-
-  try {
-    const raw = window.localStorage.getItem(GEOCODE_CACHE_KEY);
-    const parsed = raw ? JSON.parse(raw) : {};
-    return parsed && typeof parsed === 'object' ? parsed : {};
-  } catch {
-    return {};
-  }
-};
-
-const writeGeocodeCache = (cache) => {
-  if (typeof window === 'undefined') return;
-
-  try {
-    window.localStorage.setItem(GEOCODE_CACHE_KEY, JSON.stringify(cache));
-  } catch {
-    // Best effort cache only.
-  }
-};
-
 const isValidLocation = (value) =>
   value &&
   Number.isFinite(Number(value.lat)) &&
-  Number.isFinite(Number(value.lng));
-
-const getCachedLocation = (cache, address) => {
-  const value = cache[address];
-  return isValidLocation(value) ? value : null;
-};
-
-const buildGeocodeQuery = (address) => {
-  const cleanAddress = normalizeLocationLabel(address);
-  if (!cleanAddress) return '';
-
-  const normalized = normalizeLocationKey(cleanAddress);
-  if (normalized.includes('viet nam') || normalized.includes('ho chi minh')) {
-    return cleanAddress;
-  }
-
-  const looksLikeHcmcAddress =
-    /\b(quan|phuong|duong|hem|chung cu|khu dan cu)\b/.test(normalized) &&
-    !/\b(tinh|ha noi|da nang|hung yen|binh duong|dong nai|can tho)\b/.test(normalized);
-  if (looksLikeHcmcAddress) {
-    return `${cleanAddress}, Thành phố Hồ Chí Minh, Việt Nam`;
-  }
-
-  if (/^quan \d+\b/.test(normalized) || normalized.startsWith('huyen ')) {
-    return `${cleanAddress}, Thành phố Hồ Chí Minh, Việt Nam`;
-  }
-
-  return `${cleanAddress}, Việt Nam`;
-};
-
-const geocodeAddress = async (address) => {
-  const query = buildGeocodeQuery(address);
-  if (!query || !GRAPH_HOPPER_KEY) return null;
-
-  const params = new URLSearchParams({
-    q: query,
-    locale: 'vi',
-    limit: '3',
-    key: GRAPH_HOPPER_KEY,
-  });
-
-  const res = await fetch(`https://graphhopper.com/api/1/geocode?${params.toString()}`);
-  if (!res.ok) return null;
-
-  const data = await res.json().catch(() => null);
-  const hit = (data?.hits || []).find((item) => isValidLocation(item?.point));
-  if (!hit) return null;
-
-  return {
-    lat: Number(hit.point.lat),
-    lng: Number(hit.point.lng),
-    address: normalizeLocationLabel(address),
-  };
-};
+  Number.isFinite(Number(value.lng)) &&
+  Number(value.lat) >= -90 &&
+  Number(value.lat) <= 90 &&
+  Number(value.lng) >= -180 &&
+  Number(value.lng) <= 180;
 
 const toArray = (value) => {
   if (Array.isArray(value)) return value;
@@ -254,20 +130,62 @@ function haversine(lat1, lon1, lat2, lon2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+function roundDistanceKm(distanceKm) {
+  return Math.round(distanceKm * 10) / 10;
+}
+
 function parseLocation(viTri) {
   if (!viTri) return null;
-  const parts = viTri.split('|');
+  const parts = String(viTri).split('|');
   if (parts.length === 2) {
     const coords = parts[1].split(',');
     if (coords.length === 2) {
-      const lat = parseFloat(coords[0].trim());
-      const lng = parseFloat(coords[1].trim());
-      if (!Number.isNaN(lat) && !Number.isNaN(lng)) {
-        return { lat, lng, address: parts[0] };
+      const lat = Number.parseFloat(coords[0].trim());
+      const lng = Number.parseFloat(coords[1].trim());
+      const location = {
+        lat,
+        lng,
+        address: normalizeLocationLabel(parts[0]),
+      };
+      if (isValidLocation(location)) {
+        return location;
       }
     }
   }
   return null;
+}
+
+async function fetchAllMapPosts() {
+  const allPosts = [];
+  let page = 1;
+  let totalPages = 1;
+
+  do {
+    const params = new URLSearchParams({
+      page: String(page),
+      limit: String(POSTS_PAGE_SIZE),
+      status: 'all',
+    });
+    const res = await fetch(`${API_BASE_URL}/baidang/getAllWithDetails?${params.toString()}`);
+    if (!res.ok) {
+      throw new Error('Không thể tải danh sách bài đăng.');
+    }
+
+    const data = await res.json();
+    if (Array.isArray(data)) return data;
+
+    const pagePosts = Array.isArray(data?.data)
+      ? data.data
+      : Array.isArray(data?.posts)
+        ? data.posts
+        : [];
+
+    allPosts.push(...pagePosts);
+    totalPages = Number(data?.totalPages) || (pagePosts.length === POSTS_PAGE_SIZE ? page + 1 : page);
+    page += 1;
+  } while (page <= totalPages);
+
+  return allPosts;
 }
 
 function normalizeSearchText(value) {
@@ -347,7 +265,7 @@ export default function MapPage() {
   const [posts, setPosts] = useState([]);
   const [loadingPosts, setLoadingPosts] = useState(false);
   const [postsError, setPostsError] = useState('');
-  const [geocodingStatus, setGeocodingStatus] = useState('');
+  const [postLocationStatus, setPostLocationStatus] = useState('');
 
   const [keyword, setKeyword] = useState('');
   const [radius, setRadius] = useState(String(DEFAULT_RADIUS_KM));
@@ -462,88 +380,26 @@ export default function MapPage() {
     const fetchPosts = async () => {
       setLoadingPosts(true);
       setPostsError('');
-      setGeocodingStatus('');
+      setPostLocationStatus('');
       try {
-        const res = await fetch(`${API_BASE_URL}/baidang/getAllWithDetails?limit=500`);
-        if (!res.ok) {
-          throw new Error('Không thể tải danh sách bài đăng.');
-        }
-        const data = await res.json();
-        const rawPosts = Array.isArray(data) ? data : data.data || data.posts || [];
-        const geocodeCache = readGeocodeCache();
-        const missingAddresses = new Set();
-
-        const preparedPosts = rawPosts.map((p) => {
-          const address = normalizeLocationLabel(p.vi_tri);
-          const parsedLocation = parseLocation(p.vi_tri);
-          const knownLocation = parsedLocation ? null : getKnownLocation(address);
-          const cachedLocation = !parsedLocation && !knownLocation
-            ? getCachedLocation(geocodeCache, address)
-            : null;
-          const location = parsedLocation || knownLocation || cachedLocation;
-
-          if (!location && address) {
-            missingAddresses.add(address);
-          }
-
-          return {
-            raw: p,
-            address,
-            location: isValidLocation(location) ? location : null,
-          };
-        });
-
-        const addressesToGeocode = Array.from(missingAddresses);
-        const nextCache = { ...geocodeCache };
-        let resolvedCount = 0;
-
-        if (addressesToGeocode.length > 0) {
-          setGeocodingStatus(`Đang chuyển ${addressesToGeocode.length} địa chỉ thành tọa độ...`);
-        }
-
-        for (let i = 0; i < addressesToGeocode.length; i += GEOCODE_BATCH_SIZE) {
-          if (cancelled) return;
-
-          const batch = addressesToGeocode.slice(i, i + GEOCODE_BATCH_SIZE);
-          const batchResults = await Promise.all(
-            batch.map(async (address) => {
-              const location = await geocodeAddress(address);
-              return [address, location];
-            }),
-          );
-
-          batchResults.forEach(([address, location]) => {
-            if (isValidLocation(location)) {
-              nextCache[address] = location;
-              resolvedCount += 1;
-            } else {
-              delete nextCache[address];
-            }
-          });
-
-          setGeocodingStatus(
-            `Đang chuyển địa chỉ thành tọa độ: ${Math.min(i + batch.length, addressesToGeocode.length)}/${addressesToGeocode.length}`,
-          );
-        }
-
-        if (addressesToGeocode.length > 0) {
-          writeGeocodeCache(nextCache);
-        }
-
+        const rawPosts = await fetchAllMapPosts();
         if (cancelled) return;
 
-        const mapped = preparedPosts
-          .map(({ raw: p, address, location }) => {
-            const resolvedLocation = location || nextCache[address];
-            if (!isValidLocation(resolvedLocation)) return null;
+        const mapped = rawPosts
+          .map((p) => {
+            const parsedLocation = parseLocation(p.vi_tri);
+            if (!isValidLocation(parsedLocation)) return null;
             const imageUrls = getPostImageUrls(p, backendOrigin);
 
             return {
               ...p,
               location: {
-                lat: Number(resolvedLocation.lat),
-                lng: Number(resolvedLocation.lng),
-                address: address || resolvedLocation.address || 'Không rõ địa chỉ',
+                lat: Number(parsedLocation.lat),
+                lng: Number(parsedLocation.lng),
+                address:
+                  parsedLocation.address ||
+                  normalizeLocationLabel(p.vi_tri).split('|')[0] ||
+                  'Không rõ địa chỉ',
               },
               imageUrls,
               primaryImage: imageUrls[0] || FALLBACK_IMAGE,
@@ -554,14 +410,14 @@ export default function MapPage() {
         setPosts(mapped);
         if (mapped.length === 0 && rawPosts.length > 0) {
           setPostsError(
-            'Các bài đăng đang lưu địa chỉ dạng chữ nhưng chưa định vị được tọa độ để đưa lên bản đồ.',
+            'Các bài đăng chưa có tọa độ theo định dạng mobile "địa chỉ|lat,lng", nên chưa thể lọc đúng theo bán kính.',
           );
-        } else if (addressesToGeocode.length > 0) {
-          setGeocodingStatus(
-            `Đã định vị thêm ${resolvedCount}/${addressesToGeocode.length} địa chỉ. Đang hiển thị ${mapped.length}/${rawPosts.length} bài có vị trí.`,
+        } else if (mapped.length < rawPosts.length) {
+          setPostLocationStatus(
+            `Đang hiển thị ${mapped.length}/${rawPosts.length} bài có tọa độ hợp lệ giống mobile.`,
           );
         } else {
-          setGeocodingStatus('');
+          setPostLocationStatus('');
         }
       } catch (error) {
         console.error('Error fetching posts for map page', error);
@@ -595,14 +451,10 @@ export default function MapPage() {
   const filteredPosts = useMemo(() => {
     return posts
       .map((post) => {
-        const distanceKm = currentLocation
-          ? haversine(
-              currentLocation.lat,
-              currentLocation.lng,
-              post.location.lat,
-              post.location.lng,
-            )
+        const exactDistanceKm = currentLocation
+          ? haversine(currentLocation.lat, currentLocation.lng, post.location.lat, post.location.lng)
           : null;
+        const distanceKm = exactDistanceKm == null ? null : roundDistanceKm(exactDistanceKm);
 
         const searchScore = getSearchScore(post, normalizedKeyword, keywordTokens);
 
@@ -900,10 +752,10 @@ export default function MapPage() {
                   <span>{postsError}</span>
                 </div>
               )}
-              {geocodingStatus && (
+              {postLocationStatus && (
                 <div className="map-status-row status-ok">
                   <MapPin size={14} />
-                  <span>{geocodingStatus}</span>
+                  <span>{postLocationStatus}</span>
                 </div>
               )}
               {currentLocation && (

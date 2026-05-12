@@ -50,20 +50,21 @@ const CustomPostMarker = ({
   authorAvatar?: string;
 }) => {
   return (
-    <View style={styles.customMarkerContainer}>
-      {/* Ảnh bài đăng làm background */}
-      {postImage ? (
-        <Image source={{ uri: postImage }} style={styles.markerPostImage} />
-      ) : (
-        <View style={[styles.markerPostImage, styles.markerPlaceholder]}>
-          <Ionicons name="image-outline" size={30} color="#ccc" />
-        </View>
-      )}
-      {/* Avatar đè lên trên */}
-      <View style={styles.markerAvatarContainer}>
+    <View style={styles.customMarkerContainer} collapsable={false}>
+      <View style={styles.markerPostFrame} collapsable={false}>
+        {postImage ? (
+          <Image source={{ uri: postImage }} style={styles.markerPostImage} resizeMode="cover" />
+        ) : (
+          <View style={[styles.markerPostImage, styles.markerPlaceholder]}>
+            <Ionicons name="image-outline" size={28} color="#ccc" />
+          </View>
+        )}
+      </View>
+      <View style={styles.markerAvatarContainer} collapsable={false}>
         <Image
           source={{ uri: authorAvatar || 'https://i.pravatar.cc/50' }}
           style={styles.markerAvatar}
+          resizeMode="cover"
         />
       </View>
     </View>
@@ -1082,12 +1083,19 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   customMarkerContainer: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    overflow: 'hidden',
+    width: 66,
+    height: 66,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'visible',
+  },
+  markerPostFrame: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
     borderWidth: 3,
     borderColor: '#fff',
+    backgroundColor: '#fff',
     elevation: 5,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -1095,9 +1103,9 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
   },
   markerPostImage: {
-    width: '100%',
-    height: '100%',
-    position: 'absolute',
+    width: 52,
+    height: 52,
+    borderRadius: 26,
   },
   markerPlaceholder: {
     backgroundColor: '#f0f0f0',
@@ -1106,8 +1114,8 @@ const styles = StyleSheet.create({
   },
   markerAvatarContainer: {
     position: 'absolute',
-    bottom: -5,
-    right: -5,
+    bottom: 0,
+    right: 0,
     width: 28,
     height: 28,
     borderRadius: 14,
