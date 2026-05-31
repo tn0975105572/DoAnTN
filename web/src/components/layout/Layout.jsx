@@ -97,9 +97,6 @@ const Layout = () => {
             <Link to="/" className="nav-link" onClick={() => setMenuOpen(false)}>
               Chợ Sinh Viên
             </Link>
-            <Link to="/products" className="nav-link" onClick={() => setMenuOpen(false)}>
-              Sản phẩm
-            </Link>
             <Link to="/about" className="nav-link" onClick={() => setMenuOpen(false)}>
               Giới thiệu
             </Link>

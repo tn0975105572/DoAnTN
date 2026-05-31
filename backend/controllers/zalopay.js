@@ -26,6 +26,237 @@ const zalopayController = {};
 const getAuthenticatedUserId = (req) =>
     String(req.user?.id || req.user?.userId || '');
 
+const ensureZaloPayPendingOrdersTable = async () => {
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS zalopay_pending_orders (
+            app_trans_id VARCHAR(64) PRIMARY KEY,
+            ID_NguoiDung VARCHAR(255) NOT NULL,
+            amount INT NOT NULL,
+            points INT NOT NULL,
+            status VARCHAR(32) NOT NULL DEFAULT 'pending',
+            points_added INT NOT NULL DEFAULT 0,
+            new_balance INT NULL,
+            processed_at DATETIME NULL,
+            last_return_code INT NULL,
+            last_return_message VARCHAR(255) NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        )
+    `);
+
+    const columns = [
+        ["points_added", "ALTER TABLE zalopay_pending_orders ADD COLUMN points_added INT NOT NULL DEFAULT 0"],
+        ["new_balance", "ALTER TABLE zalopay_pending_orders ADD COLUMN new_balance INT NULL"],
+        ["processed_at", "ALTER TABLE zalopay_pending_orders ADD COLUMN processed_at DATETIME NULL"],
+        ["last_return_code", "ALTER TABLE zalopay_pending_orders ADD COLUMN last_return_code INT NULL"],
+        ["last_return_message", "ALTER TABLE zalopay_pending_orders ADD COLUMN last_return_message VARCHAR(255) NULL"],
+    ];
+
+    for (const [, alterSql] of columns) {
+        try {
+            await pool.query(alterSql);
+        } catch (error) {
+            if (error.code !== "ER_DUP_FIELDNAME") {
+                throw error;
+            }
+        }
+    }
+};
+
+const savePendingOrder = async (appTransId, orderInfo) => {
+    await ensureZaloPayPendingOrdersTable();
+    await pool.query(
+        `INSERT INTO zalopay_pending_orders
+            (app_trans_id, ID_NguoiDung, amount, points, status)
+         VALUES (?, ?, ?, ?, 'pending')
+         ON DUPLICATE KEY UPDATE
+            ID_NguoiDung = VALUES(ID_NguoiDung),
+            amount = VALUES(amount),
+            points = VALUES(points),
+            status = 'pending',
+            updated_at = CURRENT_TIMESTAMP`,
+        [appTransId, orderInfo.userId, orderInfo.amount, orderInfo.points]
+    );
+};
+
+const getPendingOrder = async (appTransId) => {
+    const memoryOrder = pendingOrders.get(appTransId);
+    if (memoryOrder) return memoryOrder;
+
+    await ensureZaloPayPendingOrdersTable();
+    const [rows] = await pool.query(
+        `SELECT ID_NguoiDung AS userId, amount, points
+         FROM zalopay_pending_orders
+         WHERE app_trans_id = ?`,
+        [appTransId]
+    );
+
+    if (!rows.length) return null;
+
+    return {
+        userId: rows[0].userId,
+        amount: Number(rows[0].amount || 0),
+        points: Number(rows[0].points || 0),
+    };
+};
+
+const getStoredOrder = async (appTransId) => {
+    await ensureZaloPayPendingOrdersTable();
+    const [rows] = await pool.query(
+        "SELECT * FROM zalopay_pending_orders WHERE app_trans_id = ?",
+        [appTransId]
+    );
+    return rows[0] || null;
+};
+
+const markPendingOrderStatus = async (appTransId, status) => {
+    await ensureZaloPayPendingOrdersTable();
+    await pool.query(
+        "UPDATE zalopay_pending_orders SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE app_trans_id = ?",
+        [status, appTransId]
+    );
+};
+
+const updatePendingOrderQueryResult = async (appTransId, zaloData) => {
+    await ensureZaloPayPendingOrdersTable();
+    await pool.query(
+        `UPDATE zalopay_pending_orders
+         SET status = ?,
+             last_return_code = ?,
+             last_return_message = ?,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE app_trans_id = ? AND status <> 'success'`,
+        ["pending", Number(zaloData.return_code || 0), zaloData.return_message || zaloData.sub_return_message || null, appTransId]
+    );
+};
+
+const markPendingOrderSuccess = async (appTransId, pointsAdded, newBalance) => {
+    await ensureZaloPayPendingOrdersTable();
+    await pool.query(
+        `UPDATE zalopay_pending_orders
+         SET status = 'success',
+             points_added = ?,
+             new_balance = ?,
+             processed_at = COALESCE(processed_at, CURRENT_TIMESTAMP),
+             last_return_code = 1,
+             last_return_message = 'success',
+             updated_at = CURRENT_TIMESTAMP
+         WHERE app_trans_id = ?`,
+        [pointsAdded, newBalance, appTransId]
+    );
+};
+
+const queryZaloPayOrder = async (appTransId) => {
+    const postData = {
+        app_id: config.app_id,
+        app_trans_id: appTransId,
+    };
+
+    const data = `${postData.app_id}|${postData.app_trans_id}|${config.key1}`;
+    postData.mac = CryptoJS.HmacSHA256(data, config.key1).toString();
+
+    const result = await axios({
+        method: 'post',
+        url: config.query_endpoint,
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        data: new URLSearchParams(postData).toString()
+    });
+
+    return result.data;
+};
+
+const processSuccessfulOrder = async (appTransId, fallback = {}) => {
+    const pendingOrder = await getPendingOrder(appTransId);
+    const orderUserId = pendingOrder?.userId || fallback.userId;
+    const pointsToAdd = Number(pendingOrder?.points || fallback.points || 0);
+    const amount = Number(pendingOrder?.amount || fallback.amount || 0);
+
+    if (!orderUserId || !pointsToAdd || !amount) {
+        throw new Error("Không tìm thấy thông tin gói điểm của giao dịch này. Vui lòng tạo lại QR mới.");
+    }
+
+    const [existingRecord] = await pool.query(
+        "SELECT ID_LichSu FROM lich_su_tich_diem WHERE mo_ta LIKE ?",
+        [`%${appTransId}%`]
+    );
+
+    if (existingRecord.length > 0) {
+        const [user] = await pool.query("SELECT diem_so FROM nguoidung WHERE ID_NguoiDung = ?", [orderUserId]);
+        const currentBalance = user[0]?.diem_so || 0;
+        pendingOrders.delete(appTransId);
+        await markPendingOrderSuccess(appTransId, 0, currentBalance);
+
+        return {
+            pointsAdded: 0,
+            newBalance: currentBalance,
+            alreadyProcessed: true,
+        };
+    }
+
+    const [user] = await pool.query("SELECT diem_so FROM nguoidung WHERE ID_NguoiDung = ?", [orderUserId]);
+    if (user.length === 0) {
+        throw new Error("Không tìm thấy người dùng để cộng điểm.");
+    }
+
+    const currentPoints = user[0].diem_so || 0;
+    const newPoints = currentPoints + pointsToAdd;
+    await pool.query("UPDATE nguoidung SET diem_so = ? WHERE ID_NguoiDung = ?", [newPoints, orderUserId]);
+    await pool.query("INSERT INTO lich_su_tich_diem SET ?", [{
+        ID_NguoiDung: orderUserId,
+        loai_giao_dich: 'tang_diem',
+        diem_thay_doi: pointsToAdd,
+        diem_truoc: currentPoints,
+        diem_sau: newPoints,
+        mo_ta: `Mua điểm qua ZaloPay (${appTransId}) - ${amount.toLocaleString('vi-VN')} VNĐ`,
+        thoi_gian_tao: new Date()
+    }]);
+
+    pendingOrders.delete(appTransId);
+    await markPendingOrderSuccess(appTransId, pointsToAdd, newPoints);
+
+    return {
+        pointsAdded: pointsToAdd,
+        newBalance: newPoints,
+        alreadyProcessed: false,
+    };
+};
+
+const startOrderStatusPolling = (appTransId) => {
+    const startedAt = Date.now();
+    const maxDurationMs = 3 * 60 * 1000;
+
+    const timer = setInterval(async () => {
+        if (Date.now() - startedAt > maxDurationMs) {
+            clearInterval(timer);
+            return;
+        }
+
+        try {
+            const storedOrder = await getStoredOrder(appTransId);
+            if (!storedOrder || storedOrder.status === 'success' || storedOrder.status === 'failed') {
+                clearInterval(timer);
+                return;
+            }
+
+            const zaloData = await queryZaloPayOrder(appTransId);
+            console.log("ZaloPay Auto Poll Status:", appTransId, zaloData);
+
+            if (zaloData.return_code === 1) {
+                const processed = await processSuccessfulOrder(appTransId);
+                console.log(`✅ [AutoPoll] Đã xử lý ${appTransId}: +${processed.pointsAdded}, balance=${processed.newBalance}`);
+                clearInterval(timer);
+                return;
+            }
+
+            await updatePendingOrderQueryResult(appTransId, zaloData);
+        } catch (error) {
+            console.error(`❌ [AutoPoll] Lỗi kiểm tra ZaloPay ${appTransId}:`, error.message);
+        }
+    }, 2500);
+};
+
 zalopayController.createOrder = async (req, res) => {
     try {
         const userId = getAuthenticatedUserId(req);
@@ -106,6 +337,12 @@ zalopayController.createOrder = async (req, res) => {
             points: finalPoints,
             createdAt: Date.now()
         });
+        await savePendingOrder(order.app_trans_id, {
+            userId,
+            amount: finalAmount,
+            points: finalPoints,
+        });
+        startOrderStatusPolling(order.app_trans_id);
 
         console.log(`📦 Stored pending order: ${order.app_trans_id}`, pendingOrders.get(order.app_trans_id));
 
@@ -165,36 +402,12 @@ zalopayController.callback = async (req, res) => {
                 console.log("Error parsing embed_data, using default calculation:", e);
             }
 
-            // Kiểm tra xem giao dịch này đã được xử lý chưa (tránh cộng điểm 2 lần)
-            const [existingRecord] = await pool.query(
-                "SELECT ID_LichSu FROM lich_su_tich_diem WHERE mo_ta LIKE ?",
-                [`%${app_trans_id}%`]
-            );
-
-            if (existingRecord.length === 0) {
-                // Chưa xử lý, tiến hành cộng điểm
-                const [user] = await pool.query("SELECT diem_so FROM nguoidung WHERE ID_NguoiDung = ?", [userId]);
-                if (user.length > 0) {
-                    const currentPoints = user[0].diem_so || 0;
-                    const newPoints = currentPoints + pointsToAdd;
-                    await pool.query("UPDATE nguoidung SET diem_so = ? WHERE ID_NguoiDung = ?", [newPoints, userId]);
-
-                    // Lưu lịch sử với app_trans_id để có thể track được
-                    await pool.query("INSERT INTO lich_su_tich_diem SET ?", [{
-                        ID_NguoiDung: userId,
-                        loai_giao_dich: 'tang_diem',
-                        diem_thay_doi: pointsToAdd,
-                        diem_truoc: currentPoints,
-                        diem_sau: newPoints,
-                        mo_ta: `Mua điểm qua ZaloPay (${app_trans_id}) - ${amount.toLocaleString('vi-VN')} VNĐ`,
-                        thoi_gian_tao: new Date()
-                    }]);
-
-                    console.log(`✅ [Callback] Đã cộng ${pointsToAdd} điểm cho user ${userId} (app_trans_id: ${app_trans_id})`);
-                }
-            } else {
-                console.log(`⚠️ [Callback] Giao dịch đã được xử lý trước đó: ${app_trans_id}`);
-            }
+            const processed = await processSuccessfulOrder(app_trans_id, {
+                userId,
+                amount,
+                points: pointsToAdd,
+            });
+            console.log(`✅ [Callback] Đã xử lý ${app_trans_id}: +${processed.pointsAdded}, balance=${processed.newBalance}`);
 
             result.return_code = 1;
             result.return_message = "success";
@@ -212,95 +425,41 @@ zalopayController.checkOrderStatus = async (req, res) => {
     const { app_trans_id } = req.params;
     const userId = getAuthenticatedUserId(req);
 
-    let postData = {
-        app_id: config.app_id,
-        app_trans_id: app_trans_id,
-    }
-
-    let data = postData.app_id + "|" + postData.app_trans_id + "|" + config.key1;
-    postData.mac = CryptoJS.HmacSHA256(data, config.key1).toString();
-
-    let postConfig = {
-        method: 'post',
-        url: config.query_endpoint,
-        headers: {
-            'Content-Type': 'application/x-www-form-urlencoded'
-        },
-        data: new URLSearchParams(postData).toString()
-    };
-
     try {
-        const result = await axios(postConfig);
-        const zaloData = result.data;
+        const storedOrder = await getStoredOrder(app_trans_id);
+        if (storedOrder?.status === 'success') {
+            return res.status(200).json({
+                return_code: 1,
+                return_message: storedOrder.points_added > 0 ? "success" : "Giao dịch đã được xử lý trước đó",
+                points_added: Number(storedOrder.points_added || 0),
+                new_balance: Number(storedOrder.new_balance || 0),
+            });
+        }
+
+        const zaloData = await queryZaloPayOrder(app_trans_id);
 
         console.log("ZaloPay Order Status:", zaloData);
 
         // Nếu thanh toán thành công (return_code = 1), cộng điểm cho user
         if (zaloData.return_code === 1) {
-            // Lấy thông tin order từ pendingOrders (vì ZaloPay query không trả về amount/points)
-            const pendingOrder = pendingOrders.get(app_trans_id);
+            const processed = await processSuccessfulOrder(app_trans_id, { userId });
+            console.log(`✅ [CheckOrderStatus] Đã xử lý ${app_trans_id}: +${processed.pointsAdded}, balance=${processed.newBalance}`);
+            return res.status(200).json({
+                ...zaloData,
+                points_added: processed.pointsAdded,
+                new_balance: processed.newBalance,
+                message: processed.alreadyProcessed ? "Giao dịch đã được xử lý trước đó" : undefined,
+            });
+        }
 
-            console.log(`🔍 Looking up pending order: ${app_trans_id}`, pendingOrder);
-
-            // Ưu tiên lấy từ pendingOrders, fallback sang userId từ request
-            const orderUserId = pendingOrder?.userId || userId;
-            const pointsToAdd = pendingOrder?.points || 1000; // Default 1000 if not found
-            const amount = pendingOrder?.amount || 20000; // Default amount
-
-            if (orderUserId) {
-                // Kiểm tra xem giao dịch này đã được xử lý chưa (tránh cộng điểm 2 lần)
-                const [existingRecord] = await pool.query(
-                    "SELECT ID_LichSu FROM lich_su_tich_diem WHERE mo_ta LIKE ?",
-                    [`%${app_trans_id}%`]
-                );
-
-                if (existingRecord.length === 0) {
-                    // Chưa xử lý, tiến hành cộng điểm
-                    const [user] = await pool.query("SELECT diem_so FROM nguoidung WHERE ID_NguoiDung = ?", [orderUserId]);
-                    if (user.length > 0) {
-                        const currentPoints = user[0].diem_so || 0;
-                        const newPoints = currentPoints + pointsToAdd;
-                        await pool.query("UPDATE nguoidung SET diem_so = ? WHERE ID_NguoiDung = ?", [newPoints, orderUserId]);
-
-                        // Lưu lịch sử với format nhất quán với callback
-                        await pool.query("INSERT INTO lich_su_tich_diem SET ?", [{
-                            ID_NguoiDung: orderUserId,
-                            loai_giao_dich: 'tang_diem',
-                            diem_thay_doi: pointsToAdd,
-                            diem_truoc: currentPoints,
-                            diem_sau: newPoints,
-                            mo_ta: `Mua điểm qua ZaloPay (${app_trans_id}) - ${amount.toLocaleString('vi-VN')} VNĐ`,
-                            thoi_gian_tao: new Date()
-                        }]);
-
-                        // Xóa pending order sau khi xử lý
-                        pendingOrders.delete(app_trans_id);
-
-                        console.log(`✅ [CheckOrderStatus] Đã cộng ${pointsToAdd} điểm cho user ${orderUserId} (app_trans_id: ${app_trans_id})`);
-                        return res.status(200).json({
-                            ...zaloData,
-                            points_added: pointsToAdd,
-                            new_balance: newPoints
-                        });
-                    }
-                } else {
-                    console.log(`⚠️ [CheckOrderStatus] Giao dịch đã được xử lý trước đó: ${app_trans_id}`);
-                    // Xóa pending order nếu còn
-                    pendingOrders.delete(app_trans_id);
-                    // Vẫn trả về thông tin điểm hiện tại cho user
-                    const [user] = await pool.query("SELECT diem_so FROM nguoidung WHERE ID_NguoiDung = ?", [orderUserId]);
-                    if (user.length > 0) {
-                        return res.status(200).json({
-                            ...zaloData,
-                            points_added: 0,
-                            new_balance: user[0].diem_so || 0,
-                            message: "Giao dịch đã được xử lý trước đó"
-                        });
-                    }
-                }
-            } else {
-                console.log(`⚠️ [CheckOrderStatus] Không tìm thấy userId cho order: ${app_trans_id}`);
-            }
+        await updatePendingOrderQueryResult(app_trans_id, zaloData);
+        if (zaloData.return_code === 3) {
+            return res.status(200).json({
+                ...zaloData,
+                raw_return_code: zaloData.return_code,
+                return_code: 2,
+                return_message: zaloData.return_message || "ZaloPay chưa xác nhận giao dịch, hệ thống sẽ tiếp tục kiểm tra.",
+            });
         }
 
         return res.status(200).json(zaloData);

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { Lock, LogOut, Play, ShieldCheck, Star, User } from 'lucide-react';
@@ -17,8 +17,8 @@ import { API_BASE_URL } from '../../constants';
 import { clearAuthSession, updateStoredUser, useAuthSession } from '../../utils/authSession';
 import './Settings.css';
 
-const PAYMENT_QR_LIFETIME_SECONDS = 180;
-const PAYMENT_AUTO_POLL_INTERVAL_MS = 8000;
+const PAYMENT_QR_LIFETIME_SECONDS = 600;
+const PAYMENT_AUTO_POLL_INTERVAL_MS = 2500;
 const SETTINGS_BACKEND_ORIGIN = (() => {
     try {
         return new URL(API_BASE_URL).origin;
@@ -106,6 +106,8 @@ export default function Settings() {
     const [paymentCountdown, setPaymentCountdown] = useState(getStoredPaymentCountdown);
     const [paymentSuccessInfo, setPaymentSuccessInfo] = useState(null);
     const [hasReturnedFromZaloPay, setHasReturnedFromZaloPay] = useState(false);
+    const [paymentLastCheck, setPaymentLastCheck] = useState(null);
+    const paymentStatusCheckInFlightRef = useRef(false);
 
     const authHeaders = useMemo(
         () => (token ? { Authorization: `Bearer ${token}` } : {}),
@@ -388,6 +390,7 @@ export default function Settings() {
         setPaymentStatus('creating');
         setPaymentCountdown(0);
         setPaymentMessage('Đang tạo mã thanh toán ZaloPay...');
+        setPaymentLastCheck(null);
         setSelectedPackage(pkg);
         setPaymentSuccessInfo(null);
 
@@ -429,6 +432,8 @@ export default function Settings() {
 
     const checkPaymentStatus = useCallback(async (options = {}) => {
         const { expireIfPending = false, silentPending = false } = options;
+        if (silentPending && paymentStatusCheckInFlightRef.current) return;
+
         const transId = pendingTransId || localStorage.getItem('pending_zalopay_trans_id');
         if (!transId || !currentUserId || !token) {
             setPaymentStatus('idle');
@@ -436,8 +441,11 @@ export default function Settings() {
             return;
         }
 
+        paymentStatusCheckInFlightRef.current = true;
         setIsCheckingPayment(true);
-        setPaymentStatus('checking');
+        if (!silentPending) {
+            setPaymentStatus('checking');
+        }
         try {
             const response = await axios.get(
                 `${API_BASE_URL}/zalopay/order-status/${transId}`,
@@ -445,6 +453,12 @@ export default function Settings() {
             );
 
             const data = response.data;
+            setPaymentLastCheck({
+                checkedAt: new Date().toLocaleTimeString('vi-VN'),
+                code: data.raw_return_code ? `${data.return_code} (raw ${data.raw_return_code})` : (data.return_code ?? data.status ?? ''),
+                message: data.return_message || data.message || 'Đã kiểm tra giao dịch.',
+            });
+
             if (data.return_code === 1) {
                 const savedPackage = selectedPackage || JSON.parse(localStorage.getItem('pending_zalopay_package') || 'null');
                 const pointsAdded = Number(data.points_added || 0);
@@ -492,9 +506,9 @@ export default function Settings() {
             }
 
             if (expireIfPending) {
-                setPaymentStatus('expired');
+                setPaymentStatus('pending');
                 setPaymentCountdown(0);
-                setPaymentMessage('Mã QR đã hết hạn. Hãy bấm "Tạo QR mới" để tạo lại mã thanh toán.');
+                setPaymentMessage('Đã hết thời gian QR hiển thị, nhưng hệ thống vẫn đang kiểm tra giao dịch. Nếu điện thoại đã báo thành công, vui lòng chờ thêm vài giây.');
                 return;
             }
 
@@ -503,16 +517,25 @@ export default function Settings() {
                 setPaymentMessage(data.return_message || 'Giao dịch đang được xử lý. Hệ thống sẽ tự động kiểm tra lại.');
             }
         } catch (error) {
+            setPaymentLastCheck({
+                checkedAt: new Date().toLocaleTimeString('vi-VN'),
+                code: 'error',
+                message: error.response?.data?.message || 'Không thể kiểm tra trạng thái thanh toán.',
+            });
+
             if (expireIfPending) {
-                setPaymentStatus('expired');
+                setPaymentStatus('pending');
                 setPaymentCountdown(0);
-                setPaymentMessage('Mã QR đã hết hạn. Hãy bấm "Tạo QR mới" để tạo lại mã thanh toán.');
+                setPaymentMessage('Tạm thời chưa kiểm tra được giao dịch, hệ thống sẽ tiếp tục thử lại.');
                 return;
             }
 
-            setPaymentStatus('failure');
-            setPaymentMessage(error.response?.data?.message || 'Không thể kiểm tra trạng thái thanh toán.');
+            if (!silentPending) {
+                setPaymentStatus('failure');
+                setPaymentMessage(error.response?.data?.message || 'Không thể kiểm tra trạng thái thanh toán.');
+            }
         } finally {
+            paymentStatusCheckInFlightRef.current = false;
             setIsCheckingPayment(false);
         }
     }, [authHeaders, clearPendingPaymentStorage, currentUser, currentUserId, isVerified, loadPointData, pendingTransId, selectedPackage, syncUserState, token]);
@@ -580,7 +603,7 @@ export default function Settings() {
     useEffect(() => {
         if (activeView !== 'points_history' || !pendingTransId) return undefined;
 
-        if ((paymentStatus === 'qr_ready' || paymentStatus === 'pending') && paymentCountdown > 0) {
+        if (['qr_ready', 'pending', 'checking'].includes(paymentStatus) && paymentCountdown > 0) {
             const countdownTimer = setInterval(() => {
                 setPaymentCountdown((prev) => (prev > 0 ? prev - 1 : 0));
             }, 1000);
@@ -593,7 +616,7 @@ export default function Settings() {
 
     useEffect(() => {
         if (activeView !== 'points_history' || !pendingTransId) return undefined;
-        if ((paymentStatus === 'qr_ready' || paymentStatus === 'pending') && paymentCountdown === 0 && !isCheckingPayment) {
+        if (['qr_ready', 'pending', 'checking'].includes(paymentStatus) && paymentCountdown === 0 && !isCheckingPayment) {
             checkPaymentStatus({ expireIfPending: true, silentPending: true }).catch(() => {});
         }
         return undefined;
@@ -601,19 +624,38 @@ export default function Settings() {
 
     useEffect(() => {
         if (activeView !== 'points_history' || !pendingTransId) return undefined;
-        if (!['qr_ready', 'pending'].includes(paymentStatus) || paymentCountdown <= 0) return undefined;
+        if (!['qr_ready', 'pending', 'checking'].includes(paymentStatus)) return undefined;
 
         const pollTimer = setInterval(() => {
-            if (!isCheckingPayment) {
-                checkPaymentStatus({ silentPending: true }).catch(() => {});
-            }
+            checkPaymentStatus({ silentPending: true }).catch(() => {});
         }, PAYMENT_AUTO_POLL_INTERVAL_MS);
 
         return () => clearInterval(pollTimer);
     }, [activeView, checkPaymentStatus, isCheckingPayment, paymentCountdown, paymentStatus, pendingTransId]);
 
     useEffect(() => {
-        if (!pendingTransId || !['qr_ready', 'pending'].includes(paymentStatus)) return undefined;
+        if (!currentUserId || !token) return undefined;
+        if (paymentStatus === 'success' || paymentStatus === 'failure') return undefined;
+
+        const pollPendingPayment = () => {
+            const storedTransId = localStorage.getItem('pending_zalopay_trans_id');
+            if (!storedTransId) return;
+
+            if (!pendingTransId) {
+                setPendingTransId(storedTransId);
+            }
+
+            checkPaymentStatus({ silentPending: true }).catch(() => {});
+        };
+
+        pollPendingPayment();
+        const pollTimer = window.setInterval(pollPendingPayment, PAYMENT_AUTO_POLL_INTERVAL_MS);
+
+        return () => window.clearInterval(pollTimer);
+    }, [checkPaymentStatus, currentUserId, pendingTransId, paymentStatus, token]);
+
+    useEffect(() => {
+        if (!pendingTransId || !['qr_ready', 'pending', 'checking'].includes(paymentStatus)) return undefined;
 
         const handleFocus = () => {
             setActiveView('points_history');
@@ -674,6 +716,7 @@ export default function Settings() {
                         paymentStatus,
                         paymentCountdown,
                         paymentSuccessInfo,
+                        paymentLastCheck,
                     }}
                     onOpenPaymentLink={handleOpenPaymentLink}
                 />

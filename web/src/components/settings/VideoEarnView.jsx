@@ -1,9 +1,23 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronLeft, Lock, PlayCircle, X } from 'lucide-react';
 
 const REWARD_POINTS = 100;
 const MINIMUM_CLOSE_DELAY_SECONDS = 5;
 const SEEK_TOLERANCE_SECONDS = 1;
+const VIDEO_AD_SOURCES = [
+    {
+        title: 'Google Chrome Built-in AI Challenge',
+        url: 'https://upload.wikimedia.org/wikipedia/commons/9/93/Introducing_Google_Chrome_Built-in_AI_Challenge.webm',
+    },
+    {
+        title: 'Softsoap commercial',
+        url: 'https://upload.wikimedia.org/wikipedia/commons/5/5d/Softsoap_commercial_%281980%29.webm',
+    },
+    {
+        title: 'Taco Bell Pizzazz Pizza commercial',
+        url: 'https://upload.wikimedia.org/wikipedia/commons/3/3a/Taco_Bell_Pizzazz_Pizza_commercial.webm',
+    },
+];
 
 export default function VideoEarnView({ user, onBack, onEarnPoints, isVerified, hasWatchedToday, isLoading, onGoVerify }) {
     const [isClaimingReward, setIsClaimingReward] = useState(false);
@@ -15,11 +29,13 @@ export default function VideoEarnView({ user, onBack, onEarnPoints, isVerified, 
     const [closeCountdown, setCloseCountdown] = useState(MINIMUM_CLOSE_DELAY_SECONDS);
     const [playerSessionKey, setPlayerSessionKey] = useState(0);
     const [statusMessage, setStatusMessage] = useState('');
+    const [needsManualPlay, setNeedsManualPlay] = useState(false);
+    const [currentVideoIndex, setCurrentVideoIndex] = useState(0);
     const videoRef = useRef(null);
     const lastAllowedTimeRef = useRef(0);
     const isSyncingTimeRef = useRef(false);
     const hasHandledEndingRef = useRef(false);
-    const sampleVideoUrl = 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
+    const currentVideoSource = VIDEO_AD_SOURCES[currentVideoIndex] || VIDEO_AD_SOURCES[0];
 
     const hidePlayer = () => {
         const video = videoRef.current;
@@ -32,6 +48,8 @@ export default function VideoEarnView({ user, onBack, onEarnPoints, isVerified, 
         setIsVideoPlaying(false);
         setCanClosePlayer(false);
         setCloseCountdown(MINIMUM_CLOSE_DELAY_SECONDS);
+        setNeedsManualPlay(false);
+        setCurrentVideoIndex(0);
         lastAllowedTimeRef.current = 0;
         isSyncingTimeRef.current = false;
         hasHandledEndingRef.current = false;
@@ -58,6 +76,8 @@ export default function VideoEarnView({ user, onBack, onEarnPoints, isVerified, 
         setIsVideoPlaying(false);
         setCanClosePlayer(false);
         setCloseCountdown(MINIMUM_CLOSE_DELAY_SECONDS);
+        setNeedsManualPlay(false);
+        setCurrentVideoIndex(0);
         lastAllowedTimeRef.current = 0;
         isSyncingTimeRef.current = false;
         hasHandledEndingRef.current = false;
@@ -101,6 +121,41 @@ export default function VideoEarnView({ user, onBack, onEarnPoints, isVerified, 
         }, 0);
     };
 
+    const attemptPlayVideo = useCallback(async () => {
+        const video = videoRef.current;
+        if (!video) return;
+
+        try {
+            await video.play();
+            setNeedsManualPlay(false);
+            setStatusMessage('');
+        } catch (error) {
+            console.error('Play video error:', error);
+            setNeedsManualPlay(true);
+            setCanClosePlayer(true);
+            setCloseCountdown(0);
+            setStatusMessage('Trình duyệt đang chặn tự phát video. Hãy bấm nút phát trong khung video để tiếp tục.');
+        }
+    }, []);
+
+    const handleVideoLoadError = () => {
+        const hasNextSource = currentVideoIndex < VIDEO_AD_SOURCES.length - 1;
+
+        if (hasNextSource) {
+            setCurrentVideoIndex((prev) => prev + 1);
+            setNeedsManualPlay(false);
+            setWatchProgress(0);
+            lastAllowedTimeRef.current = 0;
+            setStatusMessage('Nguồn video này không tải được, hệ thống đang chuyển sang video quảng cáo khác.');
+            return;
+        }
+
+        setNeedsManualPlay(false);
+        setCanClosePlayer(true);
+        setCloseCountdown(0);
+        setStatusMessage('Không tải được video. Vui lòng kiểm tra mạng hoặc thử lại sau.');
+    };
+
     const handleVideoEnded = async () => {
         if (hasHandledEndingRef.current) return;
 
@@ -139,18 +194,13 @@ export default function VideoEarnView({ user, onBack, onEarnPoints, isVerified, 
         const video = videoRef.current;
         if (video) {
             video.currentTime = 0;
-            video.play().catch((error) => {
-                console.error('Play video error:', error);
-                setStatusMessage('Không thể phát video. Vui lòng thử lại.');
-                setCanClosePlayer(true);
-                setCloseCountdown(0);
-            });
+            attemptPlayVideo();
         }
 
         return () => {
             document.body.style.overflow = previousOverflow;
         };
-    }, [isPlayerOpen, playerSessionKey]);
+    }, [attemptPlayVideo, currentVideoIndex, isPlayerOpen, playerSessionKey]);
 
     useEffect(() => {
         if (!isPlayerOpen || canClosePlayer) return undefined;
@@ -191,6 +241,8 @@ export default function VideoEarnView({ user, onBack, onEarnPoints, isVerified, 
                     setIsVideoPlaying(false);
                     setCanClosePlayer(false);
                     setCloseCountdown(MINIMUM_CLOSE_DELAY_SECONDS);
+                    setNeedsManualPlay(false);
+                    setCurrentVideoIndex(0);
                     lastAllowedTimeRef.current = 0;
                     isSyncingTimeRef.current = false;
                     hasHandledEndingRef.current = false;
@@ -207,6 +259,8 @@ export default function VideoEarnView({ user, onBack, onEarnPoints, isVerified, 
                 setIsVideoPlaying(false);
                 setCanClosePlayer(false);
                 setCloseCountdown(MINIMUM_CLOSE_DELAY_SECONDS);
+                setNeedsManualPlay(false);
+                setCurrentVideoIndex(0);
                 lastAllowedTimeRef.current = 0;
                 isSyncingTimeRef.current = false;
                 hasHandledEndingRef.current = false;
@@ -297,7 +351,7 @@ export default function VideoEarnView({ user, onBack, onEarnPoints, isVerified, 
                     </div>
                     <div className="video-task-body">
                         <div className="video-task-header">
-                            <div className="video-task-title">Video quảng cáo sinh viên OLODO</div>
+                            <div className="video-task-title">{currentVideoSource.title}</div>
                             <span className="video-reward-pill">+100 điểm</span>
                         </div>
                         <p className="video-task-desc">
@@ -350,7 +404,7 @@ export default function VideoEarnView({ user, onBack, onEarnPoints, isVerified, 
                                 <div className="video-player-subtitle">
                                     {isClaimingReward
                                         ? 'Video đã hoàn tất. Hệ thống đang cộng điểm cho bạn.'
-                                        : 'Không thể tua video. Thoát sớm sẽ không được cộng điểm.'}
+                                        : `${currentVideoSource.title}. Không thể tua video. Thoát sớm sẽ không được cộng điểm.`}
                                 </div>
                             </div>
                             <button
@@ -375,7 +429,7 @@ export default function VideoEarnView({ user, onBack, onEarnPoints, isVerified, 
                                     key={playerSessionKey}
                                     ref={videoRef}
                                     className="video-player-element"
-                                    src={sampleVideoUrl}
+                                    src={currentVideoSource.url}
                                     preload="auto"
                                     autoPlay
                                     playsInline
@@ -386,9 +440,23 @@ export default function VideoEarnView({ user, onBack, onEarnPoints, isVerified, 
                                     onTimeUpdate={handleTimeUpdate}
                                     onSeeking={handleSeeking}
                                     onEnded={handleVideoEnded}
-                                    onPlay={() => setIsVideoPlaying(true)}
+                                    onPlay={() => {
+                                        setIsVideoPlaying(true);
+                                        setNeedsManualPlay(false);
+                                    }}
                                     onPause={() => setIsVideoPlaying(false)}
+                                    onError={handleVideoLoadError}
                                 />
+                                {needsManualPlay && (
+                                    <button
+                                        type="button"
+                                        className="video-manual-play-btn"
+                                        onClick={attemptPlayVideo}
+                                    >
+                                        <PlayCircle size={34} />
+                                        <span>Phát video</span>
+                                    </button>
+                                )}
                             </div>
                         </div>
 

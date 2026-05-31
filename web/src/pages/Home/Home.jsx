@@ -7,8 +7,8 @@ import {
     Search, Heart, MessageSquare, Share2, Send, MoreHorizontal,
     Image, Tag, Smile, Video, Plus, Bookmark, TrendingUp, Star,
     ShoppingBag, Zap, Shield, MapPin, Clock, ChevronRight, ChevronDown,
-    Tv, Shirt, Car, Sofa, Smartphone, Camera, BookOpen, Headphones, Wrench, Gift,
-    X, Copy, Check
+    Shirt, Car, Sofa, Smartphone, Camera, BookOpen, Headphones, Wrench, Gift,
+    X, Copy, Check, Wallet
 } from 'lucide-react';
 import './Home.css';
 import PostMediaGallery from '../../components/post/PostMediaGallery';
@@ -32,6 +32,11 @@ const API_URLS = {
     FRIEND_SUGGESTIONS: `${API_BASE}/api/quanhebanbe/suggestions/`,
     FRIEND_REQUEST: `${API_BASE}/api/quanhebanbe/request`,
     SEND_MESSAGE: `${API_BASE}/api/tinnhan/send`,
+    BOOST_PACKAGES: `${API_BASE}/api/baidang-boosts/packages`,
+    ACTIVE_BOOSTS: `${API_BASE}/api/baidang-boosts/active`,
+    BOOST_PURCHASE: `${API_BASE}/api/baidang-boosts/purchase`,
+    CURRENT_POINTS: `${API_BASE}/api/lich_su_tich_diem/getCurrentPoints/`,
+    USER_POSTS: `${API_BASE}/api/baidang/getByUserId/`,
 };
 const POSTS_PER_CHUNK = 5;
 const INITIAL_LOAD_COUNT = 8;
@@ -264,15 +269,6 @@ function HeroBanner() {
 }
 
 /* ════════ DATA ════════ */
-const STORIES = [
-    { id: 1, isAdd: true, img: 'https://images.unsplash.com/photo-1579626343210-9b6d611f8b33?q=80&w=400', name: 'Thêm Tin' },
-    { id: 2, name: 'Alexfin', img: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=400', avatar: 'https://i.pravatar.cc/60?img=1' },
-    { id: 3, name: 'Harinax', img: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=400', avatar: 'https://i.pravatar.cc/60?img=2' },
-    { id: 4, name: 'Sonix', img: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=400', avatar: 'https://i.pravatar.cc/60?img=3' },
-    { id: 5, name: 'Mia', img: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?q=80&w=400', avatar: 'https://i.pravatar.cc/60?img=4' },
-    { id: 6, name: 'Lucas', img: 'https://images.unsplash.com/photo-1489980557514-251d61e3eeb6?q=80&w=400', avatar: 'https://i.pravatar.cc/60?img=5' },
-];
-
 const NAV_ITEMS = [
     { icon: HomeIcon, label: 'Trang chủ', key: 'home', path: '/' },
     { icon: MapIcon, label: 'Bản đồ', key: 'map', path: '/map' },
@@ -366,6 +362,67 @@ const TRENDING = [
 ];
 
 const FILTERS = ['Tất cả', 'Điện tử', 'Thời trang', 'Xe cộ', 'Nội thất', 'Bất động sản'];
+
+const formatBoostPrice = (value) => {
+    const numeric = Number(String(value || 0).replace(/[^\d.-]/g, ''));
+    return numeric > 0 ? numeric.toLocaleString('vi-VN') : 'Liên hệ';
+};
+
+const formatBoostTimeLeft = (value) => {
+    const endTime = new Date(value).getTime();
+    if (!Number.isFinite(endTime)) return 'Đang chạy';
+
+    const diffMs = endTime - Date.now();
+    if (diffMs <= 0) return 'Sắp hết hạn';
+
+    const hours = Math.ceil(diffMs / 3600000);
+    if (hours < 24) return `Còn ${hours} giờ`;
+
+    return `Còn ${Math.ceil(hours / 24)} ngày`;
+};
+
+const normalizeBoostedPost = (item) => {
+    const imageUrls = (item.DanhSachAnh || []).map(link => {
+        const full = (String(link || '').startsWith('http://') || String(link || '').startsWith('https://'))
+            ? link
+            : `${API_BASE}/uploads/${link}`;
+        return normalizeUrl(full);
+    });
+    const rawPrice = Number.parseFloat(item.gia) || 0;
+    const statusInfo = normalizePostStatus(item.trang_thai);
+    const categoryInfo = CATEGORIES.find(c => c.label === (item.TenDanhMuc || item.category)) || {};
+
+    return {
+        id: item.ID_BaiDang,
+        authorId: item.ID_NguoiDung,
+        author: item.TenNguoiDung || 'Người dùng OLODO',
+        avatar: normalizeUrl(item.anh_dai_dien
+            ? (String(item.anh_dai_dien).startsWith('http') ? item.anh_dai_dien : `${API_BASE}/uploads/${item.anh_dai_dien}`)
+            : `https://i.pravatar.cc/50?u=${item.ID_NguoiDung}`),
+        time: new Date(item.thoi_gian_tao).toLocaleDateString('vi-VN'),
+        rawTime: new Date(item.thoi_gian_tao).getTime() || 0,
+        location: item.vi_tri || '',
+        verified: false,
+        title: item.tieu_de || 'Bài đăng xu hướng',
+        desc: item.mo_ta || '',
+        price: rawPrice.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
+        img: imageUrls[0] || 'https://via.placeholder.com/400x300?text=No+Image',
+        imageUrls,
+        likes: Number(item.SoLuongLike || 0),
+        comments: Number(item.SoLuongBinhLuan || 0),
+        category: item.TenDanhMuc || '',
+        categoryColor: categoryInfo.color || '#7f001f',
+        trang_thai: statusInfo.label,
+        statusColor: statusInfo.color,
+        liked: false,
+        isFriendPost: false,
+        isBoosted: true,
+        typeId: item.ID_LoaiBaiDang || '',
+        boostEndsAt: item.boost_ends_at,
+        boostScore: Number(item.display_score || 0),
+        boostPackageName: item.boost_package_name || 'Đang xu hướng',
+    };
+};
 
 /* ════════ SHARE MODAL COMPONENT ════════ */
 function ShareModal({ post, onClose }) {
@@ -494,6 +551,102 @@ function MessageModal({ post, onClose, onSubmit }) {
                         Gửi kèm bài viết
                     </button>
                 </div>
+            </div>
+        </div>
+    );
+}
+
+function BoostPurchaseModal({
+    packages,
+    userPosts,
+    currentPoints,
+    selectedPostId,
+    selectedPackageId,
+    isLoading,
+    isSubmitting,
+    feedback,
+    onSelectPost,
+    onSelectPackage,
+    onClose,
+    onSubmit,
+}) {
+    const selectedPackage = packages.find((item) => item.id === selectedPackageId) || packages[0];
+    const canSubmit = Boolean(selectedPostId && selectedPackageId && !isSubmitting);
+
+    return (
+        <div className="modal-overlay" onClick={onClose}>
+            <div className="boost-modal" onClick={(e) => e.stopPropagation()}>
+                <div className="modal-handle" />
+                <div className="modal-header">
+                    <h3 className="modal-title">Mua gói đẩy bài</h3>
+                    <button className="modal-close-btn" onClick={onClose} type="button">
+                        <X size={20} />
+                    </button>
+                </div>
+
+                <div className="boost-balance-card">
+                    <span className="boost-balance-icon"><Wallet size={18} /></span>
+                    <div>
+                        <strong>{Number(currentPoints || 0).toLocaleString('vi-VN')} điểm</strong>
+                        <span>Số điểm hiện có</span>
+                    </div>
+                </div>
+
+                {isLoading ? (
+                    <div className="boost-modal-loading">
+                        <div className="feed-spinner" />
+                        <span>Đang tải bài đăng và gói đẩy...</span>
+                    </div>
+                ) : (
+                    <>
+                        {feedback?.text && (
+                            <div className={`boost-feedback ${feedback.type}`}>
+                                {feedback.text}
+                            </div>
+                        )}
+
+                        <label className="boost-field">
+                            <span>Chọn bài đăng đang bán</span>
+                            <select value={selectedPostId} onChange={(e) => onSelectPost(e.target.value)}>
+                                <option value="">Chọn bài cần đẩy</option>
+                                {userPosts.map((post) => (
+                                    <option key={post.ID_BaiDang} value={post.ID_BaiDang}>
+                                        {post.tieu_de || post.title || post.ID_BaiDang}
+                                    </option>
+                                ))}
+                            </select>
+                        </label>
+
+                        <div className="boost-package-grid">
+                            {packages.map((item) => {
+                                const isActive = item.id === selectedPackageId;
+                                return (
+                                    <button
+                                        key={item.id}
+                                        type="button"
+                                        className={`boost-package-card ${isActive ? 'active' : ''}`}
+                                        onClick={() => onSelectPackage(item.id)}
+                                    >
+                                        <strong>{item.name}</strong>
+                                        <span>{item.points} điểm</span>
+                                        <small>{item.description}</small>
+                                    </button>
+                                );
+                            })}
+                        </div>
+
+                        <button
+                            type="button"
+                            className="boost-submit-btn"
+                            disabled={!canSubmit}
+                            onClick={onSubmit}
+                        >
+                            {isSubmitting
+                                ? 'Đang xử lý...'
+                                : `Mua gói ${selectedPackage?.points || 0} điểm`}
+                        </button>
+                    </>
+                )}
             </div>
         </div>
     );
@@ -829,6 +982,18 @@ export default function Home() {
     const [peopleSuggestions, setPeopleSuggestions] = useState(PEOPLE_MAY_KNOW_FALLBACK);
     const inlineRailRef = useRef(null);
     const [toast, setToast] = useState(null);
+    const [boostedPosts, setBoostedPosts] = useState([]);
+    const [isBoostLoading, setIsBoostLoading] = useState(false);
+    const [showBoostModal, setShowBoostModal] = useState(false);
+    const [boostPackages, setBoostPackages] = useState([]);
+    const [boostUserPosts, setBoostUserPosts] = useState([]);
+    const [boostCurrentPoints, setBoostCurrentPoints] = useState(0);
+    const [selectedBoostPostId, setSelectedBoostPostId] = useState('');
+    const [selectedBoostPackageId, setSelectedBoostPackageId] = useState('');
+    const [isBoostModalLoading, setIsBoostModalLoading] = useState(false);
+    const [isBoostSubmitting, setIsBoostSubmitting] = useState(false);
+    const [boostFeedback, setBoostFeedback] = useState(null);
+    const [boostNotice, setBoostNotice] = useState(null);
 
     // ── Feed state ──
     const [allRecommendations, setAllRecommendations] = useState([]);
@@ -847,6 +1012,121 @@ export default function Home() {
     const postElementRefs = useRef(new Map());
     const sessionSeenPostIdsRef = useRef(new Set());
     const isAuthenticated = !!token && !!userId;
+
+    const loadBoostedPosts = useCallback(async () => {
+        setIsBoostLoading(true);
+        try {
+            const headers = token ? { Authorization: `Bearer ${token}` } : {};
+            const response = await fetch(`${API_URLS.ACTIVE_BOOSTS}?limit=7`, { headers });
+            const payload = await response.json().catch(() => null);
+            if (!response.ok) {
+                throw new Error(payload?.message || `HTTP ${response.status}`);
+            }
+
+            const rows = Array.isArray(payload?.data) ? payload.data : [];
+            setBoostedPosts(rows.map(normalizeBoostedPost));
+        } catch (error) {
+            console.error('Load boosted posts failed', error);
+            setBoostedPosts([]);
+            setBoostNotice({
+                type: 'error',
+                text: error.message || 'Không tải được danh sách bài đang đẩy.',
+            });
+        } finally {
+            setIsBoostLoading(false);
+        }
+    }, [token]);
+
+    const openBoostModal = useCallback(async () => {
+        if (!isAuthenticated) {
+            setToast({ type: 'error', text: 'Bạn cần đăng nhập để mua gói đẩy bài.' });
+            return;
+        }
+
+        setShowBoostModal(true);
+        setIsBoostModalLoading(true);
+        setBoostFeedback(null);
+
+        try {
+            const headers = { Authorization: `Bearer ${token}` };
+            const [packageRes, postRes, pointRes] = await Promise.all([
+                fetch(API_URLS.BOOST_PACKAGES, { headers }),
+                fetch(`${API_URLS.USER_POSTS}${userId}`, { headers }),
+                fetch(`${API_URLS.CURRENT_POINTS}${userId}`, { headers }),
+            ]);
+
+            if (!packageRes.ok || !postRes.ok || !pointRes.ok) {
+                throw new Error('Không tải được dữ liệu đẩy bài.');
+            }
+
+            const [packagePayload, postPayload, pointPayload] = await Promise.all([
+                packageRes.json(),
+                postRes.json(),
+                pointRes.json(),
+            ]);
+
+            const packages = Array.isArray(packagePayload?.data) ? packagePayload.data : [];
+            const posts = (Array.isArray(postPayload?.data) ? postPayload.data : [])
+                .filter((post) => String(post.trang_thai || '').trim() === 'dang_ban');
+
+            setBoostPackages(packages);
+            setBoostUserPosts(posts);
+            setBoostCurrentPoints(Number(pointPayload?.currentPoints || 0));
+            setSelectedBoostPackageId((current) => current || packages[0]?.id || '');
+            setSelectedBoostPostId((current) => current || posts[0]?.ID_BaiDang || '');
+
+            if (!posts.length) {
+                setBoostFeedback({ type: 'error', text: 'Bạn chưa có bài đang bán để đẩy.' });
+            }
+        } catch (error) {
+            console.error('Open boost modal failed', error);
+            setBoostFeedback({ type: 'error', text: error.message || 'Không tải được dữ liệu đẩy bài.' });
+        } finally {
+            setIsBoostModalLoading(false);
+        }
+    }, [isAuthenticated, token, userId]);
+
+    const handlePurchaseBoost = useCallback(async () => {
+        if (!selectedBoostPostId || !selectedBoostPackageId) {
+            setBoostFeedback({ type: 'error', text: 'Bạn cần chọn bài đăng và gói đẩy.' });
+            return;
+        }
+
+        setIsBoostSubmitting(true);
+        setBoostFeedback(null);
+
+        try {
+            const response = await fetch(API_URLS.BOOST_PURCHASE, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                    postId: selectedBoostPostId,
+                    packageId: selectedBoostPackageId,
+                }),
+            });
+            const payload = await response.json().catch(() => null);
+            if (!response.ok) {
+                throw new Error(payload?.message || `HTTP ${response.status}`);
+            }
+
+            const successText = payload?.message || 'Đã mua gói đẩy bài.';
+            setToast({ type: 'success', text: successText });
+            setBoostNotice({
+                type: 'success',
+                text: `${successText} Bài của bạn sẽ xuất hiện trong khung Đang xu hướng.`,
+            });
+            setShowBoostModal(false);
+            await loadBoostedPosts();
+        } catch (error) {
+            console.error('Purchase boost failed', error);
+            setBoostFeedback({ type: 'error', text: error.message || 'Không thể mua gói đẩy bài.' });
+        } finally {
+            setIsBoostSubmitting(false);
+        }
+    }, [loadBoostedPosts, selectedBoostPackageId, selectedBoostPostId, token]);
 
     const handleMessageSubmit = useCallback(async (draftMessage) => {
         if (!messagePost) return;
@@ -1304,12 +1584,19 @@ export default function Home() {
         setFallbackPage(1);
         setTotalFallbackItems(0);
         setIsRecommendationsExhausted(false);
+        setBoostedPosts([]);
         sessionSeenPostIdsRef.current = new Set();
     }, [token, userId]);
 
     useEffect(() => {
         if (token && userId) fetchInitialData();
     }, [token, userId, fetchInitialData]);
+
+    useEffect(() => {
+        if (token && userId) {
+            loadBoostedPosts();
+        }
+    }, [token, userId, loadBoostedPosts]);
 
     const filteredFeed = useMemo(() => {
         let base = feedPosts;
@@ -1657,29 +1944,61 @@ export default function Home() {
                     ))}
                 </div>
 
-                {/* Stories */}
-                <div className="stories-section">
-                    <div className="section-header">
-                        <Tv size={16} strokeWidth={2} color="#7f001f" />
-                        <span>Tin mới</span>
+                {/* Boosted Posts */}
+                <div className="boost-section">
+                    <div className="section-header boost-section-header">
+                        <div className="boost-section-title">
+                            <TrendingUp size={16} strokeWidth={2} color="#7f001f" />
+                            <span>Đang xu hướng</span>
+                        </div>
+                        <button type="button" className="boost-open-btn" onClick={openBoostModal}>
+                            <Zap size={14} strokeWidth={2.4} />
+                            Đẩy bài
+                        </button>
                     </div>
-                    <div className="stories-row">
-                        {STORIES.map(story => (
-                            <div key={story.id} className={`story-card ${story.isAdd ? 'story-add' : ''}`}>
-                                <div className="story-img-wrap">
-                                    <img src={story.img} alt={story.name} className="story-img" />
-                                    {story.isAdd ? (
-                                        <div className="story-add-layer">
-                                            <div className="story-add-btn"><Plus size={22} strokeWidth={2.5} /></div>
-                                        </div>
-                                    ) : (
-                                        <img src={story.avatar} alt={story.name} className="story-avatar-pin" />
-                                    )}
-                                    {!story.isAdd && <div className="story-gradient" />}
-                                </div>
-                                <span className="story-name">{story.name}</span>
+                    {boostNotice?.text && (
+                        <div className={`boost-inline-notice ${boostNotice.type}`}>
+                            {boostNotice.text}
+                        </div>
+                    )}
+                    <div className="boost-row">
+                        <button type="button" className="boost-card boost-card-add" onClick={openBoostModal}>
+                            <div className="boost-img-wrap boost-add-wrap">
+                                <div className="boost-add-btn"><Plus size={22} strokeWidth={2.5} /></div>
+                                <span>50 điểm</span>
                             </div>
-                        ))}
+                            <span className="boost-name">Đẩy bài</span>
+                        </button>
+
+                        {isBoostLoading ? (
+                            <div className="boost-card boost-card-skeleton">
+                                <div className="boost-img-wrap" />
+                                <span className="boost-name">Đang tải...</span>
+                            </div>
+                        ) : boostedPosts.length > 0 ? (
+                            boostedPosts.map((post) => (
+                                <button
+                                    key={post.id}
+                                    type="button"
+                                    className="boost-card"
+                                    onClick={() => navigate(`/post/${post.id}`, { state: { post } })}
+                                >
+                                    <div className="boost-img-wrap">
+                                        <img src={post.img} alt={post.title} className="boost-img" />
+                                        <span className="boost-badge">Xu hướng</span>
+                                        <div className="boost-gradient" />
+                                    </div>
+                                    <span className="boost-name">{post.title}</span>
+                                    <span className="boost-meta">{formatBoostPrice(post.price)} đ</span>
+                                    <span className="boost-time">{formatBoostTimeLeft(post.boostEndsAt)}</span>
+                                </button>
+                            ))
+                        ) : (
+                            <div className="boost-empty">
+                                <span>Chưa có bài được đẩy.</span>
+                                <button type="button" onClick={openBoostModal}>Mua gói đầu tiên</button>
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -1861,6 +2180,23 @@ export default function Home() {
                         post={messagePost}
                         onClose={() => setMessagePost(null)}
                         onSubmit={handleMessageSubmit}
+                    />
+                )}
+
+                {showBoostModal && (
+                    <BoostPurchaseModal
+                        packages={boostPackages}
+                        userPosts={boostUserPosts}
+                        currentPoints={boostCurrentPoints}
+                        selectedPostId={selectedBoostPostId}
+                        selectedPackageId={selectedBoostPackageId}
+                        isLoading={isBoostModalLoading}
+                        isSubmitting={isBoostSubmitting}
+                        feedback={boostFeedback}
+                        onSelectPost={setSelectedBoostPostId}
+                        onSelectPackage={setSelectedBoostPackageId}
+                        onClose={() => setShowBoostModal(false)}
+                        onSubmit={handlePurchaseBoost}
                     />
                 )}
 

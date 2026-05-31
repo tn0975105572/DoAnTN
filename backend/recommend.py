@@ -8,6 +8,7 @@ from sqlalchemy import create_engine, text
 import logging
 import time
 import re
+import unicodedata
 
 # Thiết lập logging
 logging.basicConfig(
@@ -18,9 +19,62 @@ logging.basicConfig(
 
 # chuyển về tiếngg viet
 def preprocess_text(text):
-    text = text.lower()
+    text = str(text or "").lower()
     text = re.sub(r'[^\w\s]', '', text)
     return text
+
+def normalize_location_text(text):
+    text = str(text or "").lower().strip()
+    text = unicodedata.normalize("NFD", text)
+    text = "".join(char for char in text if unicodedata.category(char) != "Mn")
+    text = text.replace("đ", "d")
+    text = re.sub(r"[^a-z0-9\s,]", " ", text)
+    text = re.sub(r"\s+", " ", text)
+    return text
+
+def extract_location_tokens(location):
+    normalized = normalize_location_text(location)
+    if not normalized:
+        return set()
+
+    segments = [segment.strip() for segment in normalized.split(",") if segment.strip()]
+    tokens = set()
+
+    for segment in segments:
+        tokens.add(segment)
+        cleaned = re.sub(
+            r"\b(phuong|xa|quan|huyen|thanh pho|tp|tinh|duong|hem|so)\b",
+            " ",
+            segment,
+        )
+        cleaned = re.sub(r"\s+", " ", cleaned).strip()
+        if cleaned:
+            tokens.add(cleaned)
+
+    return tokens
+# định vị vị trí cho người dùng
+def calculate_location_scores(user_location, post_locations):
+    user_tokens = extract_location_tokens(user_location)
+    if not user_tokens:
+        return np.zeros(len(post_locations))
+
+    scores = []
+    for post_location in post_locations:
+        post_tokens = extract_location_tokens(post_location)
+        if not post_tokens:
+            scores.append(0.0)
+            continue
+
+        overlap = user_tokens.intersection(post_tokens)
+        if not overlap:
+            scores.append(0.0)
+            continue
+
+        # Jaccard score: càng nhiều thành phần địa chỉ trùng nhau thì điểm càng cao.
+        score = len(overlap) / len(user_tokens.union(post_tokens))
+        scores.append(float(score))
+
+    return np.array(scores)
 
 logging.info("Bắt đầu script gợi ý")
 start_time = time.time()
@@ -29,7 +83,7 @@ try:
     engine = create_engine('mysql+mysqlconnector://root:12345678@localhost/sv_cho')
 
     logging.info("Lấy dữ liệu bài đăng")
-    query_posts = "SELECT ID_BaiDang, CONCAT(tieu_de, ' ', mo_ta) AS content FROM baidang WHERE trang_thai = 'dang_ban'"
+    query_posts = "SELECT ID_BaiDang, CONCAT(tieu_de, ' ', mo_ta) AS content, vi_tri FROM baidang WHERE trang_thai = 'dang_ban'"
     df_posts = pd.read_sql(query_posts, engine)
     
     logging.info(f"Số bài đăng lấy được: {len(df_posts)}")
@@ -51,7 +105,7 @@ try:
     
     # Fetch tất cả users
     logging.info("Lấy dữ liệu người dùng")
-    query_users = "SELECT ID_NguoiDung FROM nguoidung"
+    query_users = "SELECT ID_NguoiDung, vi_tri FROM nguoidung"
     df_users = pd.read_sql(query_users, engine)
     
     user_ids = df_users['ID_NguoiDung'].values
@@ -82,7 +136,9 @@ try:
     collab_scores_matrix = np.dot(user_factors, post_factors.T)
 
     # Hybrid
-    alpha = 0.5
+    content_weight = 0.4
+    collab_weight = 0.4
+    location_weight = 0.2
     logging.info("Tính toán gợi ý hybrid")
     for i, user_id in enumerate(user_ids):
         logging.info(f"Xử lý gợi ý cho người dùng {user_id}")
@@ -94,7 +150,13 @@ try:
             content_scores = np.zeros(len(post_ids))
 
         collab_scores = collab_scores_matrix[i]
-        hybrid_scores = alpha * content_scores + (1 - alpha) * collab_scores
+        user_location = df_users.loc[df_users['ID_NguoiDung'] == user_id, 'vi_tri'].iloc[0]
+        location_scores = calculate_location_scores(user_location, df_posts['vi_tri'].values)
+        hybrid_scores = (
+            content_weight * content_scores
+            + collab_weight * collab_scores
+            + location_weight * location_scores
+        )
 
         not_liked_indices = np.where(~user_post_matrix.loc[user_id].values.astype(bool))[0]
         top_indices = not_liked_indices[np.argsort(hybrid_scores[not_liked_indices])[::-1][:10]]
@@ -102,7 +164,7 @@ try:
         top_scores = hybrid_scores[top_indices]
 
         # Xóa gợi ý cũ
-        with engine.connect() as connection:
+        with engine.begin() as connection:
             connection.execute(text("DELETE FROM goiy_baidang WHERE ID_NguoiDung = :user_id"), {'user_id': user_id})
             for post, score in zip(top_posts, top_scores):
                 connection.execute(

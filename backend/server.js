@@ -14,6 +14,7 @@ const routes = require("./routes");
 const qrLoginRoutes = require("./routes/qrlogin");
 const errorHandler = require("./middleware/errorHandler");
 const authMiddleware = require("./middleware/baoVe");
+const baidangBoost = require("./models/baidang_boost");
 
 const app = express();
 const server = http.createServer(app);
@@ -413,23 +414,69 @@ app.get('/api/recommendations/:userId', authMiddleware.authenticateToken, async 
       isFriendPost: false
     }));
 
-    // 4. Kết hợp: Bạn bè mới đăng lên đầu -> Sau đó đến AI gợi ý
-    // Dùng Map để loại bỏ trùng lặp (nếu bạn bè cũng nằm trong danh sách AI gợi ý)
-    const combinedMap = new Map();
+    // 4. Lấy bài boost theo quota. Bài trả tiền chỉ được vào một vài slot,
+    // vẫn xếp theo cá nhân hóa + suy giảm thời gian trong baidang_boost.
+    const sponsoredSlotIndexes = [2, 6, 11];
+    const sponsoredLimit = sponsoredSlotIndexes.length;
+    let boostedPosts = [];
+    try {
+      const boostedRows = await baidangBoost.getActiveBoostedPosts({
+        viewerId: userId,
+        limit: sponsoredLimit * 2,
+      });
 
-    // Thêm bài bạn bè trước
-    friendPosts.forEach(post => combinedMap.set(post.ID_BaiDang, post));
+      boostedPosts = boostedRows
+        .filter((post) => String(post.ID_NguoiDung || '') !== userId)
+        .map((post) => ({
+          ID_BaiDang: post.ID_BaiDang,
+          Score: Number(post.display_score || post.boost_score || 0),
+          isFriendPost: false,
+          isBoosted: true,
+          boostPackageId: post.boost_package_id,
+          boostEndsAt: post.boost_ends_at,
+        }))
+        .slice(0, sponsoredLimit);
+    } catch (boostError) {
+      console.error('Lỗi lấy bài boost cho feed gợi ý:', boostError.message);
+      boostedPosts = [];
+    }
 
-    // Thêm bài AI (nếu chưa có trong map)
+    // 5. Kết hợp: bạn bè + AI organic là lõi, boost chỉ chen vào slot có giới hạn.
+    const organicMap = new Map();
+    friendPosts.forEach(post => organicMap.set(post.ID_BaiDang, post));
     aiPosts.forEach(post => {
-      if (!combinedMap.has(post.ID_BaiDang)) {
-        combinedMap.set(post.ID_BaiDang, post);
+      if (!organicMap.has(post.ID_BaiDang)) {
+        organicMap.set(post.ID_BaiDang, post);
       }
     });
 
-    let finalRecommendationList = Array.from(combinedMap.values());
+    const organicList = Array.from(organicMap.values());
+    const finalRecommendationList = [];
+    const usedPostIds = new Set();
+    let organicCursor = 0;
+    let boostCursor = 0;
 
-    // 5. Nếu tổng cộng vẫn ít bài quá (dưới 10 bài), lấy thêm bài ngẫu nhiên để lấp đầy
+    while (finalRecommendationList.length < 15 && (organicCursor < organicList.length || boostCursor < boostedPosts.length)) {
+      const nextIndex = finalRecommendationList.length;
+      const shouldUseBoost = sponsoredSlotIndexes.includes(nextIndex) && boostCursor < boostedPosts.length;
+      let candidate = null;
+
+      if (shouldUseBoost) {
+        candidate = boostedPosts[boostCursor++];
+      } else if (organicCursor < organicList.length) {
+        candidate = organicList[organicCursor++];
+      } else {
+        candidate = boostedPosts[boostCursor++];
+      }
+
+      if (!candidate) continue;
+      if (usedPostIds.has(candidate.ID_BaiDang)) continue;
+
+      usedPostIds.add(candidate.ID_BaiDang);
+      finalRecommendationList.push(candidate);
+    }
+
+    // 6. Nếu tổng cộng vẫn ít bài quá (dưới 10 bài), lấy thêm bài ngẫu nhiên để lấp đầy
     if (finalRecommendationList.length < 10) {
       const existingIds = finalRecommendationList.map(p => p.ID_BaiDang);
       const [randomRows] = await pool.query(
@@ -443,12 +490,13 @@ app.get('/api/recommendations/:userId', authMiddleware.authenticateToken, async 
         finalRecommendationList.push({
           ID_BaiDang: row.ID_BaiDang,
           Score: 0,
-          isFriendPost: false
+          isFriendPost: false,
+          isBoosted: false
         });
       });
     }
 
-    // 6. Kiểm tra tương tác (Like/Comment) cho danh sách cuối cùng
+    // 7. Kiểm tra tương tác (Like/Comment) cho danh sách cuối cùng
     const finalPostIds = finalRecommendationList.map(post => post.ID_BaiDang);
     if (finalPostIds.length === 0) return res.json([]);
 

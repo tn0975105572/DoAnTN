@@ -3,6 +3,14 @@ const { v4: uuidv4 } = require("uuid");
 
 const tinnhanai = {}; // Using an object to hold methods
 let ensureTablePromise = null;
+const SEARCH_CANDIDATE_LIMIT = Math.min(
+  300,
+  Math.max(60, Number(process.env.SEARCH_CANDIDATE_LIMIT || 140) || 140)
+);
+const ACTIVE_SEARCH_STATUSES = (process.env.SEARCH_ACTIVE_STATUSES || "dang_ban")
+  .split(",")
+  .map((status) => status.trim())
+  .filter(Boolean);
 
 const buildLocationLikeTerms = (location) => {
   const terms = [location];
@@ -133,103 +141,163 @@ tinnhanai.getLocationCatalog = async (limit = 700) => {
   return rows;
 };
 
-tinnhanai.searchRelevantPosts = async ({ keywords = [], phrases = [], locationTerms = [], maxPrice = null, limit = 8 } = {}) => {
-  const safeLimit = Math.max(1, Math.min(Number(limit) || 8, 12));
-  const safeKeywords = [...new Set(keywords.map((item) => String(item || "").trim()).filter(Boolean))].slice(0, 8);
-  const safePhrases = [...new Set(phrases.map((item) => String(item || "").trim()).filter(Boolean))].slice(0, 5);
-  const safeLocationTerms = [...new Set(locationTerms.map((item) => String(item || "").trim()).filter(Boolean))].slice(0, 3);
-  const whereParts = ["b.trang_thai IN ('dang_ban', 'da_tang')"];
-  const whereParams = [];
-  const scoreParts = [];
-  const scoreParams = [];
-  const hasSearchTerms = safePhrases.length > 0 || safeKeywords.length > 0 || safeLocationTerms.length > 0;
+const normalizeSearchText = (value) =>
+  String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[đĐ]/g, "d")
+    .toLowerCase();
 
-  if (!hasSearchTerms && !(Number.isFinite(maxPrice) && maxPrice > 0)) {
+const assertReadOnlySql = (sql) => {
+  const normalized = String(sql || "")
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .replace(/--.*$/gm, " ")
+    .trim();
+
+  if (!/^select\b/i.test(normalized)) {
+    throw new Error("Only SELECT SQL is allowed for AI post search.");
+  }
+
+  if (normalized.includes(";")) {
+    throw new Error("Multiple SQL statements are blocked for AI post search.");
+  }
+
+  if (/\b(insert|update|delete|drop|alter|create|truncate|replace|merge|grant|revoke|call|load|outfile|lock|unlock)\b/i.test(normalized)) {
+    throw new Error("Write keyword detected in AI post search SQL.");
+  }
+};
+
+tinnhanai.readOnlyQuery = async (sql, params = []) => {
+  assertReadOnlySql(sql);
+
+  const connection = await pool.getConnection();
+  try {
+    await connection.query("START TRANSACTION READ ONLY");
+    const [rows] = await connection.query(sql, params);
+    await connection.query("COMMIT");
+    return rows;
+  } catch (error) {
+    try {
+      await connection.query("ROLLBACK");
+    } catch {
+      // Preserve the original query error.
+    }
+    throw error;
+  } finally {
+    connection.release();
+  }
+};
+
+const uniqueTextValues = (values, maxItems = 14) => {
+  const seen = new Set();
+  const output = [];
+
+  for (const value of values) {
+    const text = String(value || "").replace(/\s+/g, " ").trim();
+    const normalized = normalizeSearchText(text);
+    if (!text || seen.has(normalized)) continue;
+
+    seen.add(normalized);
+    output.push(text.slice(0, 90));
+    if (output.length >= maxItems) break;
+  }
+
+  return output;
+};
+
+const scoreSearchResult = (row, query, terms, intent = {}) => {
+  const normalizedQuery = normalizeSearchText(query);
+  const haystack = {
+    title: normalizeSearchText(row.tieu_de),
+    description: normalizeSearchText(row.mo_ta),
+    location: normalizeSearchText(row.vi_tri),
+    category: normalizeSearchText(row.danh_muc),
+    type: normalizeSearchText(row.loai_bai_dang),
+  };
+  let score = 0;
+
+  for (const term of terms) {
+    const normalizedTerm = normalizeSearchText(term);
+    if (!normalizedTerm) continue;
+    if (haystack.title.includes(normalizedTerm)) score += 34;
+    if (haystack.category.includes(normalizedTerm)) score += 22;
+    if (haystack.type.includes(normalizedTerm)) score += 16;
+    if (haystack.location.includes(normalizedTerm)) score += 14;
+    if (haystack.description.includes(normalizedTerm)) score += 9;
+  }
+
+  if (normalizedQuery && haystack.title.includes(normalizedQuery)) score += 45;
+  if (intent.category && haystack.category.includes(normalizeSearchText(intent.category))) score += 28;
+  if (intent.location && haystack.location.includes(normalizeSearchText(intent.location))) score += 30;
+  if (row.trang_thai === "dang_ban") score += 8;
+
+  return score;
+};
+
+tinnhanai.searchRelevantPosts = async ({ query = "", intent = {}, limit = 8 } = {}) => {
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 8, 20));
+  const safeIntent = intent && typeof intent === "object" ? intent : {};
+  const terms = uniqueTextValues([
+    ...(Array.isArray(safeIntent.keywords) ? safeIntent.keywords : []),
+    ...(Array.isArray(safeIntent.requiredTerms) ? safeIntent.requiredTerms : []),
+    safeIntent.category,
+    safeIntent.postType,
+    safeIntent.location,
+  ]);
+  const requiredTerms = uniqueTextValues(Array.isArray(safeIntent.requiredTerms) ? safeIntent.requiredTerms : [], 8);
+  const excludeTerms = uniqueTextValues(Array.isArray(safeIntent.excludeTerms) ? safeIntent.excludeTerms : [], 8);
+  const minPrice = Number(safeIntent.minPrice);
+  const maxPrice = Number(safeIntent.maxPrice);
+  const hasMinPrice = Number.isFinite(minPrice) && minPrice > 0;
+  const hasMaxPrice = Number.isFinite(maxPrice) && maxPrice > 0;
+
+  if (!terms.length && !hasMinPrice && !hasMaxPrice) {
     return [];
   }
 
-  if (Number.isFinite(maxPrice) && maxPrice > 0) {
-    whereParts.push("b.gia IS NOT NULL AND b.gia <= ?");
-    whereParams.push(maxPrice);
+  const where = [];
+  const params = [];
+
+  if (ACTIVE_SEARCH_STATUSES.length > 0) {
+    where.push(`b.trang_thai IN (${ACTIVE_SEARCH_STATUSES.map(() => "?").join(", ")})`);
+    params.push(...ACTIVE_SEARCH_STATUSES);
   }
 
-  if (safeLocationTerms.length > 0) {
-    const locationWhereParts = [];
-
-    safeLocationTerms.forEach((location) => {
-      const terms = buildLocationLikeTerms(location);
-      const termWhereParts = [];
-
-      terms.forEach((term) => {
-        termWhereParts.push("b.vi_tri LIKE ?");
-        whereParams.push(term);
-
-        scoreParts.push("(CASE WHEN b.vi_tri LIKE ? THEN 34 ELSE 0 END)");
-        scoreParams.push(term);
-      });
-
-      locationWhereParts.push(`(${termWhereParts.join(" OR ")})`);
-    });
-
-    whereParts.push(`(${locationWhereParts.join(" OR ")})`);
+  if (terms.length > 0) {
+    const termClauses = [];
+    for (const term of terms) {
+      termClauses.push("(b.tieu_de LIKE ? OR b.mo_ta LIKE ? OR b.vi_tri LIKE ? OR dm.ten LIKE ? OR lb.ten LIKE ?)");
+      const like = `%${term}%`;
+      params.push(like, like, like, like, like);
+    }
+    where.push(`(${termClauses.join(" OR ")})`);
   }
 
-  if (safePhrases.length > 0) {
-    const phraseWhereParts = [];
-
-    safePhrases.forEach((phrase) => {
-      const term = `%${phrase}%`;
-      phraseWhereParts.push("(b.tieu_de LIKE ? OR b.mo_ta LIKE ? OR dm.ten LIKE ? OR lb.ten LIKE ?)");
-      whereParams.push(term, term, term, term);
-
-      scoreParts.push(`
-        (CASE WHEN b.tieu_de LIKE ? THEN 36 ELSE 0 END) +
-        (CASE WHEN dm.ten LIKE ? THEN 22 ELSE 0 END) +
-        (CASE WHEN lb.ten LIKE ? THEN 18 ELSE 0 END) +
-        (CASE WHEN b.mo_ta LIKE ? THEN 12 ELSE 0 END)
-      `);
-      scoreParams.push(term, term, term, term);
-    });
-
-    whereParts.push(`(${phraseWhereParts.join(" OR ")})`);
-  } else if (safeKeywords.length > 0) {
-    const keywordWhereParts = [];
-
-    safeKeywords.forEach((keyword) => {
-      const term = `%${keyword}%`;
-      keywordWhereParts.push("(b.tieu_de LIKE ? OR b.mo_ta LIKE ? OR b.vi_tri LIKE ? OR dm.ten LIKE ? OR lb.ten LIKE ?)");
-      whereParams.push(term, term, term, term, term);
-
-      scoreParts.push(`
-        (CASE WHEN b.tieu_de LIKE ? THEN 8 ELSE 0 END) +
-        (CASE WHEN dm.ten LIKE ? THEN 5 ELSE 0 END) +
-        (CASE WHEN lb.ten LIKE ? THEN 4 ELSE 0 END) +
-        (CASE WHEN b.mo_ta LIKE ? THEN 3 ELSE 0 END) +
-        (CASE WHEN b.vi_tri LIKE ? THEN 2 ELSE 0 END)
-      `);
-      scoreParams.push(term, term, term, term, term);
-    });
-
-    whereParts.push(`(${keywordWhereParts.join(" OR ")})`);
+  for (const requiredTerm of requiredTerms) {
+    where.push("(b.tieu_de LIKE ? OR b.mo_ta LIKE ? OR dm.ten LIKE ? OR lb.ten LIKE ?)");
+    const like = `%${requiredTerm}%`;
+    params.push(like, like, like, like);
   }
 
-  if (safePhrases.length > 0 && safeKeywords.length > 0) {
-    safeKeywords.forEach((keyword) => {
-      const term = `%${keyword}%`;
-      scoreParts.push(`
-        (CASE WHEN b.tieu_de LIKE ? THEN 5 ELSE 0 END) +
-        (CASE WHEN dm.ten LIKE ? THEN 3 ELSE 0 END) +
-        (CASE WHEN lb.ten LIKE ? THEN 3 ELSE 0 END) +
-        (CASE WHEN b.mo_ta LIKE ? THEN 2 ELSE 0 END) +
-        (CASE WHEN b.vi_tri LIKE ? THEN 1 ELSE 0 END)
-      `);
-      scoreParams.push(term, term, term, term, term);
-    });
+  for (const excludedTerm of excludeTerms) {
+    where.push("(b.tieu_de NOT LIKE ? AND COALESCE(b.mo_ta, '') NOT LIKE ? AND COALESCE(dm.ten, '') NOT LIKE ?)");
+    const like = `%${excludedTerm}%`;
+    params.push(like, like, like);
   }
 
-  const scoreSql = scoreParts.length > 0 ? scoreParts.join(" + ") : "0";
+  if (hasMaxPrice) {
+    where.push("(b.gia IS NULL OR b.gia <= ?)");
+    params.push(maxPrice);
+  }
 
-  const [rows] = await pool.query(
+  if (hasMinPrice) {
+    where.push("(b.gia IS NULL OR b.gia >= ?)");
+    params.push(minPrice);
+  }
+
+  params.push(Math.max(safeLimit * 15, SEARCH_CANDIDATE_LIMIT));
+
+  const rows = await tinnhanai.readOnlyQuery(
     `SELECT
         b.ID_BaiDang,
         b.ID_NguoiDung,
@@ -241,30 +309,50 @@ tinnhanai.searchRelevantPosts = async ({ keywords = [], phrases = [], locationTe
         b.thoi_gian_tao,
         n.ho_ten AS TenNguoiDung,
         n.anh_dai_dien,
-        lb.ten AS TenLoaiBaiDang,
-        dm.ten AS TenDanhMuc,
+        dm.ten AS danh_muc,
+        lb.ten AS loai_bai_dang,
+        (
+          SELECT a.LinkAnh
+          FROM baidang_anh a
+          WHERE a.ID_BaiDang = b.ID_BaiDang
+          LIMIT 1
+        ) AS image_url,
         COUNT(DISTINCT like_stats.ID_NguoiDung) AS SoLuongLike,
-        COUNT(DISTINCT comment_stats.ID_BinhLuan) AS SoLuongBinhLuan,
-        GROUP_CONCAT(DISTINCT ba.LinkAnh SEPARATOR '|') AS DanhSachAnh,
-        (${scoreSql}) AS relevance_score
+        COUNT(DISTINCT comment_stats.ID_BinhLuan) AS SoLuongBinhLuan
       FROM baidang b
       LEFT JOIN nguoidung n ON b.ID_NguoiDung = n.ID_NguoiDung
-      LEFT JOIN loaibaidang lb ON b.ID_LoaiBaiDang = lb.ID_LoaiBaiDang
       LEFT JOIN danhmuc dm ON b.ID_DanhMuc = dm.ID_DanhMuc
-      LEFT JOIN baidang_anh ba ON b.ID_BaiDang = ba.ID_BaiDang
+      LEFT JOIN loaibaidang lb ON b.ID_LoaiBaiDang = lb.ID_LoaiBaiDang
       LEFT JOIN likebaidang like_stats ON b.ID_BaiDang = like_stats.ID_BaiDang
       LEFT JOIN binhluanbaidang comment_stats ON b.ID_BaiDang = comment_stats.ID_BaiDang
-      WHERE ${whereParts.join(" AND ")}
+      WHERE ${where.length ? where.join(" AND ") : "1 = 1"}
       GROUP BY b.ID_BaiDang
-      ORDER BY relevance_score DESC, b.thoi_gian_tao DESC
+      ORDER BY b.thoi_gian_tao DESC
       LIMIT ?`,
-    [...scoreParams, ...whereParams, safeLimit]
+    params
   );
 
-  return rows.map((row) => ({
-    ...row,
-    DanhSachAnh: row.DanhSachAnh ? row.DanhSachAnh.split("|") : [],
-  }));
+  const scoredRows = rows
+    .map((row) => ({
+      ...row,
+      TenDanhMuc: row.danh_muc || "",
+      TenLoaiBaiDang: row.loai_bai_dang || "",
+      DanhSachAnh: row.image_url ? [row.image_url] : [],
+      relevance_score: scoreSearchResult(row, query, terms, safeIntent),
+    }))
+    .filter((row) => row.relevance_score > 0 || hasMinPrice || hasMaxPrice);
+
+  if (safeIntent.sort === "price_asc") {
+    scoredRows.sort((left, right) => (Number(left.gia) || Number.MAX_SAFE_INTEGER) - (Number(right.gia) || Number.MAX_SAFE_INTEGER));
+  } else if (safeIntent.sort === "price_desc") {
+    scoredRows.sort((left, right) => (Number(right.gia) || -1) - (Number(left.gia) || -1));
+  } else if (safeIntent.sort === "newest") {
+    scoredRows.sort((left, right) => new Date(right.thoi_gian_tao || 0) - new Date(left.thoi_gian_tao || 0));
+  } else {
+    scoredRows.sort((left, right) => right.relevance_score - left.relevance_score);
+  }
+
+  return scoredRows.slice(0, safeLimit);
 };
 
 module.exports = tinnhanai;

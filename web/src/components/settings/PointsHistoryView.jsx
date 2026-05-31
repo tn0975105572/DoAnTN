@@ -71,6 +71,7 @@ export default function PointsHistoryView({
         paymentStatus,
         paymentCountdown,
         paymentSuccessInfo,
+        paymentLastCheck,
     } = paymentState || {};
     const isQrExpired = paymentStatus === 'expired';
     const canCreateQr = Boolean(selectedPackage) && !isCreatingPayment;
@@ -194,6 +195,14 @@ export default function PointsHistoryView({
                                             ? 'Hệ thống đã dừng kiểm tra mã cũ. Bấm nút bên dưới để tạo một QR mới.'
                                             : 'Hệ thống đang tự kiểm tra thanh toán và sẽ tự cộng điểm khi giao dịch hoàn tất.'}
                                     </div>
+                                    {paymentLastCheck && (
+                                        <div className="zalopay-check-status">
+                                            <strong>Lần kiểm tra gần nhất: {paymentLastCheck.checkedAt}</strong>
+                                            <span>
+                                                Mã trạng thái {paymentLastCheck.code || 'không rõ'} - {paymentLastCheck.message}
+                                            </span>
+                                        </div>
+                                    )}
                                     <div className="zalopay-qr-actions">
                                         <button
                                             type="button"

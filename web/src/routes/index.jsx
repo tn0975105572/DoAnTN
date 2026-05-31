@@ -5,7 +5,6 @@ import Layout from '../components/layout/Layout';
 import Home from '../pages/Home/Home';
 import MapPage from '../pages/Map/Map';
 import About from '../pages/About/About';
-import Products from '../pages/Products/Products';
 import Contact from '../pages/Contact/Contact';
 import Login from '../pages/Login/Login';
 import Register from '../pages/Register/Register';
@@ -81,10 +80,6 @@ const router = createBrowserRouter([
             {
                 path: 'map',
                 element: <MapPage />,
-            },
-            {
-                path: 'products',
-                element: <Products />,
             },
             {
                 path: 'contact',

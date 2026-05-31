@@ -3,6 +3,7 @@ const routes = express.Router();
 const adminRoutes = require('./admin');
 const baidangRoutes = require('./baidang');
 const baidang_anhRoutes = require('./baidang_anh');
+const baidangBoostRoutes = require('./baidang_boost');
 const baocaoRoutes = require('./baocao');
 const binhluanbaidangRoutes = require('./binhluanbaidang');
 const chitietdonhangRoutes = require('./chitietdonhang');
@@ -32,6 +33,7 @@ const zalopayRoutes = require('./zalopay'); // Add ZaloPay route
 routes.use('/admin', adminRoutes);
 routes.use('/baidang', baidangRoutes);
 routes.use('/baidang_anh', baidang_anhRoutes);
+routes.use('/baidang-boosts', baidangBoostRoutes);
 routes.use('/baocao', baocaoRoutes);
 routes.use('/binhluanbaidang', binhluanbaidangRoutes);
 routes.use('/chitietdonhang', chitietdonhangRoutes);

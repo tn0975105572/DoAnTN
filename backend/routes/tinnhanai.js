@@ -5,6 +5,7 @@ const authMiddleware = require("../middleware/baoVe");
 
 // Định nghĩa các route
 router.post("/chat", authMiddleware.authenticateToken, tinnhanaiController.chat);
+router.get("/search", authMiddleware.authenticateToken, tinnhanaiController.search);
 router.get("/getAll", tinnhanaiController.getAll);
 router.get("/getById/:id", tinnhanaiController.getById);
 router.post("/create", tinnhanaiController.insert);
