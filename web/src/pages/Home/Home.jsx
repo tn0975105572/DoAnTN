@@ -167,6 +167,15 @@ function HeroBanner() {
     const [selectedCategory, setSelectedCategory] = useState('Tất cả danh mục');
     const [showCatDropdown, setShowCatDropdown] = useState(false);
     const dropdownRef = useRef(null);
+    const navigate = useNavigate();
+
+    const handleHeroSearch = (e) => {
+        e?.preventDefault();
+        const params = new URLSearchParams();
+        if (searchQuery.trim()) params.set('q', searchQuery.trim());
+        if (selectedCategory && selectedCategory !== 'Tất cả danh mục') params.set('category', selectedCategory);
+        navigate(`/search${params.toString() ? '?' + params.toString() : ''}`);
+    };
 
     return (
         <section className="hero-banner">
@@ -194,7 +203,7 @@ function HeroBanner() {
                 <p className="hero-sub">Mua bán đồ cũ dễ dàng, an toàn giữa sinh viên với nhau 🎓</p>
 
                 {/* ── Search Bar ── */}
-                <div className="hero-search-bar">
+                <form className="hero-search-bar" onSubmit={handleHeroSearch}>
                     {/* Category Dropdown */}
                     <div className="hero-cat-dropdown" ref={dropdownRef}>
                         <button
@@ -246,16 +255,21 @@ function HeroBanner() {
                     </button>
 
                     {/* Search Button */}
-                    <button className="hero-search-submit">
+                    <button type="submit" className="hero-search-submit">
                         <Search size={18} strokeWidth={2.5} />
                         <span>Tìm kiếm</span>
                     </button>
-                </div>
+                </form>
 
                 {/* ── Quick Categories ── */}
                 <div className="hero-quick-cats">
                     {HERO_CATEGORIES.map(({ icon, label, color }) => (
-                        <button key={label} className="hero-quick-cat">
+                        <button
+                            key={label}
+                            type="button"
+                            className="hero-quick-cat"
+                            onClick={() => navigate(`/search?category=${encodeURIComponent(label)}`)}
+                        >
                             <span className="hero-quick-cat-icon" style={{ background: color + '20', color }}>
                                 {createElement(icon, { size: 20, strokeWidth: 2 })}
                             </span>

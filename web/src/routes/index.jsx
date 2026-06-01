@@ -19,6 +19,7 @@ import LikedPosts from '../pages/LikedPosts/LikedPosts';
 import Orders from '../pages/Orders/Orders';
 import OrderDetail from '../pages/OrderDetail/OrderDetail';
 import PostDetail from '../pages/PostDetail/PostDetail';
+import SearchPage from '../pages/Search/Search';
 import { useAuthSession } from '../utils/authSession';
 
 const AdminBankDash = lazy(() => import('../pages/Admin/AdminBankDash'));
@@ -136,6 +137,10 @@ const router = createBrowserRouter([
                         <AdminBankDash />
                     </Suspense>
                 ),
+            },
+            {
+                path: 'search',
+                element: <SearchPage />,
             },
             {
                 path: 'post/:postId',

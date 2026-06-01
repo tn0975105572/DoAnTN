@@ -22,6 +22,13 @@ const config = {
 const pendingOrders = new Map();
 
 const zalopayController = {};
+const DEBUG_ZALOPAY = process.env.DEBUG_ZALOPAY === 'true';
+
+const logZaloPayDebug = (...args) => {
+    if (DEBUG_ZALOPAY) {
+        console.log(...args);
+    }
+};
 
 const getAuthenticatedUserId = (req) =>
     String(req.user?.id || req.user?.userId || '');
@@ -33,6 +40,9 @@ const ensureZaloPayPendingOrdersTable = async () => {
             ID_NguoiDung VARCHAR(255) NOT NULL,
             amount INT NOT NULL,
             points INT NOT NULL,
+            order_type VARCHAR(32) NOT NULL DEFAULT 'points',
+            vip_days INT NOT NULL DEFAULT 0,
+            vip_expires_at DATETIME NULL,
             status VARCHAR(32) NOT NULL DEFAULT 'pending',
             points_added INT NOT NULL DEFAULT 0,
             new_balance INT NULL,
@@ -47,6 +57,9 @@ const ensureZaloPayPendingOrdersTable = async () => {
     const columns = [
         ["points_added", "ALTER TABLE zalopay_pending_orders ADD COLUMN points_added INT NOT NULL DEFAULT 0"],
         ["new_balance", "ALTER TABLE zalopay_pending_orders ADD COLUMN new_balance INT NULL"],
+        ["order_type", "ALTER TABLE zalopay_pending_orders ADD COLUMN order_type VARCHAR(32) NOT NULL DEFAULT 'points'"],
+        ["vip_days", "ALTER TABLE zalopay_pending_orders ADD COLUMN vip_days INT NOT NULL DEFAULT 0"],
+        ["vip_expires_at", "ALTER TABLE zalopay_pending_orders ADD COLUMN vip_expires_at DATETIME NULL"],
         ["processed_at", "ALTER TABLE zalopay_pending_orders ADD COLUMN processed_at DATETIME NULL"],
         ["last_return_code", "ALTER TABLE zalopay_pending_orders ADD COLUMN last_return_code INT NULL"],
         ["last_return_message", "ALTER TABLE zalopay_pending_orders ADD COLUMN last_return_message VARCHAR(255) NULL"],
@@ -67,15 +80,24 @@ const savePendingOrder = async (appTransId, orderInfo) => {
     await ensureZaloPayPendingOrdersTable();
     await pool.query(
         `INSERT INTO zalopay_pending_orders
-            (app_trans_id, ID_NguoiDung, amount, points, status)
-         VALUES (?, ?, ?, ?, 'pending')
+            (app_trans_id, ID_NguoiDung, amount, points, order_type, vip_days, status)
+         VALUES (?, ?, ?, ?, ?, ?, 'pending')
          ON DUPLICATE KEY UPDATE
             ID_NguoiDung = VALUES(ID_NguoiDung),
             amount = VALUES(amount),
             points = VALUES(points),
+            order_type = VALUES(order_type),
+            vip_days = VALUES(vip_days),
             status = 'pending',
             updated_at = CURRENT_TIMESTAMP`,
-        [appTransId, orderInfo.userId, orderInfo.amount, orderInfo.points]
+        [
+            appTransId,
+            orderInfo.userId,
+            orderInfo.amount,
+            orderInfo.points || 0,
+            orderInfo.orderType || 'points',
+            orderInfo.vipDays || 0,
+        ]
     );
 };
 
@@ -85,7 +107,7 @@ const getPendingOrder = async (appTransId) => {
 
     await ensureZaloPayPendingOrdersTable();
     const [rows] = await pool.query(
-        `SELECT ID_NguoiDung AS userId, amount, points
+        `SELECT ID_NguoiDung AS userId, amount, points, order_type AS orderType, vip_days AS vipDays
          FROM zalopay_pending_orders
          WHERE app_trans_id = ?`,
         [appTransId]
@@ -97,6 +119,8 @@ const getPendingOrder = async (appTransId) => {
         userId: rows[0].userId,
         amount: Number(rows[0].amount || 0),
         points: Number(rows[0].points || 0),
+        orderType: rows[0].orderType || 'points',
+        vipDays: Number(rows[0].vipDays || 0),
     };
 };
 
@@ -146,6 +170,21 @@ const markPendingOrderSuccess = async (appTransId, pointsAdded, newBalance) => {
     );
 };
 
+const markPendingVipOrderSuccess = async (appTransId, vipExpiresAt) => {
+    await ensureZaloPayPendingOrdersTable();
+    await pool.query(
+        `UPDATE zalopay_pending_orders
+         SET status = 'success',
+             vip_expires_at = ?,
+             processed_at = COALESCE(processed_at, CURRENT_TIMESTAMP),
+             last_return_code = 1,
+             last_return_message = 'success',
+             updated_at = CURRENT_TIMESTAMP
+         WHERE app_trans_id = ?`,
+        [vipExpiresAt, appTransId]
+    );
+};
+
 const queryZaloPayOrder = async (appTransId) => {
     const postData = {
         app_id: config.app_id,
@@ -170,10 +209,64 @@ const queryZaloPayOrder = async (appTransId) => {
 const processSuccessfulOrder = async (appTransId, fallback = {}) => {
     const pendingOrder = await getPendingOrder(appTransId);
     const orderUserId = pendingOrder?.userId || fallback.userId;
+    const orderType = pendingOrder?.orderType || fallback.orderType || 'points';
     const pointsToAdd = Number(pendingOrder?.points || fallback.points || 0);
+    const vipDays = Number(pendingOrder?.vipDays || fallback.vipDays || 0);
     const amount = Number(pendingOrder?.amount || fallback.amount || 0);
 
-    if (!orderUserId || !pointsToAdd || !amount) {
+    if (!orderUserId || !amount) {
+        throw new Error("Không tìm thấy thông tin giao dịch này. Vui lòng tạo lại QR mới.");
+    }
+
+    if (orderType === 'vip') {
+        if (!vipDays) {
+            throw new Error("Không tìm thấy thông tin gói VIP của giao dịch này. Vui lòng tạo lại QR mới.");
+        }
+
+        const [existingVipOrder] = await pool.query(
+            "SELECT vip_expires_at FROM zalopay_pending_orders WHERE app_trans_id = ? AND status = 'success'",
+            [appTransId]
+        );
+
+        if (existingVipOrder.length > 0) {
+            pendingOrders.delete(appTransId);
+            return {
+                orderType,
+                vipDays,
+                vipExpiresAt: existingVipOrder[0].vip_expires_at,
+                alreadyProcessed: true,
+            };
+        }
+
+        const [users] = await pool.query(
+            "SELECT ngay_het_han_vip FROM nguoidung WHERE ID_NguoiDung = ?",
+            [orderUserId]
+        );
+        if (users.length === 0) {
+            throw new Error("Không tìm thấy người dùng để kích hoạt VIP.");
+        }
+
+        const currentExpiry = users[0].ngay_het_han_vip ? new Date(users[0].ngay_het_han_vip) : null;
+        const startsAt = currentExpiry && currentExpiry.getTime() > Date.now() ? currentExpiry : new Date();
+        const vipExpiresAt = new Date(startsAt.getTime() + vipDays * 24 * 60 * 60 * 1000);
+
+        await pool.query(
+            "UPDATE nguoidung SET la_vip = 1, ngay_het_han_vip = ? WHERE ID_NguoiDung = ?",
+            [vipExpiresAt, orderUserId]
+        );
+
+        pendingOrders.delete(appTransId);
+        await markPendingVipOrderSuccess(appTransId, vipExpiresAt);
+
+        return {
+            orderType,
+            vipDays,
+            vipExpiresAt,
+            alreadyProcessed: false,
+        };
+    }
+
+    if (!pointsToAdd) {
         throw new Error("Không tìm thấy thông tin gói điểm của giao dịch này. Vui lòng tạo lại QR mới.");
     }
 
@@ -189,6 +282,7 @@ const processSuccessfulOrder = async (appTransId, fallback = {}) => {
         await markPendingOrderSuccess(appTransId, 0, currentBalance);
 
         return {
+            orderType,
             pointsAdded: 0,
             newBalance: currentBalance,
             alreadyProcessed: true,
@@ -217,6 +311,7 @@ const processSuccessfulOrder = async (appTransId, fallback = {}) => {
     await markPendingOrderSuccess(appTransId, pointsToAdd, newPoints);
 
     return {
+        orderType,
         pointsAdded: pointsToAdd,
         newBalance: newPoints,
         alreadyProcessed: false,
@@ -241,11 +336,11 @@ const startOrderStatusPolling = (appTransId) => {
             }
 
             const zaloData = await queryZaloPayOrder(appTransId);
-            console.log("ZaloPay Auto Poll Status:", appTransId, zaloData);
+            logZaloPayDebug("ZaloPay Auto Poll Status:", appTransId, zaloData);
 
             if (zaloData.return_code === 1) {
                 const processed = await processSuccessfulOrder(appTransId);
-                console.log(`✅ [AutoPoll] Đã xử lý ${appTransId}: +${processed.pointsAdded}, balance=${processed.newBalance}`);
+                console.log(`✅ [AutoPoll] Đã xử lý ZaloPay ${appTransId}:`, processed);
                 clearInterval(timer);
                 return;
             }
@@ -260,7 +355,7 @@ const startOrderStatusPolling = (appTransId) => {
 zalopayController.createOrder = async (req, res) => {
     try {
         const userId = getAuthenticatedUserId(req);
-        const { amount, points, description, redirectBaseUrl } = req.body;
+        const { amount, points, description, redirectBaseUrl, orderType, vipDays } = req.body;
 
         if (!userId || !amount) {
             return res.status(400).json({ return_code: 0, return_message: "Thiếu thông tin bắt buộc" });
@@ -273,7 +368,9 @@ zalopayController.createOrder = async (req, res) => {
         const finalAmount = parseInt(amount);
 
         // Calculate points if not provided
-        const finalPoints = points ? parseInt(points) : Math.floor(finalAmount / 20);
+        const finalOrderType = orderType === 'vip' ? 'vip' : 'points';
+        const finalVipDays = finalOrderType === 'vip' ? parseInt(vipDays || 30) : 0;
+        const finalPoints = finalOrderType === 'vip' ? 0 : (points ? parseInt(points) : Math.floor(finalAmount / 20));
 
         // Create app_trans_id first
         const app_trans_id = `${moment().format('YYMMDD')}_${transID}`;
@@ -287,6 +384,8 @@ zalopayController.createOrder = async (req, res) => {
         const embed_data = {
             redirecturl: webRedirectUrl || `OLODO://payment-result?app_trans_id=${app_trans_id}`,
             points: finalPoints,
+            orderType: finalOrderType,
+            vipDays: finalVipDays,
         };
 
         const order = {
@@ -308,16 +407,16 @@ zalopayController.createOrder = async (req, res) => {
         const data = config.app_id + "|" + order.app_trans_id + "|" + order.app_user + "|" + order.amount + "|" + order.app_time + "|" + order.embed_data + "|" + order.item;
         order.mac = CryptoJS.HmacSHA256(data, config.key1).toString();
 
-        console.log("---------------- ZALOPAY DEBUG ----------------");
-        console.log("MAC Data String:", data);
-        console.log("Generated MAC:", order.mac);
-        console.log("Order Data:", order);
-        console.log("-----------------------------------------------");
+        logZaloPayDebug("---------------- ZALOPAY DEBUG ----------------");
+        logZaloPayDebug("MAC Data String:", data);
+        logZaloPayDebug("Generated MAC:", order.mac);
+        logZaloPayDebug("Order Data:", order);
+        logZaloPayDebug("-----------------------------------------------");
 
         // Sending via Query Params (Official Node.js Sample Style)
         const result = await axios.post(config.endpoint, null, { params: order });
 
-        console.log("ZaloPay Response:", result.data);
+        logZaloPayDebug("ZaloPay Response:", result.data);
 
         // Check if ZaloPay returned an error
         if (result.data.return_code !== 1) {
@@ -335,16 +434,20 @@ zalopayController.createOrder = async (req, res) => {
             userId: userId,
             amount: finalAmount,
             points: finalPoints,
+            orderType: finalOrderType,
+            vipDays: finalVipDays,
             createdAt: Date.now()
         });
         await savePendingOrder(order.app_trans_id, {
             userId,
             amount: finalAmount,
             points: finalPoints,
+            orderType: finalOrderType,
+            vipDays: finalVipDays,
         });
         startOrderStatusPolling(order.app_trans_id);
 
-        console.log(`📦 Stored pending order: ${order.app_trans_id}`, pendingOrders.get(order.app_trans_id));
+        logZaloPayDebug(`📦 Stored pending order: ${order.app_trans_id}`, pendingOrders.get(order.app_trans_id));
 
         res.json({
             ...result.data,
@@ -359,17 +462,17 @@ zalopayController.createOrder = async (req, res) => {
 zalopayController.callback = async (req, res) => {
     let result = {};
 
-    console.log("=============== ZALOPAY CALLBACK RECEIVED ===============");
-    console.log("Request Body:", JSON.stringify(req.body, null, 2));
-    console.log("=========================================================");
+    logZaloPayDebug("=============== ZALOPAY CALLBACK RECEIVED ===============");
+    logZaloPayDebug("Request Body:", JSON.stringify(req.body, null, 2));
+    logZaloPayDebug("=========================================================");
 
     try {
         let dataStr = req.body.data;
         let reqMac = req.body.mac;
 
         let mac = CryptoJS.HmacSHA256(dataStr, config.key2).toString();
-        console.log("MAC from ZaloPay:", reqMac);
-        console.log("MAC calculated:", mac);
+        logZaloPayDebug("MAC from ZaloPay:", reqMac);
+        logZaloPayDebug("MAC calculated:", mac);
 
         // Kiểm tra callback hợp lệ (từ ZaloPay server)
         if (reqMac !== mac) {
@@ -380,7 +483,7 @@ zalopayController.callback = async (req, res) => {
             // Thanh toán thành công
             // Merchant xử lý dataStr ở đây
             let dataJson = JSON.parse(dataStr, config.key2);
-            console.log("update order's status = success where app_trans_id =", dataJson['app_trans_id']);
+            logZaloPayDebug("update order's status = success where app_trans_id =", dataJson['app_trans_id']);
 
             // XỬ LÝ CỘNG ĐIỂM CHO USER
             // dataJson bao gồm: { app_id, app_trans_id, app_time, app_user, amount, embed_data, item, zp_trans_id, server_time }
@@ -390,6 +493,8 @@ zalopayController.callback = async (req, res) => {
             const app_trans_id = dataJson.app_trans_id;
 
             let pointsToAdd = Math.floor(amount / 20);
+            let orderType = 'points';
+            let vipDays = 0;
 
             // Nếu muốn chính xác hơn, nên pass `points` vào `embed_data` lúc tạo order.
             // Nhưng callback dataStr của ZaloPay chứa embed_data, nên ta có thể parse lại.
@@ -398,16 +503,23 @@ zalopayController.callback = async (req, res) => {
                 if (embedDataObj.points) {
                     pointsToAdd = parseInt(embedDataObj.points);
                 }
+                if (embedDataObj.orderType === 'vip') {
+                    orderType = 'vip';
+                    vipDays = parseInt(embedDataObj.vipDays || 30);
+                    pointsToAdd = 0;
+                }
             } catch (e) {
-                console.log("Error parsing embed_data, using default calculation:", e);
+                logZaloPayDebug("Error parsing embed_data, using default calculation:", e);
             }
 
             const processed = await processSuccessfulOrder(app_trans_id, {
                 userId,
                 amount,
                 points: pointsToAdd,
+                orderType,
+                vipDays,
             });
-            console.log(`✅ [Callback] Đã xử lý ${app_trans_id}: +${processed.pointsAdded}, balance=${processed.newBalance}`);
+            console.log(`✅ [Callback] Đã xử lý ${app_trans_id}:`, processed);
 
             result.return_code = 1;
             result.return_message = "success";
@@ -428,6 +540,16 @@ zalopayController.checkOrderStatus = async (req, res) => {
     try {
         const storedOrder = await getStoredOrder(app_trans_id);
         if (storedOrder?.status === 'success') {
+            if (storedOrder.order_type === 'vip') {
+                return res.status(200).json({
+                    return_code: 1,
+                    return_message: "success",
+                    order_type: 'vip',
+                    vip_days: Number(storedOrder.vip_days || 0),
+                    vip_expires_at: storedOrder.vip_expires_at,
+                });
+            }
+
             return res.status(200).json({
                 return_code: 1,
                 return_message: storedOrder.points_added > 0 ? "success" : "Giao dịch đã được xử lý trước đó",
@@ -438,14 +560,17 @@ zalopayController.checkOrderStatus = async (req, res) => {
 
         const zaloData = await queryZaloPayOrder(app_trans_id);
 
-        console.log("ZaloPay Order Status:", zaloData);
+        logZaloPayDebug("ZaloPay Order Status:", zaloData);
 
         // Nếu thanh toán thành công (return_code = 1), cộng điểm cho user
         if (zaloData.return_code === 1) {
             const processed = await processSuccessfulOrder(app_trans_id, { userId });
-            console.log(`✅ [CheckOrderStatus] Đã xử lý ${app_trans_id}: +${processed.pointsAdded}, balance=${processed.newBalance}`);
+            console.log(`✅ [CheckOrderStatus] Đã xử lý ${app_trans_id}:`, processed);
             return res.status(200).json({
                 ...zaloData,
+                order_type: processed.orderType,
+                vip_days: processed.vipDays,
+                vip_expires_at: processed.vipExpiresAt,
                 points_added: processed.pointsAdded,
                 new_balance: processed.newBalance,
                 message: processed.alreadyProcessed ? "Giao dịch đã được xử lý trước đó" : undefined,
@@ -464,7 +589,7 @@ zalopayController.checkOrderStatus = async (req, res) => {
 
         return res.status(200).json(zaloData);
     } catch (error) {
-        console.log(error.message);
+        console.error(error.message);
         return res.status(500).json({ message: error.message });
     }
 }

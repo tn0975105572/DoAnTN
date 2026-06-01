@@ -117,6 +117,20 @@ const buildSafeSearchAnswer = (posts, searchIntent = {}) => {
 const buildGeneralFallbackAnswer = () =>
   "Mình là OLODO AI. Bạn hãy nói tên món, ngân sách hoặc khu vực; mình sẽ tìm bài đăng thật trong hệ thống và hiện thẻ để mở chi tiết.";
 
+const filterPostsMentionedInAnswer = (posts, answer) => {
+  if (!Array.isArray(posts) || posts.length <= 1) return posts;
+
+  const normalizedAnswer = normalizeSearchText(answer);
+  if (!normalizedAnswer) return posts;
+
+  const mentionedPosts = posts.filter((post) => {
+    const normalizedTitle = normalizeSearchText(post.title);
+    return normalizedTitle && normalizedAnswer.includes(normalizedTitle);
+  });
+
+  return mentionedPosts.length ? mentionedPosts : posts;
+};
+
 const saveAiHistory = async ({ userId, message, reply }) => {
   try {
     await tinnhanai.insert({
@@ -184,13 +198,15 @@ exports.chat = async (req, res) => {
     console.error("Vertex AI post advisor failed:", answerError);
   }
 
+  const displayPosts = filterPostsMentionedInAnswer(relatedPosts, reply);
+
   await saveAiHistory({ userId, message, reply });
 
   return res.json({
     success: true,
     data: {
       answer: reply,
-      posts: relatedPosts,
+      posts: displayPosts,
       meta: {
         service: "backend/vertex-service-account",
         model: vertexAdvisor.model,
@@ -200,9 +216,10 @@ exports.chat = async (req, res) => {
         searchError,
         answerError,
         usage,
-        totalPosts: relatedPosts.length,
+        totalPosts: displayPosts.length,
+        sourcePosts: relatedPosts.length,
         hasListingIntent: hasSearchInput,
-        showPosts: relatedPosts.length > 0,
+        showPosts: displayPosts.length > 0,
       },
     },
   });

@@ -11,6 +11,13 @@ const ACTIVE_SEARCH_STATUSES = (process.env.SEARCH_ACTIVE_STATUSES || "dang_ban"
   .split(",")
   .map((status) => status.trim())
   .filter(Boolean);
+const SEARCH_STOPWORDS = new Set([
+  "ai", "anh", "ban", "bao", "bai", "cai", "can", "chiec", "cho", "co",
+  "cua", "duoc", "duoi", "gia", "gi", "giup", "goi", "goiy", "hay",
+  "khong", "kiem", "la", "minh", "mot", "mua", "muon", "nao", "nay",
+  "ngan", "nghin", "nhung", "post", "ra", "search", "toi", "tim",
+  "tr", "tren", "trieu", "ve", "voi",
+]);
 
 const buildLocationLikeTerms = (location) => {
   const terms = [location];
@@ -148,6 +155,29 @@ const normalizeSearchText = (value) =>
     .replace(/[đĐ]/g, "d")
     .toLowerCase();
 
+const tokenizeSearchText = (value) => normalizeSearchText(value).match(/[a-z0-9]+/g) || [];
+
+const termMatchesField = (fieldValue, term) => {
+  const normalizedField = normalizeSearchText(fieldValue);
+  const normalizedTerm = normalizeSearchText(term).trim();
+  if (!normalizedField || !normalizedTerm) return false;
+
+  const termTokens = tokenizeSearchText(normalizedTerm);
+  if (!termTokens.length) return false;
+
+  if (termTokens.length > 1) {
+    return normalizedField.includes(termTokens.join(" ")) ||
+      termTokens.every((token) => termMatchesField(normalizedField, token));
+  }
+
+  const token = termTokens[0];
+  if (token.length <= 2) {
+    return tokenizeSearchText(normalizedField).includes(token);
+  }
+
+  return normalizedField.includes(token);
+};
+
 const assertReadOnlySql = (sql) => {
   const normalized = String(sql || "")
     .replace(/\/\*[\s\S]*?\*\//g, " ")
@@ -195,7 +225,7 @@ const uniqueTextValues = (values, maxItems = 14) => {
   for (const value of values) {
     const text = String(value || "").replace(/\s+/g, " ").trim();
     const normalized = normalizeSearchText(text);
-    if (!text || seen.has(normalized)) continue;
+    if (!text || seen.has(normalized) || SEARCH_STOPWORDS.has(normalized)) continue;
 
     seen.add(normalized);
     output.push(text.slice(0, 90));
@@ -219,29 +249,110 @@ const scoreSearchResult = (row, query, terms, intent = {}) => {
   for (const term of terms) {
     const normalizedTerm = normalizeSearchText(term);
     if (!normalizedTerm) continue;
-    if (haystack.title.includes(normalizedTerm)) score += 34;
-    if (haystack.category.includes(normalizedTerm)) score += 22;
-    if (haystack.type.includes(normalizedTerm)) score += 16;
-    if (haystack.location.includes(normalizedTerm)) score += 14;
-    if (haystack.description.includes(normalizedTerm)) score += 9;
+    if (termMatchesField(haystack.title, normalizedTerm)) score += 34;
+    if (termMatchesField(haystack.category, normalizedTerm)) score += 22;
+    if (termMatchesField(haystack.type, normalizedTerm)) score += 16;
+    if (termMatchesField(haystack.location, normalizedTerm)) score += 14;
+    if (termMatchesField(haystack.description, normalizedTerm)) score += 9;
   }
 
   if (normalizedQuery && haystack.title.includes(normalizedQuery)) score += 45;
-  if (intent.category && haystack.category.includes(normalizeSearchText(intent.category))) score += 28;
-  if (intent.location && haystack.location.includes(normalizeSearchText(intent.location))) score += 30;
+  if (intent.category && termMatchesField(haystack.category, intent.category)) score += 28;
+  if (intent.location && termMatchesField(haystack.location, intent.location)) score += 30;
   if (row.trang_thai === "dang_ban") score += 8;
 
   return score;
 };
 
+const isShortSearchTerm = (term) => {
+  const tokens = tokenizeSearchText(term);
+  return tokens.length === 1 && tokens[0].length <= 2;
+};
+
+const buildShortTermLikeClause = (columnSql) =>
+  `CONCAT(' ', COALESCE(${columnSql}, ''), ' ') LIKE ?`;
+
+const pushTermSearchClause = (clauses, params, term) => {
+  if (isShortSearchTerm(term)) {
+    const like = `% ${normalizeSearchText(term)} %`;
+    clauses.push(`(
+      ${buildShortTermLikeClause("b.tieu_de")} OR
+      ${buildShortTermLikeClause("b.mo_ta")} OR
+      ${buildShortTermLikeClause("b.vi_tri")} OR
+      ${buildShortTermLikeClause("dm.ten")} OR
+      ${buildShortTermLikeClause("lb.ten")}
+    )`);
+    params.push(like, like, like, like, like);
+    return;
+  }
+
+  clauses.push("(b.tieu_de LIKE ? OR b.mo_ta LIKE ? OR b.vi_tri LIKE ? OR dm.ten LIKE ? OR lb.ten LIKE ?)");
+  const like = `%${term}%`;
+  params.push(like, like, like, like, like);
+};
+
+const productTextMatchesTerm = (row, term) => {
+  const productText = [
+    row.tieu_de,
+    row.danh_muc,
+    row.loai_bai_dang,
+  ].join(" ");
+
+  return termMatchesField(productText, term);
+};
+
+const productTextMatchesIntent = (row, productTerms) => {
+  const intentTokens = [
+    ...new Set(productTerms.flatMap((term) => tokenizeSearchText(term))),
+  ].filter((token) => token && !SEARCH_STOPWORDS.has(token));
+
+  if (!intentTokens.length) return true;
+
+  const productText = [
+    row.tieu_de,
+    row.danh_muc,
+    row.loai_bai_dang,
+  ].join(" ");
+
+  return intentTokens.every((token) => termMatchesField(productText, token)) ||
+    productTerms.some((term) => productTextMatchesTerm(row, term));
+};
+
+const extractQueryProductTerms = (query, maxItems = 8) => {
+  const seen = new Set();
+  const terms = [];
+
+  for (const token of tokenizeSearchText(query)) {
+    if (
+      seen.has(token) ||
+      SEARCH_STOPWORDS.has(token) ||
+      /^\d+$/.test(token) ||
+      token.length < 2
+    ) {
+      continue;
+    }
+
+    seen.add(token);
+    terms.push(token);
+    if (terms.length >= maxItems) break;
+  }
+
+  return terms;
+};
+
 tinnhanai.searchRelevantPosts = async ({ query = "", intent = {}, limit = 8 } = {}) => {
   const safeLimit = Math.max(1, Math.min(Number(limit) || 8, 20));
   const safeIntent = intent && typeof intent === "object" ? intent : {};
-  const terms = uniqueTextValues([
+  const queryProductTerms = extractQueryProductTerms(query);
+  const productTerms = uniqueTextValues([
     ...(Array.isArray(safeIntent.keywords) ? safeIntent.keywords : []),
     ...(Array.isArray(safeIntent.requiredTerms) ? safeIntent.requiredTerms : []),
     safeIntent.category,
     safeIntent.postType,
+    ...queryProductTerms,
+  ]);
+  const terms = uniqueTextValues([
+    ...productTerms,
     safeIntent.location,
   ]);
   const requiredTerms = uniqueTextValues(Array.isArray(safeIntent.requiredTerms) ? safeIntent.requiredTerms : [], 8);
@@ -266,17 +377,15 @@ tinnhanai.searchRelevantPosts = async ({ query = "", intent = {}, limit = 8 } = 
   if (terms.length > 0) {
     const termClauses = [];
     for (const term of terms) {
-      termClauses.push("(b.tieu_de LIKE ? OR b.mo_ta LIKE ? OR b.vi_tri LIKE ? OR dm.ten LIKE ? OR lb.ten LIKE ?)");
-      const like = `%${term}%`;
-      params.push(like, like, like, like, like);
+      pushTermSearchClause(termClauses, params, term);
     }
     where.push(`(${termClauses.join(" OR ")})`);
   }
 
   for (const requiredTerm of requiredTerms) {
-    where.push("(b.tieu_de LIKE ? OR b.mo_ta LIKE ? OR dm.ten LIKE ? OR lb.ten LIKE ?)");
-    const like = `%${requiredTerm}%`;
-    params.push(like, like, like, like);
+    const requiredClauses = [];
+    pushTermSearchClause(requiredClauses, params, requiredTerm);
+    where.push(`(${requiredClauses.join(" OR ")})`);
   }
 
   for (const excludedTerm of excludeTerms) {
@@ -340,7 +449,14 @@ tinnhanai.searchRelevantPosts = async ({ query = "", intent = {}, limit = 8 } = 
       DanhSachAnh: row.image_url ? [row.image_url] : [],
       relevance_score: scoreSearchResult(row, query, terms, safeIntent),
     }))
-    .filter((row) => row.relevance_score > 0 || hasMinPrice || hasMaxPrice);
+    .filter((row) => {
+      if (!productTerms.length) return row.relevance_score > 0 || hasMinPrice || hasMaxPrice;
+      if (queryProductTerms.length > 1 && !queryProductTerms.every((term) => productTextMatchesTerm(row, term))) {
+        return false;
+      }
+
+      return productTextMatchesIntent(row, productTerms);
+    });
 
   if (safeIntent.sort === "price_asc") {
     scoredRows.sort((left, right) => (Number(left.gia) || Number.MAX_SAFE_INTEGER) - (Number(right.gia) || Number.MAX_SAFE_INTEGER));

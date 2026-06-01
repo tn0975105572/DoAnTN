@@ -4,12 +4,326 @@
    ═══════════════════════════════════════════ */
 
 /* ── Page Container ── */
+.settings-shell {
+    position: relative;
+    width: 100%;
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 0;
+    background: #fffcef;
+}
+
 .settings-page {
+    position: relative;
+    z-index: 0;
     max-width: 720px;
     margin: 0 auto;
     padding: 32px 20px 64px;
     min-height: calc(100vh - 72px);
     background: #fffcef;
+}
+
+.settings-page > * {
+    position: relative;
+    z-index: 1;
+}
+
+@media (min-width: 1180px) {
+    .settings-side-panel {
+        position: absolute;
+        top: 32px;
+        width: clamp(220px, calc((100vw - 820px) / 2 - 56px), 270px);
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        z-index: 1;
+    }
+
+    .settings-side-left {
+        right: calc(50% + 390px);
+    }
+
+    .settings-side-right {
+        left: calc(50% + 390px);
+    }
+
+    .settings-side-card,
+    .settings-side-search,
+    .settings-side-app {
+        background: #fffdf8;
+        border: 1px solid #efe6d7;
+        border-radius: 20px;
+        box-shadow: 0 8px 22px rgba(28, 25, 23, 0.06);
+    }
+
+    .settings-side-search {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 15px 18px;
+        border: 1.5px solid #7f001f;
+        color: #bbb;
+        font-weight: 600;
+    }
+
+    .settings-side-nav {
+        padding: 10px;
+    }
+
+    .settings-side-nav-item,
+    .settings-side-cat {
+        width: 100%;
+        border: 0;
+        background: transparent;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 11px 12px;
+        border-radius: 14px;
+        color: #555;
+        font: inherit;
+        font-weight: 700;
+        text-align: left;
+        cursor: pointer;
+    }
+
+    .settings-side-nav-item.active {
+        background: #fff8e7;
+        color: #7f001f;
+    }
+
+    .settings-side-icon,
+    .settings-side-cat-icon {
+        position: relative;
+        width: 38px;
+        height: 38px;
+        border-radius: 12px;
+        background: #fffaf2;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+
+    .settings-side-nav-item.active .settings-side-icon {
+        background: #7f001f;
+        color: #fff;
+    }
+
+    .settings-side-dot {
+        margin-left: auto;
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: #7f001f;
+    }
+
+    .settings-side-badge {
+        position: absolute;
+        top: -5px;
+        right: -5px;
+        min-width: 17px;
+        height: 17px;
+        border-radius: 999px;
+        background: #ef4444;
+        color: #fff;
+        font-size: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 2px solid #fff;
+    }
+
+    .settings-side-categories {
+        padding: 16px 14px;
+    }
+
+    .settings-side-title,
+    .settings-side-widget-head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: #777;
+        font-size: 13px;
+        font-weight: 900;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        margin-bottom: 12px;
+    }
+
+    .settings-side-title svg {
+        margin-left: auto;
+        color: #ccc;
+    }
+
+    .settings-side-profile {
+        width: 100%;
+        border: 1px solid #efe6d7;
+        padding: 14px 16px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        text-align: left;
+        cursor: pointer;
+    }
+
+    .settings-side-profile img,
+    .settings-side-person img {
+        width: 46px;
+        height: 46px;
+        border-radius: 50%;
+        object-fit: cover;
+    }
+
+    .settings-side-profile img {
+        border: 2.5px solid #7f001f;
+    }
+
+    .settings-side-profile span,
+    .settings-side-person span {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        flex: 1;
+    }
+
+    .settings-side-profile strong,
+    .settings-side-person strong {
+        color: #222;
+        font-size: 14px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .settings-side-profile small {
+        color: #7f001f;
+        font-weight: 700;
+    }
+
+    .settings-side-people {
+        padding: 16px;
+    }
+
+    .settings-side-widget-head {
+        color: #555;
+    }
+
+    .settings-side-widget-head svg {
+        color: #7f001f;
+    }
+
+    .settings-side-person {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 14px;
+    }
+
+    .settings-side-person small {
+        color: #aaa;
+        font-size: 12px;
+    }
+
+    .settings-side-add,
+    .settings-side-remove {
+        width: 32px;
+        height: 32px;
+        border-radius: 9px;
+        border: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        flex-shrink: 0;
+    }
+
+    .settings-side-add {
+        background: #7f001f;
+        color: #fff;
+    }
+
+    .settings-side-remove {
+        background: #f4f4f5;
+        color: #aaa;
+    }
+
+    .settings-side-see-all {
+        width: 100%;
+        height: 44px;
+        border-radius: 13px;
+        border: 1.5px solid #eee;
+        background: #fff;
+        color: #7f001f;
+        font: inherit;
+        font-weight: 800;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+        cursor: pointer;
+    }
+
+    .settings-side-app {
+        overflow: hidden;
+        padding: 26px 18px;
+        text-align: center;
+        background: linear-gradient(165deg, #5b0017 0%, #7f001f 48%, #9a0002 100%);
+        color: #fff;
+    }
+
+    .settings-side-app-logo {
+        font-family: var(--font-display);
+        letter-spacing: 0.16em;
+        font-size: 32px;
+        font-weight: 900;
+        margin-bottom: 12px;
+    }
+
+    .settings-side-app p {
+        margin: 0 0 10px;
+        color: rgba(255, 255, 255, 0.9);
+        font-weight: 700;
+        font-size: 13px;
+    }
+
+    .settings-side-stars {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 3px;
+        margin-bottom: 14px;
+    }
+
+    .settings-side-stars span {
+        margin-left: 5px;
+        font-size: 12px;
+        color: rgba(255, 255, 255, 0.78);
+    }
+
+    .settings-side-app button {
+        width: 100%;
+        border: 1px solid rgba(255, 255, 255, 0.28);
+        background: rgba(255, 255, 255, 0.16);
+        color: #fff;
+        border-radius: 13px;
+        padding: 11px;
+        font: inherit;
+        font-weight: 800;
+    }
+}
+
+@media (max-width: 1179px) {
+    .settings-shell {
+        display: block;
+        width: 100%;
+        padding: 0;
+        min-height: 0;
+    }
+
+    .settings-side-panel {
+        display: none;
+    }
 }
 
 /* ── Header ── */
@@ -43,6 +357,14 @@
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
 }
 
+.settings-profile-card.vip {
+    border-color: #8fd3ff;
+    background:
+        linear-gradient(#fff, #fff) padding-box,
+        linear-gradient(135deg, #58ccff, #7b61ff 56%, #ce82ff) border-box;
+    box-shadow: 0 10px 26px rgba(88, 204, 255, 0.16);
+}
+
 /* Avatar */
 .settings-avatar-wrap {
     position: relative;
@@ -64,6 +386,11 @@
 
 .settings-avatar.unverified {
     border-color: #FF9800;
+}
+
+.settings-avatar.vip {
+    border-color: #58ccff;
+    box-shadow: 0 0 0 4px rgba(88, 204, 255, 0.24);
 }
 
 .settings-avatar-edit {
@@ -94,11 +421,34 @@
     min-width: 0;
 }
 
+.settings-profile-name-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 3px;
+}
+
 .settings-profile-name {
     font-size: 20px;
     font-weight: 700;
     color: #333;
-    margin-bottom: 3px;
+    min-width: 0;
+}
+
+.settings-vip-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 9px;
+    border-radius: 999px;
+    border: 1px solid rgba(88, 140, 255, 0.32);
+    background: linear-gradient(135deg, #e6f8ff, #b9e7ff 46%, #d9c7ff);
+    color: #174ea6;
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 1;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75), 0 4px 10px rgba(88, 140, 255, 0.14);
 }
 
 .settings-profile-email {
@@ -263,6 +613,85 @@
 }
 
 /* ══════════════════════════
+   VIP STATUS
+══════════════════════════ */
+.settings-vip-banner {
+    position: relative;
+    border-radius: 16px;
+    border: 1px solid #bdeaff;
+    background:
+        radial-gradient(circle at 14% 10%, rgba(255, 255, 255, 0.9), transparent 24%),
+        radial-gradient(circle at 92% 18%, rgba(206, 130, 255, 0.28), transparent 30%),
+        linear-gradient(135deg, #e7f8ff 0%, #c8ecff 46%, #efe7ff 100%);
+    overflow: hidden;
+    margin-bottom: 24px;
+    box-shadow: 0 14px 34px rgba(88, 140, 255, 0.16);
+}
+
+.settings-vip-banner-stripe {
+    height: 4px;
+    background: linear-gradient(90deg, #1cb0f6, #58ccff, #8a63ff);
+}
+
+.settings-vip-banner-body {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px;
+}
+
+.settings-vip-banner-icon {
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    background:
+        linear-gradient(135deg, rgba(255, 255, 255, 0.88), rgba(255, 255, 255, 0.24)) padding-box,
+        linear-gradient(135deg, #58ccff, #7b61ff) border-box;
+    border: 2px solid transparent;
+    color: #174ea6;
+    box-shadow: 0 7px 18px rgba(88, 140, 255, 0.18);
+}
+
+.settings-vip-banner-copy {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.settings-vip-banner-copy strong {
+    color: #123f8c;
+    font-size: 17px;
+    font-weight: 800;
+}
+
+.settings-vip-banner-copy span {
+    color: #3f5fa8;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.settings-vip-banner-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 7px 11px;
+    border-radius: 999px;
+    background: #ffffffcc;
+    border: 1px solid rgba(88, 140, 255, 0.22);
+    color: #174ea6;
+    font-size: 12px;
+    font-weight: 900;
+    flex-shrink: 0;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+/* ══════════════════════════
    SETTINGS SECTIONS
 ══════════════════════════ */
 .settings-section {
@@ -310,6 +739,11 @@
     background: #fafaf7;
 }
 
+.settings-item.settings-vip-item-active {
+    background: linear-gradient(90deg, #e7f8ff, #ffffff);
+    border-left: 3px solid #1cb0f6;
+}
+
 .settings-item-icon {
     width: 38px;
     height: 38px;
@@ -333,6 +767,125 @@
     font-size: 15px;
     color: #333;
     font-weight: 500;
+}
+
+.settings-vip-item-label {
+    color: #174ea6;
+    font-weight: 700;
+}
+
+.vip-purchase-hero {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    padding: 20px;
+    border-radius: 18px;
+    border: 1px solid #bdeaff;
+    background: #eaf8ff;
+    box-shadow: 0 4px 14px rgba(88, 140, 255, 0.1);
+    margin-bottom: 18px;
+}
+
+.vip-purchase-mark {
+    width: 62px;
+    height: 62px;
+    border-radius: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: #174ea6;
+    background: #ffffff;
+    border: 1px solid #bdeaff;
+}
+
+.vip-purchase-eyebrow {
+    font-size: 12px;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #1cb0f6;
+    margin-bottom: 4px;
+}
+
+.vip-purchase-hero h3 {
+    margin: 0 0 6px;
+    color: #123f8c;
+    font-size: 20px;
+    line-height: 1.25;
+}
+
+.vip-purchase-hero p {
+    margin: 0;
+    color: #3f5fa8;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.vip-current-status {
+    display: inline-flex;
+    width: fit-content;
+    margin-top: 10px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.72);
+    color: #174ea6;
+    font-size: 12px;
+    font-weight: 800;
+    border: 1px solid rgba(88, 140, 255, 0.2);
+}
+
+.vip-payment-card {
+    background: #087fe7;
+    color: #ffffff;
+}
+
+.vip-payment-card .zalopay-brand {
+    color: #ffffff;
+}
+
+.vip-payment-card .zalopay-subtitle {
+    color: rgba(255, 255, 255, 0.96);
+}
+
+.vip-payment-card .zalopay-badge {
+    background: rgba(255, 255, 255, 0.22);
+    border-color: rgba(255, 255, 255, 0.34);
+    color: #ffffff;
+}
+
+.vip-payment-card .zalopay-package {
+    border-color: rgba(255, 255, 255, 0.24);
+    background: rgba(255, 255, 255, 0.16);
+    color: #ffffff;
+    box-shadow: none;
+}
+
+.vip-package.active {
+    border-color: #1cb0f6;
+    background: #ffffff;
+    color: #174ea6;
+    box-shadow: none;
+}
+
+.vip-payment-card .zalopay-package strong,
+.vip-payment-card .vip-package.active strong {
+    color: #ffffff;
+    text-shadow: none;
+}
+
+.vip-payment-card .zalopay-package span:last-child,
+.vip-payment-card .vip-package.active span:last-child {
+    color: rgba(255, 255, 255, 0.95);
+}
+
+.vip-payment-card .zalopay-package-tag {
+    background: #ffffff;
+    color: #0057ff;
+}
+
+.vip-success-card .zalopay-success-points {
+    color: #174ea6;
 }
 
 .settings-item-chevron {
@@ -1802,18 +2355,14 @@
     margin-bottom: 24px;
     padding: 22px;
     border-radius: 22px;
-    background: linear-gradient(135deg, #0057ff 0%, #008ef0 52%, #14b8ff 100%);
+    background: #087fe7;
     color: #fff;
-    box-shadow: 0 18px 40px rgba(0, 87, 255, 0.18);
+    box-shadow: 0 6px 18px rgba(0, 87, 255, 0.14);
     overflow: hidden;
 }
 
 .zalopay-topup-card::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(135deg, transparent 54%, rgba(255, 255, 255, 0.18) 54%, rgba(255, 255, 255, 0.3) 64%, rgba(255, 255, 255, 0.12) 76%, transparent 76%);
-    pointer-events: none;
+    content: none;
 }
 
 .zalopay-topup-card > * {
@@ -1868,21 +2417,20 @@
     border: 1px solid rgba(255, 255, 255, 0.24);
     border-radius: 18px;
     padding: 18px 16px 16px;
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.12));
+    background: rgba(255, 255, 255, 0.16);
     color: #fff;
     cursor: pointer;
-    transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
-    backdrop-filter: blur(4px);
+    transition: border-color 0.12s ease, background 0.12s ease;
 }
 
 .zalopay-package:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 14px 28px rgba(6, 40, 117, 0.2);
+    background: rgba(255, 255, 255, 0.22);
 }
 
 .zalopay-package.active {
-    border-color: #fff;
-    background: rgba(255, 255, 255, 0.28);
+    border-color: #ffffff;
+    background: #ffffff;
+    color: #174ea6;
 }
 
 .zalopay-package strong {
@@ -1891,8 +2439,17 @@
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
 }
 
+.zalopay-package.active strong {
+    color: #174ea6;
+    text-shadow: none;
+}
+
 .zalopay-package span:last-child {
     color: rgba(255, 255, 255, 0.95);
+}
+
+.zalopay-package.active span:last-child {
+    color: #3f5fa8;
 }
 
 .zalopay-package-tag {
@@ -1907,7 +2464,7 @@
     background: #fff;
     padding: 4px 8px;
     border-radius: 999px;
-    box-shadow: 0 6px 18px rgba(0, 87, 255, 0.18);
+    box-shadow: none;
 }
 
 .zalopay-qr-shell {
@@ -1976,7 +2533,6 @@
     inset: 0;
     border-radius: 18px;
     background: rgba(255, 255, 255, 0.56);
-    backdrop-filter: blur(1px);
 }
 
 .zalopay-qr-expired-badge {
@@ -2028,15 +2584,8 @@
     }
 }
 
-.zalopay-qr-shell {
-    opacity: 0;
-    transform: translateY(16px) scale(0.98);
-}
-
 .zalopay-qr-shell.is-visible {
     opacity: 1;
-    transform: translateY(0) scale(1);
-    animation: zalopayQrIn 0.45s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 .zalopay-countdown {
@@ -2082,10 +2631,10 @@
     margin-bottom: 18px;
     padding: 22px;
     border-radius: 20px;
-    background: linear-gradient(135deg, #ffffff 0%, #effff5 100%);
+    background: #ffffff;
     color: #0f172a;
-    box-shadow: 0 16px 32px rgba(16, 185, 129, 0.16);
-    animation: zalopaySuccessIn 0.55s cubic-bezier(0.2, 0.8, 0.2, 1);
+    box-shadow: none;
+    border: 1px solid #dcfce7;
 }
 
 .zalopay-success-badge {
@@ -2258,6 +2807,21 @@
 
 :root[data-theme='dark'] .zalopay-topup-card {
     box-shadow: 0 18px 40px rgba(0, 87, 255, 0.24);
+}
+
+.vip-payment-card .vip-package.active {
+    border-color: #1cb0f6;
+    background: #ffffff;
+    color: #174ea6;
+    box-shadow: none;
+}
+
+.vip-payment-card .vip-package.active strong {
+    color: #123f8c;
+}
+
+.vip-payment-card .vip-package.active span:last-child {
+    color: #3f5fa8;
 }
 
 :root[data-theme='dark'] .settings-danger-zone {

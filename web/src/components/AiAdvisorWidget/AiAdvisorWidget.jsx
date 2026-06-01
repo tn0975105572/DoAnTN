@@ -161,6 +161,20 @@ const buildHistoryPayload = (messages) => messages
         content: message.content,
     }));
 
+const isNoResultAnswer = (answer) => {
+    const normalized = String(answer || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/đ/g, 'd')
+        .replace(/Đ/g, 'D')
+        .toLowerCase();
+
+    return normalized.includes('chua tim thay') ||
+        normalized.includes('khong tim thay') ||
+        normalized.includes('khong co bai dang') ||
+        normalized.includes('khong co ket qua');
+};
+
 function AdvisorPostCard({ post, onOpen }) {
     const href = post.id ? `/post/${post.id}` : '#';
 
@@ -290,6 +304,7 @@ export default function AiAdvisorWidget() {
                 backendOrigin,
             );
             const showPosts = firstFilled(responseData.meta?.showPosts, responseData.meta?.show_posts, true);
+            const visiblePosts = showPosts === false || isNoResultAnswer(answer) ? [] : nextPosts;
 
             setMessages((current) => [
                 ...current,
@@ -298,7 +313,7 @@ export default function AiAdvisorWidget() {
                     role: 'assistant',
                     content: answer,
                     createdAt: new Date(),
-                    posts: showPosts === false ? [] : nextPosts,
+                    posts: visiblePosts,
                 },
             ]);
         } catch (requestError) {
